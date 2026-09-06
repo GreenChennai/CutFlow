@@ -20,3 +20,8 @@
 - fix: rs_jy_draft 时间单位错误(ms 误作 μs)——此前生成的草稿片段时长缩短 1000 倍,已修正并重生成验证
 - feat: 5.9 草稿写入转场(fade→叠化/wipeleft→向左擦除/slideleft→左移,未映射回退叠化并警告)与 clip.fade 音频淡入淡出
 - docs: README 增加端到端使用示例
+
+### iter-03 (2026-09-07)
+
+- fix(P1): 转场吞时长导致的音频/字幕时间轴漂移风险——schema 写明"使用转场时 startMs 需预扣转场消耗"的约定,rs_render 渲染前主动警告
+- chore: project.schema.json 补 clip.fade 字段(音频淡入淡出)

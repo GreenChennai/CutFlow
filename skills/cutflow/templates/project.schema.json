@@ -2,110 +2,301 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "CutFlow 项目 IR v1(毫秒级时间线)",
   "type": "object",
-  "required": ["version", "slug", "fps", "canvas", "tracks"],
+  "required": [
+    "version",
+    "slug",
+    "fps",
+    "canvas",
+    "tracks"
+  ],
   "properties": {
-    "version": {"const": 1},
-    "slug": {"type": "string"},
-    "fps": {"type": "integer", "enum": [24, 25, 30, 50, 60]},
+    "version": {
+      "const": 1
+    },
+    "slug": {
+      "type": "string"
+    },
+    "fps": {
+      "type": "integer",
+      "enum": [
+        24,
+        25,
+        30,
+        50,
+        60
+      ]
+    },
     "canvas": {
       "type": "object",
-      "required": ["width", "height"],
+      "required": [
+        "width",
+        "height"
+      ],
       "properties": {
-        "width": {"type": "integer", "enum": [1080, 1920]},
-        "height": {"type": "integer", "enum": [1080, 1920]}
+        "width": {
+          "type": "integer",
+          "enum": [
+            1080,
+            1920
+          ]
+        },
+        "height": {
+          "type": "integer",
+          "enum": [
+            1080,
+            1920
+          ]
+        }
       }
     },
     "tracks": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["kind", "clips"],
+        "required": [
+          "kind",
+          "clips"
+        ],
         "properties": {
-          "kind": {"enum": ["video", "audio", "text"]},
-          "name": {"type": "string"},
-          "clips": {"type": "array", "items": {"$ref": "#/$defs/clip"}}
+          "kind": {
+            "enum": [
+              "video",
+              "audio",
+              "text"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "clips": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/clip"
+            }
+          }
         }
       }
     },
     "bgm": {
       "type": "object",
       "properties": {
-        "src": {"type": "string"},
-        "gainDb": {"type": "number", "default": -18},
-        "ducking": {"type": "boolean", "default": true},
-        "loop": {"type": "boolean", "default": true}
+        "src": {
+          "type": "string"
+        },
+        "gainDb": {
+          "type": "number",
+          "default": -18
+        },
+        "ducking": {
+          "type": "boolean",
+          "default": true
+        },
+        "loop": {
+          "type": "boolean",
+          "default": true
+        }
       }
     },
     "outputs": {
       "type": "array",
-      "items": {"enum": ["9x16", "16x9"]},
+      "items": {
+        "enum": [
+          "9x16",
+          "16x9"
+        ]
+      },
       "description": "要产出的比例;canvas 是主比例,第二个比例走 reframe 重构图"
     },
     "markers": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["ms", "label"],
-        "properties": {"ms": {"type": "number"}, "label": {"type": "string"}}
+        "required": [
+          "ms",
+          "label"
+        ],
+        "properties": {
+          "ms": {
+            "type": "number"
+          },
+          "label": {
+            "type": "string"
+          }
+        }
       }
     },
     "subtitle": {
       "type": "object",
       "properties": {
-        "ass": {"type": "string", "description": "ASS 文件路径;由 rs_subtitle.py 先生成"},
-        "style": {"type": "string"}
+        "ass": {
+          "type": "string",
+          "description": "ASS 文件路径;由 rs_subtitle.py 先生成"
+        },
+        "style": {
+          "type": "string"
+        }
       }
     }
   },
   "$defs": {
     "clip": {
       "type": "object",
-      "required": ["startMs", "durationMs"],
+      "required": [
+        "startMs",
+        "durationMs"
+      ],
       "properties": {
-        "src": {"type": "string"},
-        "startMs": {"type": "number", "minimum": 0},
-        "durationMs": {"type": "number", "exclusiveMinimum": 0},
-        "sourceInMs": {"type": "number", "minimum": 0},
-        "speed": {"type": "number", "minimum": 0.25, "maximum": 4},
-        "volume": {"type": "number", "minimum": 0, "maximum": 2},
-        "role": {"enum": ["voice", "sfx", "music", "ambient"]},
-        "text": {"type": "string"},
+        "src": {
+          "type": "string"
+        },
+        "startMs": {
+          "type": "number",
+          "minimum": 0
+        },
+        "durationMs": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "sourceInMs": {
+          "type": "number",
+          "minimum": 0
+        },
+        "speed": {
+          "type": "number",
+          "minimum": 0.25,
+          "maximum": 4
+        },
+        "volume": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 2
+        },
+        "role": {
+          "enum": [
+            "voice",
+            "sfx",
+            "music",
+            "ambient"
+          ]
+        },
+        "text": {
+          "type": "string"
+        },
         "chroma": {
           "type": "object",
           "properties": {
-            "color": {"enum": ["green", "blue"]},
-            "similarity": {"type": "number", "default": 0.12},
-            "blend": {"type": "number", "default": 0.08},
-            "despill": {"type": "boolean", "default": true}
+            "color": {
+              "enum": [
+                "green",
+                "blue"
+              ]
+            },
+            "similarity": {
+              "type": "number",
+              "default": 0.12
+            },
+            "blend": {
+              "type": "number",
+              "default": 0.08
+            },
+            "despill": {
+              "type": "boolean",
+              "default": true
+            }
           }
         },
         "position": {
           "type": "object",
           "properties": {
-            "x": {"type": "number", "minimum": 0, "maximum": 1},
-            "y": {"type": "number", "minimum": 0, "maximum": 1}
+            "x": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "y": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
           }
         },
-        "scale": {"type": "number", "minimum": 0.05, "maximum": 4},
+        "scale": {
+          "type": "number",
+          "minimum": 0.05,
+          "maximum": 4
+        },
         "reframe": {
           "type": "object",
-          "properties": {"anchorY": {"type": "number", "minimum": 0, "maximum": 1}}
+          "properties": {
+            "anchorY": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
+          }
         },
         "motion": {
           "type": "object",
           "properties": {
-            "in": {"enum": ["none", "fadeIn", "slideInLeft", "slideInRight", "scaleIn", "zoomIn"]},
-            "inMs": {"type": "number", "default": 400},
-            "out": {"enum": ["none", "fadeOut", "slideOutLeft", "slideOutRight"]},
-            "outMs": {"type": "number", "default": 400}
+            "in": {
+              "enum": [
+                "none",
+                "fadeIn",
+                "slideInLeft",
+                "slideInRight",
+                "scaleIn",
+                "zoomIn"
+              ]
+            },
+            "inMs": {
+              "type": "number",
+              "default": 400
+            },
+            "out": {
+              "enum": [
+                "none",
+                "fadeOut",
+                "slideOutLeft",
+                "slideOutRight"
+              ]
+            },
+            "outMs": {
+              "type": "number",
+              "default": 400
+            }
           }
         },
         "transition": {
           "type": "object",
-          "description": "与前一片段的转场(xfade)",
+          "description": "与前一片段的转场(xfade)。注意:转场会吞掉重叠时长,使后续时间轴整体前移;为音画对齐,当前约定:使用转场时,同工程内的 audio/text 轨 startMs 由 Agent 按转场消耗重新计算",
           "properties": {
-            "type": {"enum": ["fade", "wipeleft", "wipeup", "slideleft", "circleopen"]},
-            "durMs": {"type": "number", "default": 500}
+            "type": {
+              "enum": [
+                "fade",
+                "wipeleft",
+                "wipeup",
+                "slideleft",
+                "circleopen"
+              ]
+            },
+            "durMs": {
+              "type": "number",
+              "default": 500
+            }
+          }
+        },
+        "fade": {
+          "type": "object",
+          "description": "音频淡入淡出(毫秒);仅 5.9 草稿后端写入,FFmpeg 后端暂忽略",
+          "properties": {
+            "inMs": {
+              "type": "number",
+              "default": 0
+            },
+            "outMs": {
+              "type": "number",
+              "default": 0
+            }
           }
         }
       }

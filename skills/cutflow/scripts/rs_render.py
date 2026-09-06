@@ -339,6 +339,14 @@ def render(doc: dict, project_path: Path, ratio: str, profile: str) -> dict:
     t0 = time.time()
     warnings: list[str] = []
 
+    # 转场会吞时长 → 音频/字幕若存在将整体漂移;提前警告(语义见 schema transition 描述)
+    base_clips = [t for t in doc["tracks"] if t["kind"] == "video"][0]["clips"]
+    has_tr = any(c.get("transition") for c in base_clips[1:])
+    has_pos = any(t["kind"] in ("audio", "text") or t.get("clips") for t in doc["tracks"]
+                  if t["kind"] == "audio") or doc.get("subtitle", {}).get("ass")
+    if has_tr and (any(t.get("clips") for t in doc["tracks"] if t["kind"] == "audio") or doc.get("subtitle", {}).get("ass")):
+        warnings.append("时间轴提示:转场将吞掉重叠时长(每处 -durMs),音频/字幕的 startMs 若按转场前时间轴排布会漂移;"
+                        "建议 Agent 在 IR 中预扣转场消耗(see schema)")
     segs = step_segment(doc, ratio, build, base_dir, cfg, warnings)
     base = step_concat(doc, segs, build, cfg, warnings)
     composed = step_compose(doc, ratio, base, build, base_dir, cfg, warnings)
