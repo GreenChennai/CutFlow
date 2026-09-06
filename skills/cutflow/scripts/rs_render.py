@@ -111,17 +111,58 @@ def step_segment(doc: dict, ratio: str, build: Path, base_dir: Path, cfg: dict,
     return seg_files
 
 
-# ---------------- 步骤 3:无损拼接 ----------------
+# ---------------- 步骤 3:拼接(无转场=无损 concat;有转场=xfade 链) ----------------
 
-def step_concat(seg_files: list[Path], build: Path, cfg: dict) -> Path:
-    lst = build / "concat.txt"
-    lst.write_text("".join(f"file '{f.as_posix()}'\n" for f in seg_files), encoding="utf-8")
+def step_concat(doc: dict, seg_files: list[Path], build: Path, cfg: dict,
+                warnings: list[str]) -> Path:
+    base_clips = [t for t in doc["tracks"] if t["kind"] == "video"][0]["clips"]
+    has_transition = any(c.get("transition") for c in base_clips[1:])
     base = build / "base.mp4"
-    p = run([ffmpeg_bin(cfg), "-v", "error", "-y", "-f", "concat", "-safe", "0",
-             "-i", str(lst), "-c", "copy", str(base)])
+
+    if not has_transition:
+        lst = build / "concat.txt"
+        lst.write_text("".join(f"file '{f.as_posix()}'\n" for f in seg_files), encoding="utf-8")
+        p = run([ffmpeg_bin(cfg), "-v", "error", "-y", "-f", "concat", "-safe", "0",
+                 "-i", str(lst), "-c", "copy", str(base)])
+        if p.returncode != 0:
+            die(4, "CONCAT_FAIL", f"拼接失败:{(p.stderr or '')[-300:]}")
+        return base
+
+    # xfade 链:相邻段重叠 transition 时长;段分辨率/帧率已由 segment 步统一
+    n = len(seg_files)
+    durs = [c["durationMs"] / 1000.0 for c in base_clips[:n]]
+    cmd = [ffmpeg_bin(cfg), "-v", "error", "-y"]
+    for f in seg_files:
+        cmd += ["-i", str(f)]
+    parts, last, lasta = [], "0:v", "0:a"
+    cum = durs[0]
+    all_have_audio = all(_seg_has_audio(f, cfg) for f in seg_files)
+    if not all_have_audio:
+        warnings.append("concat:部分段无音轨,转场仅作用于画面,输出将无音频")
+    for i in range(1, n):
+        tr = base_clips[i].get("transition") or {"type": "fade", "durMs": 500}
+        tdur = min(tr.get("durMs", 500) / 1000.0, durs[i - 1] / 2, durs[i] / 2)
+        offset = cum - tdur
+        parts.append(f"[{last}][{i}:v]xfade=transition={tr['type']}:"
+                     f"duration={tdur:.3f}:offset={offset:.3f}[vx{i}]")
+        if all_have_audio:
+            parts.append(f"[{lasta}][{i}:a]acrossfade=d={tdur:.3f}[ax{i}]")
+            lasta = f"ax{i}"
+        last = f"vx{i}"
+        cum = offset + durs[i]
+    cmd += ["-filter_complex", ";".join(parts), "-map", f"[{last}]"]
+    cmd += ["-map", f"[{lasta}]", "-c:a", "aac", "-b:a", "192k"] if all_have_audio else ["-an"]
+    cmd += ["-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
+            "-r", str(doc["fps"]), str(base)]
+    p = run(cmd, timeout=3600)
     if p.returncode != 0:
-        die(4, "CONCAT_FAIL", f"拼接失败:{(p.stderr or '')[-300:]}")
+        die(4, "CONCAT_XFADE_FAIL", f"转场拼接失败:{(p.stderr or '')[-500:]}")
     return base
+
+
+def _seg_has_audio(seg: Path, cfg: dict) -> bool:
+    info = ffprobe_json(seg, cfg)
+    return any(s["codec_type"] == "audio" for s in info.get("streams", []))
 
 
 # ---------------- 步骤 4:overlay 合成 ----------------
@@ -299,7 +340,7 @@ def render(doc: dict, project_path: Path, ratio: str, profile: str) -> dict:
     warnings: list[str] = []
 
     segs = step_segment(doc, ratio, build, base_dir, cfg, warnings)
-    base = step_concat(segs, build, cfg)
+    base = step_concat(doc, segs, build, cfg, warnings)
     composed = step_compose(doc, ratio, base, build, base_dir, cfg, warnings)
     mixed = step_mix(doc, composed, build, base_dir, cfg)
     subtitled = step_subtitle(doc, mixed, build, cfg)
