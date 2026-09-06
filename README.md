@@ -42,6 +42,35 @@ python skills/cutflow/scripts/rs_doctor.py
 
 详见 `tools/install.ps1` 与 `docs/PLAN.md`。
 
+## 使用示例(一条真实链路)
+
+```bash
+# 0. 体检(10 项依赖检查)
+python skills/cutflow/scripts/rs_doctor.py
+
+# 1. 感知:口播视频转写(自动抽 16k wav → FunASR → 句级时间戳)
+python skills/cutflow/scripts/rs_asr.py 01_materials/talk.mp4 --out 02_sensed
+#    …Agent 校对转写稿 → 02_sensed/transcript_corrected.md(硬规则,不可跳过)
+
+# 2. 合成:纯文案用 koubo-test 音色配音(逐句落盘、断点续传)
+python skills/cutflow/scripts/rs_tts.py --script 00_brief/copy.txt --out 03_assets/tts
+
+# 3. 字幕(智能断行 + 风格模板 + 安全区)
+python skills/cutflow/scripts/rs_subtitle.py --from-tts 03_assets/tts/manifest.json \
+    --style talkshow-bold --ratio 9x16 --out 06_output
+
+# 4. 剪辑:写 IR(毫秒级时间线)→ 校验 → FFmpeg 直出(可 9:16/16:9 双出)
+python skills/cutflow/scripts/rs_ir.py validate 05_ir/project.json
+python skills/cutflow/scripts/rs_render.py 05_ir/project.json --ratio 9x16 --profile final
+
+# 5. 剪映 5.9 草稿(同一份 IR → 可编辑工程,注册进首页)
+python skills/cutflow/scripts/rs_jy_draft.py 05_ir/project.json --name 我的草稿 --open
+
+# 6. 自评:抽帧网格 → Agent 目测(黑帧/压脸/安全区/跳变),≤3 轮修复
+python skills/cutflow/scripts/rs_bench.py 06_output/final_slug_916.mp4 \
+    --ir 05_ir/project.json --out 06_output/bench.png
+```
+
 ## 目录
 
 ```

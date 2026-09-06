@@ -90,6 +90,11 @@ _jy_util.assign_attr_with_json = _assign_attr_with_json_py314
 from pyJianYingDraft import (  # noqa: E402
     AudioMaterial, AudioSegment, ClipSettings, ScriptFile, TextBorder, TextSegment,
     TextStyle, Timerange, TrackType, VideoMaterial, VideoSegment)
+from pyJianYingDraft.metadata import TransitionType  # noqa: E402
+
+# IR transition.type → 剪映转场枚举名(未映射的回退叠化并警告)
+JY_TRANSITION = {"fade": "叠化", "wipeleft": "向左擦除", "wipeup": "向上擦除",
+                 "slideleft": "左移", "circleopen": "叠化"}
 
 SUB_SIZE = {"9x16": 9.0, "16x9": 7.5}
 
@@ -147,14 +152,27 @@ def build_draft(doc: dict, project_path: Path, name: str, cfg: dict, warnings: l
     # 主视频轨
     script.add_track(TrackType.video, "V1")
     video_tracks = [t for t in doc["tracks"] if t["kind"] == "video"]
+    prev_seg = None
     for i, clip in enumerate(video_tracks[0]["clips"]):
         mat = VideoMaterial(str(cp(clip)))
         src_in = clip.get("sourceInMs", 0)
         take = int(clip["durationMs"] / clip.get("speed", 1.0) * 1000)
-        seg = VideoSegment(mat, Timerange(int(clip["startMs"]), int(clip["durationMs"])),
-                           source_timerange=Timerange(int(src_in), int(take)),
+        seg = VideoSegment(mat, Timerange(int(clip["startMs"]) * 1000, int(clip["durationMs"]) * 1000),
+                           source_timerange=Timerange(int(src_in) * 1000, int(take)),
                            speed=clip.get("speed", 1.0), volume=clip.get("volume", 1.0))
         script.add_segment(seg, "V1")
+        # 转场挂在前一片段;音频淡入淡出按 IR clip.fade 写入
+        if prev_seg is not None and clip.get("transition"):
+            tr = clip["transition"]
+            enum_name = JY_TRANSITION.get(tr.get("type", "fade"), "叠化")
+            if tr.get("type") not in JY_TRANSITION:
+                warnings.append(f"V1:转场 {tr.get('type')} 无映射,回退叠化")
+            prev_seg.add_transition(getattr(TransitionType, enum_name),
+                                    duration=int(tr.get("durMs", 500)) * 1000)
+        if clip.get("fade"):
+            seg.add_fade(int(clip["fade"].get("inMs", 0)) * 1000,
+                         int(clip["fade"].get("outMs", 0)) * 1000)
+        prev_seg = seg
 
     # 画中画/信息卡轨(V2+,render_index 更高)
     for ti, track in enumerate(video_tracks[1:]):
@@ -174,8 +192,8 @@ def build_draft(doc: dict, project_path: Path, name: str, cfg: dict, warnings: l
                 scale_x=sc, scale_y=sc,
                 transform_x=(pos["x"] - 0.5) * cw / (cw / 2),
                 transform_y=(pos["y"] - 0.5) * chh / (chh / 2))
-            seg = VideoSegment(mat, Timerange(int(clip["startMs"]), int(clip["durationMs"])),
-                               source_timerange=Timerange(int(src_in), int(take)),
+            seg = VideoSegment(mat, Timerange(int(clip["startMs"]) * 1000, int(clip["durationMs"]) * 1000),
+                               source_timerange=Timerange(int(src_in) * 1000, int(take)),
                                speed=clip.get("speed", 1.0), volume=clip.get("volume", 1.0),
                                clip_settings=clipset)
             script.add_segment(seg, tname)
@@ -188,7 +206,7 @@ def build_draft(doc: dict, project_path: Path, name: str, cfg: dict, warnings: l
             for clip in track["clips"]:
                 mat = AudioMaterial(str(cp(clip)))
                 dur_ms = clip.get("durationMs") or mat.duration // 1000
-                seg = AudioSegment(mat, Timerange(int(clip["startMs"]), int(dur_ms)),
+                seg = AudioSegment(mat, Timerange(int(clip["startMs"]) * 1000, int(dur_ms) * 1000),
                                    volume=clip.get("volume", 1.0))
                 script.add_segment(seg, "A1")
 
@@ -217,7 +235,7 @@ def build_draft(doc: dict, project_path: Path, name: str, cfg: dict, warnings: l
 
     script.duration = max(
         [c["startMs"] + c.get("durationMs", 0) for t in doc["tracks"] if t["kind"] in ("video", "audio")
-         for c in t["clips"]] + [0]) * 1000
+         for c in t["clips"]] + [0]) * 1000  # ms → μs
 
     draft_root = Path(cfg["jianying59"]["draft_root"])
     draft_root.mkdir(parents=True, exist_ok=True)
