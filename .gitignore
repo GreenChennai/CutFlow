@@ -1,0 +1,30 @@
+# 本机配置(含真实路径)不入库
+config.json
+
+# 素材与产出不入库
+01_materials/
+02_sensed/
+03_assets/
+04_ai_prompts/
+05_ir/
+06_output/
+*.mp4
+*.mov
+*.mp3
+*.wav
+*.flac
+*.aac
+*.png !docs/images/**
+*.jpg
+*.jpeg
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# 开发临时
+*.log
+dev-*
+_tmp/

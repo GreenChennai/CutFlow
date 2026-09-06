@@ -1,0 +1,16 @@
+# 风格:talkshow-bold(口播/绿幕大字报)
+subtitle_style: talkshow-bold
+colors:
+  bg: "#0F1115"
+  accent: "#FFD400"
+  text: "#FFFFFF"
+typography:
+  font: "Microsoft YaHei"
+  weight: bold
+safe_area:
+  top: 0.12
+  bottom: 0.25
+transitions: [fade]
+intro_outro: null
+bgm_gain_db: -18
+notes: 大字幕居中偏下;关键词可用 accent 色块高亮(v1.5);绿幕背景替换后加强对比。

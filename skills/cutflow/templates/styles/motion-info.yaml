@@ -1,0 +1,16 @@
+# 风格:motion-info(动画信息流)
+subtitle_style: subtitle-white
+colors:
+  bg: "#12121A"
+  accent: "#5B8CFF"
+  text: "#FFFFFF"
+typography:
+  font: "Microsoft YaHei"
+  weight: bold
+safe_area:
+  top: 0.12
+  bottom: 0.22
+transitions: [fade, circleopen, slideleft]
+intro_outro: artboard_animation   # artboard 动画片头(≤15s)
+bgm_gain_db: -18
+notes: 场景卡由 artboard 串联(HTML→MP4);旁白驱动节奏;每 3-5s 一个视觉事件。

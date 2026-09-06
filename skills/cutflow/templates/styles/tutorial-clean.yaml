@@ -1,0 +1,16 @@
+# 风格:tutorial-clean(教程)
+subtitle_style: tutorial-clean
+colors:
+  bg: "#101418"
+  accent: "#2FD08C"
+  text: "#F5F7FA"
+typography:
+  font: "Microsoft YaHei"
+  weight: normal
+safe_area:
+  top: 0.10
+  bottom: 0.20
+transitions: [fade, wipeleft]
+intro_outro: chapter_cards   # 章节信息卡插槽
+bgm_gain_db: -20
+notes: 底部字幕条;步骤编号用信息卡;录屏内容优先全宽展示。

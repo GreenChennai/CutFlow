@@ -1,0 +1,26 @@
+{
+  "ffmpeg_dir": "E:\\Tools\\ffmpeg\\bin",
+  "asr": {
+    "url": "http://127.0.0.1:8000",
+    "model": "paraformer-large"
+  },
+  "tts": {
+    "url": "http://127.0.0.1:9885",
+    "engine_dir": "E:\\<path-to>\\GPT-SoVITS",
+    "voices_dir": "E:\\<path-to>\\models\\voices",
+    "default_voice": "koubo-test",
+    "disabled_voices": [
+      "Jimi"
+    ]
+  },
+  "ocr_exe": "E:\\<path-to>\\OCR\\dist\\OCR.exe",
+  "vqa_python": "E:\\<path-to>\\VQA\\venv\\Scripts\\python.exe",
+  "vqa_cli": "E:\\<path-to>\\VQA\\qora_cli.py",
+  "jianying59": {
+    "exe": "E:\\Jianying\\5.9JianyingPro\\JianyingPro.exe",
+    "draft_root": "E:\\Jianying\\JianyingPro Drafts",
+    "root_meta": "C:/Users/<user>/AppData/Local/JianyingPro/User Data/Projects/com.lveditor.draft/root_meta_info.json"
+  },
+  "workdir_root": "E:\\视频工程",
+  "proxy": "http://127.0.0.1:7890"
+}
