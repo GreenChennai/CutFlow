@@ -40,3 +40,9 @@
 
 - fix(P1): 转场吞时长导致的音频/字幕时间轴漂移风险——schema 写明"使用转场时 startMs 需预扣转场消耗"的约定,rs_render 渲染前主动警告
 - chore: project.schema.json 补 clip.fade 字段(音频淡入淡出)
+
+### iter-04 (2026-09-08)
+
+- fix: 断行评分统一收敛到 textopt.card_split(BAD_END 含数字防"一/个"切断、虚词收尾加分、候选范围 ≤max_chars);
+- fix: Jimi 首句"电子运营"→"电商运营"(TTS 音频+manifest 时间轴+整轨重拼接+字幕同步);
+- 验收: judge 终验两片 pass,遗留项(悬"一"字)已全分辨率帧闭环。

@@ -15,6 +15,8 @@ SPACE_AFTER_SPLIT = " "
 DOUBLE_PUNCT = re.compile(r"([!?])\1+")
 ELLIPSIS = re.compile(r"。。。+|……|\.\.\.+")
 FULLWIDTH_NUM = str.maketrans("０１２３４５６７８９", "0123456789")
+BAD_END = "我你他她它们这那就都也很不有在和与跟对往朝从被把将一二三四五六七八九十百千万"
+TAIL_FUNC = "的了着地吧呢啊吗嘛"
 
 
 def normalize_text(text: str) -> str:
@@ -49,7 +51,7 @@ def card_split(sentence: str, max_chars: int) -> list[str]:
         return [_clean_card(sentence)]
     # 断点打分:问/叹句边界 > 空格 > 顿号 > 逗号;ASCII 词内禁断
     best, best_s = None, None
-    for pos in range(3, len(sentence) - 1):
+    for pos in range(3, min(len(sentence) - 1, max_chars)):
         left, right = sentence[:pos], sentence[pos:]
         if left[-1].isascii() and left[-1].isalnum() and right[0].isascii() and right[0].isalnum():
             continue
@@ -62,6 +64,10 @@ def card_split(sentence: str, max_chars: int) -> list[str]:
             s += 120
         if right[0] in "与之而或但及和":
             s += 20
+        if left and left[-1] in BAD_END:
+            s -= 150
+        if left and left[-1] in TAIL_FUNC:
+            s += 30
         if left and left[-1] in "的了是在和与把被对从向于也就都更最而即Each们":
             s += 35  # 虚词/助词收尾是自然断点
         s -= 4 * abs(pos - len(sentence) // 2)
