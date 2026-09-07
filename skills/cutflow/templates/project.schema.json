@@ -202,6 +202,12 @@
             "despill": {
               "type": "boolean",
               "default": true
+            },
+            "cropTopPct": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 0.5,
+              "description": "抠像前先裁掉顶部比例(素材顶部非绿幕区,如白墙/天花板)"
             }
           }
         },

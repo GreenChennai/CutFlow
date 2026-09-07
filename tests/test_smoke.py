@@ -50,3 +50,26 @@ def test_ir_validate_ok_and_bad(tmp_path):
 def test_project_schema_exists():
     schema = json.loads((REPO / "skills/cutflow/templates/project.schema.json").read_text(encoding="utf-8"))
     assert schema["properties"]["version"]["const"] == 1
+
+
+def test_textopt_normalize():
+    import textopt
+    assert textopt.normalize_text("嗯,好的。") == "好的。"
+    assert textopt.split_sentences("嗯,好的。") == ["好的"]
+    assert "…" in textopt.normalize_text("等等等等……好吧")
+    assert "!!" not in textopt.normalize_text("真的?!?不可能")
+
+
+def test_textopt_cards_no_period():
+    import textopt
+    cards = textopt.build_cards(["第一个是进攻目的,即抢占更多的流量与市场。"], 16)
+    assert all("。" not in c and "，" not in c for c in cards), cards
+    assert all(len(c) <= 16 for c in cards), cards
+
+
+def test_textopt_semantic_split():
+    import textopt
+    cards = textopt.card_split("关于店群运营是否构成拆分收入行业内每个人的理解可能并不一致", 16)
+    assert all(len(c) <= 16 for c in cards)
+    joined = "".join(c.replace(" ", "") for c in cards)
+    assert "拆分收入行业内" in joined or "拆分收入" in joined

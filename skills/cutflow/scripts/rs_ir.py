@@ -49,10 +49,13 @@ def validate(doc: dict, base_dir: Path) -> list[str]:
             if dur is not None:
                 spans.append((start, start + dur))
             if clip.get("src") and kind != "text":
-                p = Path(clip["src"])
-                if not p.is_absolute():
-                    p = base_dir / p
-                if not p.is_file():
+                if clip["src"].startswith("assets_sfx:"):  # 内置音效库伪协议
+                    from rs_common import REPO_ROOT
+                    exists = (REPO_ROOT / "assets" / "sfx" / (clip["src"].split(":", 1)[1] + ".mp3")).is_file()
+                else:
+                    pp = Path(clip["src"])
+                    exists = (pp if pp.is_absolute() else base_dir / pp).is_file()
+                if not exists:
                     errs.append(f"{where}.src 不存在:{clip['src']}")
             motion = clip.get("motion", {})
             if motion.get("in", "none") not in MOTION_IN:

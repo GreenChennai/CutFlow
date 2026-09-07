@@ -49,6 +49,8 @@ description: AI 视频制作总控技能:接收口播视频/文案/剧本分镜/
 | 图片理解 | `rs_sense.py <图> --out 02_sensed` |
 | 抽帧 | `rs_frames.py <视频> --out <png> --every 10` |
 | 配音 | `rs_tts.py --script 文案.txt --out 03_assets/tts [--voice koubo-test]` |
+| 字幕轻改写 | rs_subtitle 默认开启(Netflix 规范);`--no-optimize` 关闭 |
+| 音效 | IR audio clip `src: "assets_sfx:whoosh"`(仓库 assets/sfx/) |
 | 字幕 | `rs_subtitle.py --from-tts <manifest> --style talkshow-bold --ratio 9x16 --out 06_output` |
 | IR 校验 | `rs_ir.py validate 05_ir/project.json` |
 | 渲染 | `rs_render.py 05_ir/project.json --ratio 9x16 --profile final` |

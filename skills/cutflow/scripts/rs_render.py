@@ -31,8 +31,13 @@ def cover_crop(iw: int, ih: int, cw: int, ch: int, anchor_y: float = 0.5) -> str
             f"crop={cw}:{ch}:(iw-{cw})/2:(ih-{ch})*{anchor_y}")
 
 
-def clip_path(clip: dict, base_dir: Path) -> Path:
-    p = Path(clip["src"])
+def clip_path(clip: dict, base_dir: Path):
+    """解析 clip.src:相对工程根;`assets_sfx:<名>` 指向仓库内置音效库。"""
+    src = clip["src"]
+    if src.startswith("assets_sfx:"):
+        from rs_common import REPO_ROOT
+        return REPO_ROOT / "assets" / "sfx" / (src.split(":", 1)[1] + ".mp3")
+    p = Path(src)
     return p if p.is_absolute() else base_dir / p
 
 
@@ -168,22 +173,23 @@ def _seg_has_audio(seg: Path, cfg: dict) -> bool:
 # ---------------- 步骤 4:overlay 合成 ----------------
 
 def _overlay_exprs(clip: dict, cw: int, ch: int, start_s: float) -> tuple[str, str, str]:
-    """返回 (target_w, x_expr, y_expr)。position/scale 归一化;slide 线性滑入。"""
+    """返回 (target_w, x_expr, y_expr)。position=overlay 中心点(归一化),用 W/H/w/h
+    表达式定位,任意 overlay 尺寸都正确居中;slide 为线性滑入。"""
     scale = clip.get("scale", 1.0)
     px = clip.get("position", {}).get("x", 0.5)
     py = clip.get("position", {}).get("y", 0.5)
     w = int(cw * scale)
-    x_f = px * cw - w / 2
-    y_f = py * ch
+    x_c = f"{px:.4f}*W-w/2"
+    y_c = f"{py:.4f}*H-h/2"
     motion = clip.get("motion", {})
     in_d = motion.get("inMs", 400) / 1000
-    x, y = f"{x_f:.1f}", f"{y_f:.1f}"
+    x, y = x_c, y_c
     if motion.get("in") == "slideInLeft":
         x = (f"if(lt(t,{start_s + in_d:.3f}),"
-             f"-{w}+({w}+{x_f:.1f})*(t-{start_s:.3f})/{in_d:.3f},{x_f:.1f})")
+             f"-w+({w}+{px:.4f}*W-w/2)*(t-{start_s:.3f})/{in_d:.3f},{x_c})")
     elif motion.get("in") == "slideInRight":
         x = (f"if(lt(t,{start_s + in_d:.3f}),"
-             f"{cw}+({x_f:.1f}-{cw})*(t-{start_s:.3f})/{in_d:.3f},{x_f:.1f})")
+             f"W+({x_c}-{cw})*(t-{start_s:.3f})/{in_d:.3f},{x_c})")
     return str(w), x, y
 
 
@@ -209,6 +215,9 @@ def step_compose(doc: dict, ratio: str, base: Path, build: Path, base_dir: Path,
             chain = []
             if pr["type"] != "image" and clip.get("chroma"):
                 c = clip["chroma"]
+                if c.get("cropTopPct"):
+                    pct = float(c["cropTopPct"])
+                    chain.append(f"crop=iw:ih*{1-pct:.4f}:0:ih*{pct:.4f}")
                 hexc = "0x00FF00" if c.get("color", "green") == "green" else "0x0000FF"
                 chain.append(f"chromakey={hexc}:{c.get('similarity', 0.12)}:{c.get('blend', 0.08)}")
                 if c.get("despill", True):
@@ -217,10 +226,10 @@ def step_compose(doc: dict, ratio: str, base: Path, build: Path, base_dir: Path,
             w, x, y = _overlay_exprs(clip, cw, ch, start_s)
             motion = clip.get("motion", {})
             if motion.get("in") == "fadeIn":
-                chain.append(f"fade=t=in:st={start_s:.3f}:d={motion.get('inMs', 400)/1000:.3f}:alpha=1")
+                chain.append(f"fade=t=in:st=0:d={motion.get('inMs', 400)/1000:.3f}:alpha=1")
             if motion.get("out") == "fadeOut":
                 d = motion.get("outMs", 400) / 1000
-                chain.append(f"fade=t=out:st={start_s + dur_s - d:.3f}:d={d:.3f}:alpha=1")
+                chain.append(f"fade=t=out:st={max(0.0, dur_s - d):.3f}:d={d:.3f}:alpha=1")
             chain += [f"scale={w}:-2", "format=yuva420p",
                       f"setpts=PTS-STARTPTS+{start_s:.3f}/TB"]
             parts.append(f"[{idx}:v]{','.join(chain)}[ov{idx}]")

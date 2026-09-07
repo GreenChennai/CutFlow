@@ -28,22 +28,26 @@ def normalize_to_wav16k(media: Path, out_wav: Path, cfg: dict) -> None:
 
 
 def parse_structured(text: str) -> list[dict]:
-    """`[1.5s] 说话人0: 文本` 行 → 分段列表。"""
-    segs, last = [], None
-    for line in text.splitlines():
-        m = LINE_RE.match(line.strip())
-        if not m:
-            if last and line.strip():
-                last["text"] += line.strip()  # 软换行续行
-            continue
-        start, spk, txt = float(m.group(1)), m.group(2), m.group(3).strip()
-        if last:
-            last["end"] = start
-        if txt:
-            last = {"start": start, "end": None, "spk": int(spk) if spk is not None else 0, "text": txt}
-            segs.append(last)
-    if last and last["end"] is None:
-        last["end"] = last["start"] + 3.0
+    """`[1.5s] 说话人0: 文本` → 分段列表;兼容行内连写的时间戳(长音频常见)。"""
+    # 先按时间戳标记切分(无论是否行首)
+    chunks = re.split(r"\[(\d+(?:\.\d+)?)s\]\s*(?:说话人(\d+)[:：])?\s*", text)
+    # re.split 产出: [前置文本, t1, spk1, body1, t2, spk2, body2, ...]
+    segs = []
+    i = 1
+    while i + 2 < len(chunks) + 1 and i + 2 <= len(chunks):
+        try:
+            start, spk, body = chunks[i], chunks[i + 1], chunks[i + 2]
+        except IndexError:
+            break
+        spk = int(spk) if spk else 0
+        body = body.strip()
+        if body:
+            if segs:
+                segs[-1]["end"] = start
+            segs.append({"start": float(start), "end": None, "spk": spk, "text": body})
+        i += 3
+    if segs and segs[-1]["end"] is None:
+        segs[-1]["end"] = segs[-1]["start"] + 3.0
     return segs
 
 

@@ -13,6 +13,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from rs_common import die, emit  # noqa: E402
+import textopt  # noqa: E402
 
 MAX_CHARS = {"9x16": 16, "16x9": 22}
 TAIL_STOP = "。!?…;:!?"
@@ -90,18 +91,28 @@ def _ts_ass(sec: float) -> str:
     return f"{h}:{m:02d}:{s:05.2f}"
 
 
-def build_events(entries: list[dict], max_chars: int, per_span_s: float = 4.0) -> list[dict]:
-    """entries: [{start_s, end_s, text}] → 断行后的事件列表。单条超时自动均分。"""
+def build_events(entries: list[dict], max_chars: int, per_span_s: float = 4.0,
+                 optimize: bool = True) -> list[dict]:
+    """entries: [{start_s, end_s, text}] → 轻改写 + 断行 + 时间插值的事件列表。
+
+    optimize=True(默认):textopt 轻改写(ADR-0002)——按语义分句,卡级时间按字符数比例插值。
+    """
     events = []
     for e in entries:
         dur = e["end_s"] - e["start_s"]
-        lines = break_line(e["text"].replace("\n", " ").strip(), max_chars)
-        if dur > per_span_s and len(lines) > 1:
-            span = dur / len(lines)
-            for i, ln in enumerate(lines):
-                events.append({"start": e["start_s"] + i * span,
-                               "end": e["start_s"] + (i + 1) * span, "text": ln})
+        if optimize:
+            sents = textopt.split_sentences(e["text"])
+            cards = textopt.build_cards(sents, max_chars)
+            if not cards:
+                continue
+            total_chars = sum(len(c) for c in cards) or 1
+            t = e["start_s"]
+            for c in cards:
+                span = dur * len(c) / total_chars
+                events.append({"start": t, "end": t + span, "text": c})
+                t += span
         else:
+            lines = break_line(e["text"].replace("\n", " ").strip(), max_chars)
             per = dur / len(lines)
             for i, ln in enumerate(lines):
                 events.append({"start": e["start_s"] + i * per,
@@ -147,6 +158,7 @@ def main() -> int:
     ap.add_argument("--ratio", default="9x16", choices=["9x16", "16x9"])
     ap.add_argument("--canvas", default=None, help="如 1080x1920,默认按比例推断")
     ap.add_argument("--out", required=True)
+    ap.add_argument("--no-optimize", action="store_true", help="关闭轻改写(默认开启)")
     a = ap.parse_args()
 
     canvas = a.canvas or {"9x16": "1080x1920", "16x9": "1920x1080"}[a.ratio]
@@ -157,12 +169,14 @@ def main() -> int:
                    for s in man["sentences"]]
     elif a.from_transcript:
         tr = json.loads(Path(a.from_transcript).read_text(encoding="utf-8"))
-        entries = [{"start_s": s["start"], "end_s": s["end"], "text": s["text"]}
+        entries = [{"start_s": float(s["start"]),
+                    "end_s": float(s.get("end") or (float(s["start"]) + 3.0)),
+                    "text": s["text"]}
                    for s in tr["segments"]]
     else:
         return emit(False, "NO_SOURCE", "需要 --from-tts 或 --from-transcript", exit_code=2)
 
-    events = build_events(entries, MAX_CHARS[a.ratio])
+    events = build_events(entries, MAX_CHARS[a.ratio], optimize=not a.no_optimize)
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
     write_srt(events, out / "master.srt")
