@@ -76,8 +76,9 @@ def step_segment(doc: dict, ratio: str, build: Path, base_dir: Path, cfg: dict,
             vf = [f"scale={cw}:{ch}:force_original_aspect_ratio=decrease",
                   f"pad={cw}:{ch}:(ow-iw)/2:(oh-ih)/2:color=black"]
         else:
-            cmd += ["-ss", f"{clip.get('sourceInMs', 0)/1000:.3f}", "-t", f"{take_s:.3f}",
-                    "-i", pr["path"]]
+            loop = ["-stream_loop", "-1"] if clip.get("loop") else []
+            cmd += loop + ["-ss", f"{clip.get('sourceInMs', 0)/1000:.3f}", "-t", f"{take_s:.3f}",
+                           "-i", pr["path"]]
             vf = [cover_crop(pr.get("width") or cw, pr.get("height") or ch, cw, ch, anchor)]
         vf += [f"fps={fps}", "setsar=1"]
 

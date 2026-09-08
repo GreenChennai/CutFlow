@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.3.0 (2026-09-09) — 工程化与类型知识库迭代
+
+12 条用户反馈全落地:
+
+- **开工前提问环节**(SKILL 第 0.5 步):companion 模式逐项问,automation 模式按 genres 分册默认值自查;brief 增加类型与动画密度字段
+- **工程归档规范**(ADR-0007):目录 `<YYYYMMDD>-<中文标题>-<类型>`;产物中文化命名;`rs_cleanup.py` 完工清理(dry-run 默认);旧工程已迁移
+- **Config 图形编辑器**:tools/config_gui.py(tkinter 零依赖)+ PyInstaller onefile exe(CutFlowConfigEditor.exe,12MB);分组表单/中文说明/路径浏览/frozen 路径
+- **小白教程**:README 重写(新手五步 + Config 参数全表:作用/填什么/去哪获取)
+- **动画安全区**(ADR-0009):视频卡内容带垂直 250–1290px,底部 576px 字幕带留白;四卡全部重做;背景升级 6s 无缝循环动画(clip.loop 支持);纯动画视频场景全覆盖
+- **类型剪辑知识库**(ADR-0010):rules/genres/ 六册(口播/动画教程/新闻采访/短剧/影视解说/通用),全部带权威来源(广电总局/BBC/NBCU/MD3/AES/YouTube 官方)
+- **依赖发行为**(ADR-0008):Release v0.3-dependencies 提供 ocr-module.zip(113MB)/vqa-module.zip(529MB,相对路径修复版);tools/fetch_deps.py 一键部署;tools/fetch_ffmpeg.py 多镜像一键部署
+- **感知备选策略**:Agent 视觉优先,本地 OCR/VQA 兜底(config.sense.force_local);rs_sense 支持 vqa_exe 直连模式
+- **自动封面**:rules/cover.md 固化抽帧+抠像+合成三路线,产物为标准交付物
+
+
 ## v0.2.0 (2026-09-08) — 质量精进迭代
 
 十条用户反馈全部落地,成片质量从"链路通"升级到"可观看":

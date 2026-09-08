@@ -16,12 +16,17 @@
   "ocr_exe": "E:\\<path-to>\\OCR\\dist\\OCR.exe",
   "vqa_python": "E:\\<path-to>\\VQA\\venv\\Scripts\\python.exe",
   "vqa_cli": "E:\\<path-to>\\VQA\\qora_cli.py",
-  "momentshift_dir": "E:\\<path-to>\\MomentShift",
+  "momentshift_dir": "E:/<path-to>/MomentShift",
   "jianying59": {
     "exe": "E:\\Jianying\\5.9JianyingPro\\JianyingPro.exe",
     "draft_root": "E:\\Jianying\\JianyingPro Drafts",
     "root_meta": "C:/Users/<user>/AppData/Local/JianyingPro/User Data/Projects/com.lveditor.draft/root_meta_info.json"
   },
   "workdir_root": "E:\\视频工程",
-  "proxy": "http://127.0.0.1:7890"
+  "proxy": "http://127.0.0.1:7890",
+  "sense": {
+    "force_local": false
+  },
+  "vqa_exe": "",
+  "artboard_dir": "E:/<path-to>/.agents/skills/artboard"
 }

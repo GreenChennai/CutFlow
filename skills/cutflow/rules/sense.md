@@ -21,3 +21,14 @@
 
 - `rs_frames.py <视频> --out <png> --every 10`:网格图,Agent 目测。
 - 绿幕重构图:看网格图选 anchorY(人物头部离顶比例);全权模式自选记录,协作模式出 2 张对比让用户挑。
+
+
+## 备选策略(ADR-0008,重要)
+
+**Agent 自带视觉能力时,优先自己直接看图**;本地 OCR/VQA 是备选件,只在以下情况调用:
+1. 批量图片处理(几十张以上);
+2. 运行环境没有视觉模型(纯 API 文本模型);
+3. 用户明确要求;
+4. config.sense.force_local = true。
+
+部署(缺才有必要):`python tools/fetch_deps.py ocr`(110MB)/ `python tools/fetch_deps.py vqa`(630MB,Rust 引擎免 Python);自动写回 config。状态查看:`python tools/fetch_deps.py`(无参)。

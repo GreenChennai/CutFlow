@@ -9,8 +9,15 @@ description: AI 视频制作总控技能:接收口播视频/文案/剧本分镜/
 
 ## 0. 开工前置
 
-1. 跑 `python skills/cutflow/scripts/rs_doctor.py` 读 JSON:致命项全绿才开工;非致命(ASR/TTS 服务)可按 §R 拉起。
+1. 跑 `python skills/cutflow/scripts/rs_doctor.py --report`:看人读自检报告,致命项全绿才开工;缺失的 ffmpeg/OCR/VQA 用 tools/ 下脚本一键部署。
 2. 首次使用先读本项目记忆 `project.md`(工作目录下,若有)。
+
+## 0.5 开工前提问(强制,grill-me 精神)
+
+**任何素材进入流水线之前**,按 rules/intake.md 的问卷向用户提问,问清:成片类型(口播/动画教程/新闻采访/短剧/影视解说)、平台、比例、时长、风格、字幕、声音、片头片尾、动画密度(无/少/多)、背景、BGM、专有名词表。
+- **companion 模式(默认)**:问卷逐项问,关键决策(风格/结构)给推荐项让用户选;
+- **automation 模式**(用户说"全权交给你"):转为自查——逐项按 rules/genres/ 类型分册的默认值自定,全部写进 brief.md 并在开头注明"全权模式,默认值来自 XX 分册";
+- brief.md 是唯一契约:写完之后不再问,一切决策查 brief。
 
 ## 1. 管线总览(按素材类型路由)
 
@@ -24,7 +31,9 @@ description: AI 视频制作总控技能:接收口播视频/文案/剧本分镜/
 → 写 IR(05_ir/project.json)→ rs_ir validate
 → rs_render(FFmpeg 直出,两比例可选)
 → rs_jy_draft(剪映 5.9 草稿,交付可编辑工程)
-→ rs_bench 自评 → 目测修复(≤3 轮) → 交付
+→ rs_bench 自评 → 目测修复(≤3 轮)
+→ 自动封面(抽帧 + artboard 合成,rules/cover.md)→ 产物中文化命名
+→ rs_cleanup 清理测试件与中间件(先 dry-run 后 --apply)→ 交付
 ```
 
 ## 2. Hard Rules(会静默失败,违反必炸)
@@ -38,7 +47,11 @@ description: AI 视频制作总控技能:接收口播视频/文案/剧本分镜/
 7. 不可逆构图决策(重构图锚点/风格二选一)先 `rs_frames` 出网格图目测;全权模式自选并写进 project.md。
 8. 写剪映草稿前确认剪映未运行(rs_jy_draft 已内置检测);只动 5.9,绝不碰 11.3。
 9. 渲染产物必过自评:rs_doctor 断言 + rs_bench 目测,≤3 轮,仍败如实上报。
-10. 素材/中间件/git:01_materials 只读;大文件不进 git。
+10. 素材/中间件/git:01_materials 只读;大文件不进 git;
+10a. 工程目录命名 `<YYYYMMDD>-<中文标题>-<类型>`;产物中文命名(成片_竖版_最终.mp4);测试文件用 dev- 前缀,交付前 rs_cleanup 必删(ADR-0007);
+10b. 感知备选:Agent 自带视觉优先自己看图;OCR/VQA 本地模块仅在批量/无视觉/force_local 时用(ADR-0008);
+10c. 穿插动画卡必须遵守视频卡安全区(顶部 12%/底部 30% 字幕带/左右 8%),见 rules/artboard.md;纯动画视频背景用循环动画铺满,禁大面积空白(ADR-0009);
+10d. 开工必读 brief.类型 对应的 rules/genres/ 分册,节奏与字幕默认值从分册取(ADR-0010)。
 
 ## 3. 命令速查(scripts/,全部支持 --json)
 
@@ -56,6 +69,9 @@ description: AI 视频制作总控技能:接收口播视频/文案/剧本分镜/
 | 渲染 | `rs_render.py 05_ir/project.json --ratio 9x16 --profile final` |
 | 剪映草稿 | `rs_jy_draft.py 05_ir/project.json --name <名> --subtitles 03_assets/tts/manifest.json` |
 | 自评抽帧 | `rs_bench.py <成片> --ir 05_ir/project.json --out 06_output/bench.png` |
+| 完工清理 | `rs_cleanup.py <工程> [--apply]`(默认 dry-run) |
+| 依赖部署 | `python tools/fetch_ffmpeg.py` / `python tools/fetch_deps.py ocr|vqa` |
+| 配置编辑 | `CutFlowConfigEditor.exe`(tools/,图形界面改 config,小白友好) |
 
 ## 4. IR 最小样例(完整 schema 见 templates/project.schema.json)
 

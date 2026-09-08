@@ -304,6 +304,11 @@
               "default": 0
             }
           }
+        },
+        "loop": {
+          "type": "boolean",
+          "default": false,
+          "description": "视频素材循环播放(如 6s 无缝循环背景铺满整段时长)"
         }
       }
     }

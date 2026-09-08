@@ -19,11 +19,19 @@ def ocr_image(image: Path, out_txt: Path, cfg: dict) -> str:
 
 
 def vqa_image(image: Path, out_txt: Path, cfg: dict, prompt: str) -> str:
-    p = run([cfg["vqa_python"], cfg["vqa_cli"], str(image),
-             "--prompt", prompt, "--no-think", "-o", str(out_txt)], timeout=300)
-    if p.returncode != 0 or not out_txt.is_file():
-        return ""
-    return out_txt.read_text(encoding="utf-8-sig").strip()
+    # 优先 vqa_exe(Rust 直连模式,fetch_deps.py vqa 部署);回退 vqa_python+vqa_cli(本地项目模式)
+    exe = cfg.get("vqa_exe")
+    if exe and Path(exe).is_file():
+        p = run([exe, "--image", str(image), "--prompt", prompt, "--no-think"], timeout=300)
+        if p.returncode != 0:
+            return ""
+        return (p.stdout or b"").decode("utf-8", errors="ignore").strip()
+    if cfg.get("vqa_python") and cfg.get("vqa_cli"):
+        p = run([cfg["vqa_python"], cfg["vqa_cli"], str(image),
+                 "--prompt", prompt, "--no-think", "-o", str(out_txt)], timeout=300)
+        if p.returncode == 0 and out_txt.is_file():
+            return out_txt.read_text(encoding="utf-8-sig").strip()
+    return ""
 
 
 def main() -> int:
@@ -31,11 +39,16 @@ def main() -> int:
     ap.add_argument("image")
     ap.add_argument("--out", required=True)
     ap.add_argument("--prompt", default="用中文详细描述这张图片的内容:主体、文字、风格、配色。")
+    ap.add_argument("--force", action="store_true", help="跳过 force_local 检查强制执行")
     a = ap.parse_args()
     image = Path(a.image)
     if not image.is_file():
         return emit(False, "NO_IMAGE", f"图片不存在:{image}", exit_code=2)
     cfg = load_config()
+    if not a.force and not cfg.get("sense", {}).get("force_local", False):
+        print("提示:rs_sense 是备选件(ADR-0008)——Agent 自带视觉时应优先自己看图;")
+        print("      批量图处理/无视觉环境/需要留档时才用本工具;或 config.sense.force_local=true。")
+    cfg.setdefault("sense", {})
     out_dir = Path(a.out)
     out_dir.mkdir(parents=True, exist_ok=True)
 
