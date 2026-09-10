@@ -1,5 +1,44 @@
 # Changelog
 
+## v0.6.0 (2026-09-11) — seg 缓存 · retext 回灌 · 卡拉OK · JJAV2815 一条龙实测
+
+P0 三件套(OPTIMIZATION-v6.md)+ 真实素材一条龙实测驱动的 11 项修复。测试 68 → **118 全绿**(test_v6.py 50 项)。
+
+**R1 rs_render seg 级缓存(ADR-0013 落地)**
+
+- 内容寻址段缓存:`seg_key = hash(clip 内容指纹 + chroma/bg + fps/画布 + rs_render 脚本哈希)`,落 `06_output/_build/<ratio>/segcache/`,保留最近 3 代(SEG_CACHE_KEEP=3)
+- 上层步骤亦有 `step_keys.json` 门禁:只改字幕时 seg 8/8 命中、concat/compose/mix 全跳过,重出片 174s → **54s**
+- `--explain` 逐段显示命中/重渲;`--clear-cache` / `--no-cache`
+
+**R2 校对回灌 `rs_align retext`**
+
+- `rs_align retext --take N --file proof.txt [--dry-run]`:SequenceMapper char 级 opcodes 把校对稿对回 wordline;equal 零漂移、replace 区间均分、insert 挤进 [prev.end, next.start];相似度 <0.5 拒绝
+- 统计平铺在 `doc["retext"]`(editChars/similarity/inserted/deleted);重跑 resplit + remap 一条龙
+- 实测:623→625 字、相似度 94%、句子 23→17,下游字幕/切点全量跟进
+
+**R3 卡拉OK 逐字字幕**
+
+- `rs_subtitle.py --karaoke`(需 pkg 后端字级时间戳,`--allow-degraded` 可降级):每字 ASS `\kf`,字间停顿计入前字;已唱 `&H0000E5FF` 暖黄(BGR)/未唱白
+- 实测:625 字 77 卡全 `\kf`,无缺 startMs、无标点孤卡、无领头标点卡、无超 12 字形卡
+
+**R4 JJAV2815 一条龙实测修复(286MB 真实素材,S0–S11 全链路)**
+
+- **coverage 语义修正**:旧公式(字时长和÷末字时间)对真实字级时间戳恒判 ~75%,语义颠倒;改为**跨度覆盖率** =(首字起点→末字终点)÷转写声明区间,<0.99 软警告
+- **段 0 视频膨胀**(4.26s→85.33s):ffmpeg git-master 回归,overlay filtergraph 且 `-ss` 0/缺省时输入 `-t` 按「帧数 = t × time_base_den」解释(tb=1/600 ×20);修复 = 段命令输出侧 `-t` 钳制 + 回归测试
+- **绿幕人物半透明幽灵**:同构建 chromakey 输出 alpha 全坏(人物 α≈0);修复 = 全部改 **colorkey**;`-vf`+JPG 丢 alpha 会掩盖此 bug
+- **字幕领头标点**:DP 候选边界去掉"标点前"并入禁止集(含半角);karaoke attach 标点跟随前字所在卡
+- **rs_sync × 卡拉OK**:`parse_ass` 不剥 ASS override 标签(`{\kf28}店…`)→ 与 Wordline 84/84 unmatched → SYNC_FAIL;修复 = 解析时剥 `{...}` 后匹配
+- **卡拉OK 字形预算**:挂字前移到必并/合规校验之前(以"显示字形"为唯一口径,`_clean_card` 剥掉的标点会在 `\kf` 层经 chars 带回,曾冒出 13-14 字卡);合并同步拼 `chars`
+- **必并死区**:必并线 0.8s → MIN_DUR_S(0.83s)对齐,0.81s 卡不再"既不并也延不满";新增第二遍向下一卡吞并(起点取短卡);84 卡收紧到 77 卡,L0 验证全过
+- resplit 孤立标点并入前句;`_PUNCT_ONLY` 显式跳过纯标点卡(`_clean_card("?")` 保留语气是设计,不能当 skip 判据)
+- drawtext 中文必须单 face TTF(simhei),msyh*.ttc 多 face 集合丢字形;中文文案走 `textfile=`
+- concat 相对路径双重拼接:`render()` 入口 base_dir 绝对化
+- 实测战报全文见 `rules/compose.md` §实测战报
+
+**R5 P2 清理**
+
+- `rs_asr.py` 降级为 fun_asr.py 薄壳(标 deprecated);fun_asr `maybe_reexec` 剥 docstring 断言修复
+
 ## v0.5.0 (2026-09-10) — 自主 · 分级 · 省 Token · 可手改 · 闭环
 
 针对用户 5 条新需求迭代。新增 ADR-0015~0017,阶段表扩为 **S0–S11**。

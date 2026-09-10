@@ -93,7 +93,11 @@ def has_module(name: str) -> bool:
 
 
 def maybe_reexec() -> None:
-    """优先用 CutFlow 自己的 ASR venv 运行(它是被授权的 ASR 运行时)。"""
+    """优先用 CutFlow 自己的 ASR venv 运行(它是被授权的 ASR 运行时)。
+
+    Windows 后台/输出重定向场景下 `os.execv` 会丢输出句柄(2026-09-11 实测:
+    EXIT=0 但零输出)。改用 subprocess 承接:句柄由本进程正常继承,退出码透传。
+    """
     if os.environ.get(REEXEC_FLAG) == "1":
         return
     py = venv_python()
@@ -105,6 +109,9 @@ def maybe_reexec() -> None:
     except OSError:
         pass
     os.environ[REEXEC_FLAG] = "1"
+    if os.name == "nt":
+        p = subprocess.run([str(py), str(Path(__file__).resolve()), *sys.argv[1:]])
+        raise SystemExit(p.returncode)
     os.execv(str(py), [str(py), str(Path(__file__).resolve()), *sys.argv[1:]])
 
 
@@ -332,32 +339,86 @@ PUNCT_CHARS = "，。、；：！？…,.!?;:“”‘’（()《》<>【】[]�
 
 
 def _align_ts_to_text(text: str, ts: list) -> list | None:
-    """把 funasr 的 timestamp(**只覆盖发音字**)对齐到**含标点**的 text。
+    """把 funasr 的 timestamp(**只覆盖发音 token**)对齐到**含标点**的 text。
 
-    实测(funasr 1.4.15 + SeACo-Paraformer):text 去空格 334 字含 31 个标点,
-    timestamp 恰好 303 条 = 334 - 31。标点字符继承前一个发音字的时间(零宽);
-    开头的标点继承后一个发音字。对不上(英文混排等)返回 None,由调用方降级。
+    实测(funasr 1.4.15 + SeACo-Paraformer):
+    · 纯中文:timestamp 条数 == 发音字数(标点不在其中),零宽继承对齐;
+    · 含英文/数字:ASCII 词组整体只占 **1 条**时间戳(如「AI」2 字 1 条),
+      2026-09-11 全片实测 623 字文本 → 574 发音字 / 573 条 ts,缺口恰为该词;
+    · 对不上且无词组解释 → 锚点兜底的局部摊派(每条 ts 区间内均分),
+      **不再整体丢弃时间戳**(旧行为会退化成句级,字级链路全断)。
     """
     dense = text.replace(" ", "")
     if not ts:
         return None
-    if len(ts) != sum(1 for c in dense if c not in PUNCT_CHARS):
+    speech = [(i, c) for i, c in enumerate(dense) if c not in PUNCT_CHARS]
+    n, m = len(speech), len(ts)
+    if n == 0:
         return None
-    out, it, prev = [], iter(ts), None
-    for ch in dense:
-        if ch in PUNCT_CHARS:
-            out.append(list(prev) if prev else None)
-            continue
-        t = next(it, None)
-        if t is None:
-            return None
-        pair = [int(t[0]), int(t[1])]
-        out.append(pair)
-        prev = pair
-    nxt = None                                  # 回填开头标点
+    consume = [1] * n
+    runs: list[tuple[int, int]] = []
+    if m != n:
+        k = 0
+        while k < n:                              # 找 ASCII 词组(整词 1 条 ts)
+            if speech[k][1].isascii() and speech[k][1].isalnum():
+                j = k
+                while j < n and speech[j][1].isascii() and speech[j][1].isalnum():
+                    j += 1
+                runs.append((k, j - k))
+                k = j
+            else:
+                k += 1
+        if m < n and sum(l - 1 for _, l in runs) == n - m:
+            for a, l in runs:
+                for off in range(1, l):
+                    consume[a + off] = 0          # 词内后续字共享词首那条 ts
+        else:
+            return _align_ts_proportional(dense, speech, ts)
+    it = iter(ts)
+    out: list = [None] * len(dense)
+    for idx, (di, _ch) in enumerate(speech):
+        if consume[idx]:
+            t = next(it, None)
+            if t is None:
+                return None
+            out[di] = [int(t[0]), int(t[1])]
+        else:
+            a0, l0 = next((a, l) for a, l in runs if a <= idx < a + l)
+            base = out[speech[a0][0]] or [0, 0]
+            off = idx - a0
+            s = base[0] + (base[1] - base[0]) * off // l0
+            e = base[0] + (base[1] - base[0]) * (off + 1) // l0
+            out[di] = [s, max(e, s + 1)]
+    nxt = None                                  # 标点回填(继承相邻发音字,零宽)
+    last = out[speech[-1][0]] if speech else [0, 0]
     for i in range(len(out) - 1, -1, -1):
         if out[i] is None:
-            out[i] = list(nxt) if nxt else list(prev or [0, 0])
+            out[i] = list(nxt) if nxt else list(last)
+        else:
+            nxt = out[i]
+    return out
+
+
+def _align_ts_proportional(dense: str, speech: list, ts: list) -> list | None:
+    """字数与 ts 条数对不上且无 ASCII 词组解释 → 每条 ts 区间内局部均分(锚点兜底)。"""
+    n, m = len(speech), len(ts)
+    out: list = [None] * len(dense)
+    for j in range(m):
+        a, b = int(ts[j][0]), int(ts[j][1])
+        lo, hi = n * j // m, n * (j + 1) // m
+        cnt = hi - lo
+        for off in range(lo, hi):
+            di = speech[off][0]
+            s = a + (b - a) * (off - lo) // cnt
+            e = a + (b - a) * (off - lo + 1) // cnt
+            out[di] = [s, max(e, s + 1)]
+    if all(v is None for v in out):
+        return None
+    nxt = None
+    last = next((v for v in reversed(out) if v), [0, 0])
+    for i in range(len(out) - 1, -1, -1):
+        if out[i] is None:
+            out[i] = list(nxt) if nxt else list(last)
         else:
             nxt = out[i]
     return out

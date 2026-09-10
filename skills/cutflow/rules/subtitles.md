@@ -153,3 +153,13 @@ rs_subtitle.py --from-transcript 02_sensed/transcript_corrected.json --style sub
 | 单卡时长 | `>7s` 必须为 0(硬失败);`<0.83s` 应尽量为 0,残余项可由 `sync_report.md` 解释 |
 | 对齐偏移 | 中位数 ≤ 40ms、95 分位 ≤ 80ms(由 `rs_sync.py` 断言) |
 | 错别字 | 0(校对后文本;抖音硬红线) |
+
+## 9. Karaoke 逐字字幕(v0.6.0)
+
+- 开关:`rs_subtitle.py --karaoke`(可加 `--allow-degraded` 让降级 wordline 退回普通卡而不是报错);需 pkg 后端字级时间戳。
+- 原理:每字一个 ASS `\kf` 标签(时长=厘秒,取自 `chars[]` 字级时间戳,**字间停顿计入前字**);首字从卡头起唱、末字吃到卡尾,`_kar_text` 产出 `{\kf40}你{\kf60}好` 形态。
+- 染色:已唱 primary `&H0000E5FF`(暖黄,**ASS 是 BGR 顺序**,从 RGB 换算后再写)、未唱 secondary 白。
+- **纯标点/空白文本段必须跳过**(`_PUNCT_ONLY` 集合):孤立 `。?!` 不成卡。注意不能拿 `_clean_card` 当 skip 判据——它对 `?` 返回 `?` 是设计(保留语气),不是空卡。
+- **挂字时序铁律(v0.6.0 实测)**:挂字必须在**必并/合规校验之前**(`events_from_wordline(karaoke=True)` 内置)——`_clean_card` 剥掉的标点会在 `\kf` 显示层经 chars 原样带回,预算若只数清洗文本会漏 1-2 字形(实测冒出 13-14 字卡)。挂字后 `e["text"]` = chars 拼接,与 rs_verify 计数同口径;合并事件必须同步拼接 `chars`,否则 `_kar_text` 丢字。
+- **必并线 = MIN_DUR_S(0.83s)**:与单卡时长下限同线。旧 0.8s 线有 0.03s 死区——0.81s 卡既不触发必并、又延不满(下一卡 2 帧间隙就到,延长被 `_enforce_gaps` 收回,L0 硬失败);预算放不下时第二遍**向下一卡吞并**,起点取短卡(对齐精度不动)。
+- 实测锚点:625 字 → 77 卡全 `\kf`,无缺 startMs、无标点孤卡、无领头标点卡、无超 12 字形卡(问题 #3/#8/#10/#11 修复后;rs_verify L0 全过)。

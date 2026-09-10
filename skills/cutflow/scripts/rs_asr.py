@@ -1,98 +1,66 @@
-"""语音转写:媒体文件 → 16k 单声道 wav → FunASR 服务 → 结构化分段。
+"""语音转写(v0.6.0 起为兼容薄壳):委托自带 ASR 运行器 tools/fun_asr.py。
 
-用法:python rs_asr.py <媒体> --out <目录> [--slug dev]
-产出:<out>/transcript_raw.json(分段)+ transcript_raw.md(带时间戳文本)。
-铁律:客户端永远自己抽 16k wav 再上传(绕开服务端视频 demux 依赖)。
+用法:python rs_asr.py <媒体> --out <目录> [--backend auto|pkg|onnx|server]
+产出:<out>/transcript_raw.json(分段,pkg 后端带字级 timestamp)+ transcript_raw.md。
+历史:本文件曾直连 FunASR HTTP 服务;现统一走 fun_asr.py 三后端链(pkg→onnx→server),
+不再依赖任何外部服务器。新代码请直接用 tools/fun_asr.py 或 rs_align build。
 """
 from __future__ import annotations
 
 import argparse
 import json
-import re
+import subprocess
 import sys
-import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from rs_common import die, emit, load_config, ffmpeg_bin, ffprobe_json  # noqa: E402
+from rs_common import emit  # noqa: E402
 
-LINE_RE = re.compile(r"^\[(\d+(?:\.\d+)?)s\]\s*(?:说话人(\d+):)?\s*(.*)$")
-
-
-def normalize_to_wav16k(media: Path, out_wav: Path, cfg: dict) -> None:
-    p = __import__("rs_common").run([ffmpeg_bin(cfg), "-v", "error", "-y", "-i", str(media),
-                                     "-vn", "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le",
-                                     str(out_wav)], timeout=600)
-    if p.returncode != 0 or not out_wav.is_file():
-        die(4, "NORMALIZE_FAIL", f"音频抽取失败:{(p.stderr or '')[:300]}")
-
-
-def parse_structured(text: str) -> list[dict]:
-    """`[1.5s] 说话人0: 文本` → 分段列表;兼容行内连写的时间戳(长音频常见)。"""
-    # 先按时间戳标记切分(无论是否行首)
-    chunks = re.split(r"\[(\d+(?:\.\d+)?)s\]\s*(?:说话人(\d+)[:：])?\s*", text)
-    # re.split 产出: [前置文本, t1, spk1, body1, t2, spk2, body2, ...]
-    segs = []
-    i = 1
-    while i + 2 < len(chunks) + 1 and i + 2 <= len(chunks):
-        try:
-            start, spk, body = chunks[i], chunks[i + 1], chunks[i + 2]
-        except IndexError:
-            break
-        spk = int(spk) if spk else 0
-        body = body.strip()
-        if body:
-            if segs:
-                segs[-1]["end"] = start
-            segs.append({"start": float(start), "end": None, "spk": spk, "text": body})
-        i += 3
-    if segs and segs[-1]["end"] is None:
-        segs[-1]["end"] = segs[-1]["start"] + 3.0
-    return segs
-
-
-def transcribe(media: Path, out_dir: Path, cfg: dict) -> dict:
-    out_dir.mkdir(parents=True, exist_ok=True)
-    wav = out_dir / "_asr_16k.wav"
-    normalize_to_wav16k(media, wav, cfg)
-
-    boundary = "----CutFlowBoundary"
-    body = (f"--{boundary}\r\nContent-Disposition: form-data; name=\"model\"\r\n\r\n"
-            f"{cfg['asr']['model']}\r\n").encode()
-    body += (f"--{boundary}\r\nContent-Disposition: form-data; name=\"structured\"\r\n\r\n1\r\n").encode()
-    body += (f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; "
-             f"filename=\"{wav.name}\"\r\nContent-Type: audio/wav\r\n\r\n").encode() + wav.read_bytes() + b"\r\n"
-    body += f"--{boundary}--\r\n".encode()
-
-    req = urllib.request.Request(cfg["asr"]["url"] + "/v1/audio/transcriptions", data=body,
-                                 headers={"Content-Type": f"multipart/form-data; boundary={boundary}"})
-    try:
-        with urllib.request.urlopen(req, timeout=1800) as resp:
-            result = json.loads(resp.read().decode("utf-8"))
-    except Exception as exc:
-        die(3, "ASR_UNREACHABLE", f"FunASR 服务失败:{exc}(先拉起 ASR 服务,见 rules/sense.md)")
-
-    if "error" in result:
-        die(4, "ASR_ERROR", str(result["error"]))
-    text = result.get("text", "")
-    segs = parse_structured(text)
-    (out_dir / "transcript_raw.json").write_text(
-        json.dumps({"source": str(media), "segments": segs}, ensure_ascii=False, indent=1), encoding="utf-8")
-    md = "\n".join(f"[{s['start']:.1f}s] 说话人{s['spk']}: {s['text']}" for s in segs)
-    (out_dir / "transcript_raw.md").write_text(md, encoding="utf-8")
-    return {"segments": len(segs), "chars": len(text), "json": str(out_dir / "transcript_raw.json")}
+RUNNER = Path(__file__).resolve().parents[3] / "tools" / "fun_asr.py"
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("media")
     ap.add_argument("--out", required=True)
+    ap.add_argument("--backend", default="auto", choices=["auto", "pkg", "onnx", "server"])
     a = ap.parse_args()
     media = Path(a.media)
     if not media.is_file():
         return emit(False, "NO_MEDIA", f"文件不存在:{media}", exit_code=2)
-    data = transcribe(media, Path(a.out), load_config())
-    return emit(True, "ASR_OK", f"转写完成:{data['segments']} 段 / {data['chars']} 字", data)
+    if not RUNNER.is_file():
+        return emit(False, "NO_ASR_RUNNER", f"找不到自带 ASR 运行器:{RUNNER}", exit_code=3)
+    out_dir = Path(a.out)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    raw = out_dir / "asr_raw.json"
+    p = subprocess.run([sys.executable, str(RUNNER), str(media), "--json",
+                        "--backend", a.backend, "--out", str(raw)],
+                       capture_output=True, text=True, encoding="utf-8", errors="replace")
+    doc: dict = {}
+    try:
+        doc = json.loads((p.stdout or "").strip().splitlines()[-1])
+    except (json.JSONDecodeError, IndexError):
+        return emit(False, "ASR_NO_OUTPUT",
+                    f"fun_asr 无有效输出(exit {p.returncode}):{(p.stderr or p.stdout or '')[-300:]}",
+                    exit_code=3)
+    if p.returncode != 0 or not doc.get("ok"):
+        return emit(False, "ASR_FAILED", doc.get("message") or "转写失败",
+                    exit_code=3 if p.returncode == 3 else 4)
+    data = doc.get("data") or {}
+    segs = data.get("segments") or []
+    md = "\n".join(f"[{float(s.get('start') or 0):.1f}s] {s.get('text', '')}" for s in segs)
+    (out_dir / "transcript_raw.md").write_text(md, encoding="utf-8")
+    (out_dir / "transcript_raw.json").write_text(
+        json.dumps({"source": str(media), "segments": segs}, ensure_ascii=False, indent=1),
+        encoding="utf-8")
+    chars = sum(len(s.get("text", "")) for s in segs)
+    return emit(True, "ASR_OK",
+                f"转写完成:{len(segs)} 段 / {chars} 字(后端 {data.get('backend')};"
+                "本命令是 fun_asr.py 的兼容薄壳,新代码请直接用 fun_asr.py)",
+                {"segments": len(segs), "chars": chars,
+                 "json": str(out_dir / "transcript_raw.json"),
+                 "charTimestamps": any(s.get("timestamp") for s in segs),
+                 "deprecated": True})
 
 
 if __name__ == "__main__":

@@ -21,6 +21,39 @@ MOTION_IN = {"none", "fadeIn", "slideInLeft", "slideInRight", "scaleIn", "zoomIn
 MOTION_OUT = {"none", "fadeOut", "slideOutLeft", "slideOutRight"}
 TRANSITIONS = {"fade", "wipeleft", "wipeup", "slideleft", "circleopen"}
 KINDS = {"video", "audio", "text"}
+BG_TYPES = {"color", "image", "video", "gradient"}
+CHROMA_PRESET = {"green", "blue", "auto"}
+HEX_PREFIX = "0x"
+
+
+def _validate_chroma_bg(where: str, clip: dict, base_dir: Path, errs: list[str]) -> None:
+    """v0.6.0:clip.chroma(抠像)+ clip.background(背景替换)校验。"""
+    chroma = clip.get("chroma")
+    bg = clip.get("background")
+    if chroma:
+        col = chroma.get("color", "auto")
+        if col not in CHROMA_PRESET and not (isinstance(col, str) and col.startswith(HEX_PREFIX)):
+            errs.append(f"{where}.chroma.color 非法:{col}(green/blue/auto/0xRRGGBB)")
+        for k in ("similarity", "blend"):
+            v = chroma.get(k)
+            if v is not None and not (isinstance(v, (int, float)) and 0 <= v <= 1):
+                errs.append(f"{where}.chroma.{k} 应在 0..1:{v}")
+        for k in ("cropTopPct", "cropBottomPct"):
+            v = chroma.get(k)
+            if v is not None and not (isinstance(v, (int, float)) and 0 <= v <= 0.9):
+                errs.append(f"{where}.chroma.{k} 应在 0..0.9:{v}")
+    if bg:
+        t = bg.get("type")
+        if t not in BG_TYPES:
+            errs.append(f"{where}.background.type 非法:{t}(可选 {sorted(BG_TYPES)})")
+        if t in ("image", "video"):
+            src = bg.get("src", "")
+            pp = Path(src)
+            exists = pp.is_absolute() and pp.is_file() or (base_dir / src).is_file() if src else False
+            if not exists:
+                errs.append(f"{where}.background.src 不存在:{src}")
+        if not chroma:
+            errs.append(f"{where}:background 必须与 chroma 同用(没有抠像就没有换背景)")
 
 
 def validate(doc: dict, base_dir: Path) -> list[str]:
@@ -73,6 +106,8 @@ def validate(doc: dict, base_dir: Path) -> list[str]:
             tr = clip.get("transition")
             if tr and tr.get("type") not in TRANSITIONS:
                 errs.append(f"{where}.transition.type 非法:{tr.get('type')}")
+            if kind == "video":
+                _validate_chroma_bg(where, clip, base_dir, errs)
         spans.sort()
         for a, b in zip(spans, spans[1:]):
             if b[0] < a[1] - 1:

@@ -103,12 +103,15 @@ def map_src_to_final(t_src_ms: float, segments: list[dict]) -> float:
 | 比例插值 | 语速不均时必错 | 已明令禁止;`rs_subtitle.py` 不再提供该路径 |
 | 句级时间戳当字级用 | 句内位置全靠猜 | 必须走字级对齐;降级模式需在报告中标注 |
 | 工具版本漂移 | 换模型后时间全变 | 缓存键含 `model` / `punc` / 服务版本(ADR-0013) |
+| **旧覆盖公式语义颠倒** | 真实字级时间戳恒判 ~75% 不达标(词间停顿全算"未覆盖"),降级均分反而 100%——好坏倒挂 | v0.6.0 起 `rs_align.py` 用**跨度覆盖率** =(首字起点→末字终点)÷转写声明区间,只对漏转写敏感;<0.99 输出 ⚠ 软警告 |
+| **retext 补标点孤立成句** | 校对插入的标点零宽继承邻字时间 → 与前字 gap 巨大 → gap 切句 → 单标点成卡缺 startMs → 排最前污染首卡 | `_resplit_sentences` 把孤立标点并入前句;`rs_subtitle` 侧用 `_PUNCT_ONLY` 显式跳过纯标点文本(不能拿 `_clean_card` 当 skip 判据,它设计上保留 ?! 语气) |
+| retext 统计字段位置 | 测试按 `doc["retext"]["stats"]["editChars"]` 断言 KeyError | 统计**平铺**在 `doc["retext"]` 下(如 `editChars`/`similarity`),没有嵌套 stats 层 |
 
 ## 6. 门禁与验收
 
 | 检查 | 通过线 |
 |---|---|
-| 字覆盖率 | ≥ 99%(`chars` 覆盖的音频时长 / 有效语音时长) |
+| 跨度覆盖率 | ≥ 99%((首字起点→末字终点)÷ 转写声明区间,`rs_align.time_coverage`;仅对漏转写敏感,<0.99 软警告) |
 | `conf` 中位数 | ≥ 0.8 |
 | 单调性 | `startMs` 严格单调不减,无负时长 |
 | 字幕↔音频偏移(`rs_sync`) | 中位数 ≤ 40ms,95 分位 ≤ 80ms |

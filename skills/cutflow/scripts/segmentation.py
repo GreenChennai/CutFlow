@@ -20,6 +20,9 @@ from __future__ import annotations
 PUNCT_LEVEL = {"。": 1.0, "！": 1.0, "？": 1.0, "；": 0.8, "，": 0.6, "、": 0.4}
 STRONG_PUNCT = "。！？；"
 WEAK_PUNCT = "，、："
+# dev-jj2815 实测:校对稿常混入半角标点(?,),不收进来会出现"标点领头卡"
+# (如「?关于店群运营」)——标点必须挂在上一卡尾部,任何位置都不得在标点前切。
+TRAIL_PUNCT = STRONG_PUNCT + WEAK_PUNCT + ",.?!;:"
 CONJ_HEAD = "然所但而并因如虽接下首其另例同此"
 TAIL_FUNC = "的了着地吧呢啊吗嘛"
 CN_DIGITS = "零一二两三四五六七八九十百千万"
@@ -73,6 +76,8 @@ def forbidden_positions(text: str, terms=(), idioms=DEFAULT_IDIOMS) -> set[int]:
             forb.add(i)                      # 货币符号 + 数字
         if a.isdigit() and b in "%‰°":
             forb.add(i)                      # 数字 + 百分号/度数
+        if b in TRAIL_PUNCT:
+            forb.add(i)                      # 标点前不切(标点挂上一卡尾部,防「?关于…」式领头卡)
     for t in list(terms) + list(idioms):
         if not t:
             continue
@@ -92,8 +97,8 @@ def candidate_positions(text: str, gaps: dict[int, float] | None = None) -> set[
     gaps = gaps or {}
     cand: set[int] = set()
     for i in range(1, len(text)):
-        if text[i - 1] in STRONG_PUNCT + WEAK_PUNCT or text[i] in STRONG_PUNCT + WEAK_PUNCT:
-            cand.add(i)
+        if text[i - 1] in TRAIL_PUNCT:
+            cand.add(i)                      # 标点后切(标点跟上一卡)
         if text[i] in CONJ_HEAD:
             cand.add(i)
         if gaps.get(i, 0.0) >= 200.0:

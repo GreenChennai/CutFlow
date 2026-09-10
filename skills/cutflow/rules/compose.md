@@ -65,3 +65,20 @@ python skills/cutflow/scripts/rs_run.py --explain S3  # 为什么 stale
 `rs_doctor` 语义校验 + **`rs_sync.py` 三对齐断言** + `rs_bench.py <成片> --ir <ir> --out 06_output/bench_<ratio>.png` → 目测:
 
 黑帧 / 绿幕残留 / 字幕压脸或出安全区 / 跳变 / 信息卡错位 / Logo 压字幕。修复 ≤3 轮,仍败上报。
+
+## 实测战报(v0.6.0 · JJAV2815 一条龙)
+
+| 问题 | 根因 | 对策(已固化) |
+|---|---|---|
+| drawtext 信息卡丢字形 | `msyh*.ttc` 是 TTC 多 face 集合,freetype 部分汉字取错 face(「群/两/攻/险」残缺、①②变豆腐) | 文字渲染一律**单 face TTF**(simhei.ttf / Deng.ttf);中文文案走 `textfile=` 读 UTF-8 文件,避开命令行 GBK 乱码 |
+| 渲染中途被环境 hook 杀进程 | auto 色度采样的 `.pam` 临时文件 unlink 触发批量删除监控 | 绿幕 `chroma.color` **显式写十六进制**,不走 auto;确需 auto 时采样一次后把结果固化进 IR |
+| concat 段路径双重拼接 | IR 相对路径 → concat.txt 写相对段路径 → ffmpeg 以 list 文件所在目录为基准再拼一次 | 已修:`render()` 入口 `base_dir = project_path.parent.parent.resolve()` 全程绝对化 |
+| **段 0 视频膨胀**(4.26s→85.33s) | ffmpeg git-master(2026-07-30 gyan)回归:filter_complex 含 overlay 且视频输入 `-ss` 为 0/缺省时,输入 `-t` 被按「帧数 = t × time_base_den」解释——tb=1/600 手机 HEVC ×20、合成源 tb=1/15360 ×512;`-ss>0` 或单输入 `-vf` 不触发 | 已修:段命令加**输出侧 `-t {take_s}`** 在编码器层钳制(与怪癖解耦)+ 回归测试 `test_seg_cmd_has_output_t_clamp`。诊断法:ffprobe 段文件 nb_frames ÷ 预期帧数 = tb_den/fps 即此 bug |
+| **绿幕人物变幽灵**(半透明叠底) | 同构建第二处回归:**chromakey 输出的 alpha 全坏**——人物区域 α≈0(alphaextract 实测 YAVG 2.07/255,正常应 255);`-vf` 单输入 + JPG 导出因"丢弃 alpha"完全掩盖,只有 overlay 合成才现形 | 已修:基轨与 compose 全部 **chromakey → colorkey**(RGB 距离键控,alpha 正常:人物 255/绿幕 0)。诊断法:`format=rgba,alphaextract` + signalstats 看 YAVG;参数扫描在 `-vf` 下无效是因为根本看不到 alpha |
+| 字幕「?关于…」式领头标点 | 双因:①DP 候选边界误把"标点前"当候选;②retext 给插入标点分了 gap 中段时间([4.41,4.59]),attach 按时间中心 bisect 把尾标点划进下一卡窗口 | 已修:segmentation 禁止"标点前"切(候选只留"标点后",含半角 `,.;?!`);attach 改为**标点跟随前字所在卡**;回归测试 `test_segmentation_never_cuts_before_punct` / `test_karaoke_attach_punct_follows_prev_card` |
+| 顶部残留源片白墙 | 绿幕上方墙面不在键控范围内,cover 裁切后仍入画 | IR 侧调 `chroma.cropTopPct`(0.09→0.13 实测去净且不切头);这是**构图参数**,不是键控问题 |
+| **rs_sync 对卡拉OK ASS 全量 unmatched** | `parse_ass` 直接取 Dialogue 第 10 列原文,卡拉OK 行文是 `{\kf28}店{\kf14}群…`,不剥 override 标签 → 与 Wordline 纯文本 84/84 对不上 → SYNC_FAIL | 已修:`parse_ass` 剥 `{...}` 标签后再匹配;回归 `test_rs_sync_parse_ass_strips_karaoke_tags` / `test_rs_sync_karaoke_ass_sync_ok`。诊断线索:unmatched 列表里 event 文本裸带 `\kf` 即是此症 |
+| **卡拉OK 字卡 13-14 字超预算** | `_clean_card` 剥掉的标点在 `\kf` 显示层经 chars 原样带回;必并/合规校验只数清洗文本,漏了这笔字形预算 | 已修:挂字**前移到必并/校验之前**(`events_from_wordline(karaoke=True)` 内置),`e["text"]` 刷新为 chars 拼接,预算与 rs_verify 同口径;合并必须同步拼 `chars`(否则 `_kar_text` 丢字);回归 `test_karaoke_display_glyph_budget` |
+| **0.81s 卡既不并也延不满** | 必并线 0.8s 与 DUR_MIN 0.83s 之间有 0.03s 死区;延长被下一卡 2 帧间隙收回(`_enforce_gaps`),L0 硬失败 | 已修:必并线 = MIN_DUR_S(0.83);新增第二遍「向下一卡吞并」(起点取短卡,说出时间不动);回归 `test_merge_short_aligns_min_dur_line` / `test_merge_short_second_pass_absorbs_next` |
+
+环境教训(跨项目通用):Bash 每条命令 cwd 可能漂移,长命令显式 `cd`;`/tmp` 等 POSIX 路径对 Windows 版 ffmpeg.exe 无效,输出一律写盘符路径;同一文件严禁并行 Edit(竞态覆盖)。

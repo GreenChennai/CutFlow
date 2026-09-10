@@ -22,7 +22,21 @@ from rs_common import die, emit, load_config  # noqa: E402
 
 VERSION = 1
 GAP_MIN_MS = 150          # 相邻字间隔超过此值记为一个 gap(供断句用)
-MIN_COVERAGE = 0.99       # 门禁:字覆盖率
+MIN_COVERAGE = 0.99       # 门禁:时间跨度覆盖率(见 time_coverage)
+
+
+def time_coverage(chars: list[dict], src_dur: int) -> float:
+    """时间跨度覆盖率 = (首字起点→末字终点) ÷ 转写声明区间。
+
+    2026-09-11 dev-jj2815 实测修正:旧公式(字时长和 ÷ 末字时间)把词间停顿
+    全算成"未覆盖"——真实字级时间戳必然 ~75%,降级均分反而 100%,语义颠倒。
+    字间停顿是语音常态,不算未覆盖;该指标只应对 ASR 漏转写开头/结尾敏感。
+    """
+    hard = [c for c in chars if str(c.get("ch", "")).strip()]
+    if not hard or src_dur <= 0:
+        return 0.0
+    span = max(c["srcEndMs"] for c in hard) - min(c["srcStartMs"] for c in hard)
+    return round(max(0.0, min(1.0, span / src_dur)), 4)
 MIN_CONF_MEDIAN = 0.8     # 门禁:conf 中位数
 
 
@@ -116,9 +130,14 @@ def build_wordline(segments: list[dict], source: str, *, fps: int = 30,
 
     hard = [c for c in chars if c["ch"].strip()]
     confs = [c["conf"] for c in hard] or [0.0]
-    src_dur = max((c["srcEndMs"] for c in chars), default=0)
-    covered = sum(c["srcEndMs"] - c["srcStartMs"] for c in hard)
-    coverage = (covered / src_dur) if src_dur else 0.0
+    seg_end = 0
+    for s in segments:                        # 转写声明的时间轴终点(含结尾静音)
+        try:
+            seg_end = max(seg_end, int(round(float(s.get("end", s.get("end_s", 0)) or 0) * 1000)))
+        except (TypeError, ValueError):
+            pass
+    src_dur = max(max((c["srcEndMs"] for c in chars), default=0), seg_end)
+    coverage = time_coverage(hard, src_dur)
 
     return {
         "version": VERSION,
@@ -179,7 +198,137 @@ def remap_wordline(wl: dict, keep: list[list[int]], cutlist: dict | None = None)
     return out
 
 
-# ---------------------------------------------------------------- 入口
+# ---------------------------------------------------------------- 校对回灌(v0.6.0)
+
+SENT_END = "。！？；!?"
+SENT_ALL = SENT_END + "，、：,:…"
+GAP_SENT_MS = 600          # 静音 gap 达到此值也切句
+INSERT_CONF = 0.85         # 插入/替换字的置信度(低于真实锚点,高于模糊线)
+
+
+def _spread(text: str, a: int, b: int, conf: float) -> list[dict]:
+    """把一段文本摊到 [a, b] 毫秒内(锚定真实区间内部的局部摊派,非整段比例缩放)。"""
+    n = max(len(text), 1)
+    span = max(b - a, n)
+    out = []
+    for k, ch in enumerate(text):
+        s = a + span * k // n
+        e = a + span * (k + 1) // n
+        out.append({"i": 0, "ch": ch, "startMs": int(s), "endMs": int(max(e, s + 1)),
+                    "srcStartMs": int(s), "srcEndMs": int(max(e, s + 1)), "conf": conf})
+    return out
+
+
+def retext_wordline(wl: dict, new_text: str) -> tuple[dict, dict]:
+    """把校对后的文本回灌到 **source 域** wordline:改动锚定在字级时间戳上。
+
+    - equal 区间:原锚点原样保留(时间零漂移)
+    - replace:新字在旧区间 [首字start, 末字end] 内均分(有真实锚点兜底)
+    - delete:锚点一并删除
+    - insert:在相邻两字的 [prev.end, next.start] 区间内均分;区间过窄则压缩单字时长,
+      **绝不平移既有锚点**(保住与音频的真实对应)
+    """
+    from difflib import SequenceMatcher
+    chars = wl.get("chars") or []
+    if not chars:
+        raise ValueError("wordline 没有 chars,无法回灌")
+    orig = "".join(c["ch"] for c in chars)
+    sm = SequenceMatcher(None, orig, new_text, autojunk=False)
+    if sm.ratio() < 0.5:
+        raise ValueError(f"校对稿与原稿相似度过低({sm.ratio():.0%}),疑似拿错文件")
+    durs = sorted(max(c["endMs"] - c["startMs"], 1) for c in chars)
+    med = durs[len(durs) // 2]
+
+    out: list[dict] = []
+    stats = {"replace": 0, "delete": 0, "insert": 0, "editChars": 0}
+    for tag, i1, i2, j1, j2 in sm.get_opcodes():
+        if tag == "equal":
+            out.extend(chars[i1:i2])
+        elif tag == "delete":
+            stats["delete"] += i2 - i1
+            stats["editChars"] += i2 - i1
+        elif tag == "replace":
+            stats["replace"] += 1
+            stats["editChars"] += (i2 - i1) + (j2 - j1)
+            a = chars[i1]["startMs"]
+            b = max(chars[i2 - 1]["endMs"], a + 40 * (j2 - j1))
+            out.extend(_spread(new_text[j1:j2], a, b, INSERT_CONF))
+        elif tag == "insert":
+            stats["insert"] += 1
+            stats["editChars"] += j2 - j1
+            text = new_text[j1:j2]
+            if out and i2 < len(chars):          # 中间插入:[prev.end, next.start]
+                a = out[-1]["endMs"]
+                b = chars[i2]["startMs"]
+                if b < a:
+                    b = a
+                out.extend(_spread(text, a, b, INSERT_CONF))
+            elif out:                            # 末尾插入
+                a = out[-1]["endMs"]
+                out.extend(_spread(text, a, a + med * len(text), INSERT_CONF))
+            else:                                # 开头插入
+                f = chars[i2] if i2 < len(chars) else chars[-1]
+                a = max(0, f["startMs"] - med * len(text))
+                out.extend(_spread(text, a, f["startMs"], INSERT_CONF))
+
+    # 单调化(保险):起点不减,终点至少 +1ms
+    prev = 0
+    for c in out:
+        if c["startMs"] < prev:
+            c["startMs"] = prev
+        if c["endMs"] <= c["startMs"]:
+            c["endMs"] = c["startMs"] + 1
+        prev = c["startMs"]
+        c["i"] = 0
+    for k, c in enumerate(out):
+        c["i"] = k
+
+    doc = dict(wl)
+    doc["chars"] = out
+    doc["sentences"] = _resplit_sentences(out)
+    doc["gaps"] = compute_gaps(out)
+    hard = [c for c in out if c["ch"].strip()]
+    src_dur = max(int(wl.get("srcDurationMs") or 0),
+                  max((c["srcEndMs"] for c in out), default=0))
+    import statistics
+    doc["stats"] = {"charCount": len(hard),
+                    "coverage": time_coverage(out, src_dur),
+                    "confMedian": round(statistics.median([c["conf"] for c in hard]), 3)}
+    doc["degraded"] = bool(wl.get("degraded"))
+    doc["srcDurationMs"] = max(src_dur, out[-1]["endMs"] if out else 0)
+    doc["retext"] = {"similarity": round(sm.ratio(), 4), **stats,
+                     "chars": f"{len(orig)}->{len(new_text)}"}
+    return doc, stats
+
+
+def _resplit_sentences(chars: list[dict]) -> list[dict]:
+    """校对后字数已变,旧 span 作废:按强标点/静音 gap 重切句(供 DP 断句用)。"""
+    sents: list[dict] = []
+    a = 0
+    last_punc = ""
+    for i, c in enumerate(chars):
+        if c["ch"] in SENT_ALL:
+            last_punc = c["ch"]
+        nxt = chars[i + 1] if i + 1 < len(chars) else None
+        gap = (nxt["startMs"] - c["endMs"]) if nxt else 0
+        if nxt is None or c["ch"] in SENT_END or gap >= GAP_SENT_MS:
+            text = "".join(x["ch"] for x in chars[a:i + 1])
+            body = any(x["ch"] not in SENT_ALL for x in chars[a:i + 1])
+            if body:
+                sents.append({"id": len(sents), "span": [a, i + 1],
+                              "punc": last_punc if last_punc in SENT_ALL else "", "text": text})
+            elif sents:
+                # dev-jj2815 实测:零宽继承时间的孤立标点(如"?")在 gap 切句后
+                # 不得单独成句 —— 单标点句会让下游 DP 产卡缺 startMs,污染首卡
+                sents[-1]["span"][1] = i + 1
+                sents[-1]["text"] += text
+                if last_punc in SENT_ALL:
+                    sents[-1]["punc"] = last_punc
+            a = i + 1
+            last_punc = ""
+    return sents
+
+
 
 def _load_segments(path: Path) -> list[dict]:
     doc = json.loads(path.read_text(encoding="utf-8"))
@@ -225,8 +374,8 @@ def _from_media(media: Path, cfg: dict, backend: str = "auto",
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("command", nargs="?", default="build", choices=["build", "remap"])
-    ap.add_argument("source", nargs="?", help="remap 时为 wordline 路径")
+    ap.add_argument("command", nargs="?", default="build", choices=["build", "remap", "retext"])
+    ap.add_argument("source", nargs="?", help="remap/retext 时为 wordline 路径")
     ap.add_argument("--from-transcript")
     ap.add_argument("--from-tts")
     ap.add_argument("--media")
@@ -235,14 +384,47 @@ def main() -> int:
     ap.add_argument("--max-end-sil", dest="max_end_sil", type=int, default=0,
                     help="VAD 静音切分阈值 ms(0=用工具默认 400)")
     ap.add_argument("--cutlist")
-    ap.add_argument("--out", required=True)
+    ap.add_argument("--text", help="retext:校对后的纯文本文件(标点可有可无)")
+    ap.add_argument("--out", required=False)
     ap.add_argument("--fps", type=int, default=30)
+    ap.add_argument("--dry-run", dest="dry_run", action="store_true",
+                    help="retext:只报告编辑摘要,不写文件")
     a = ap.parse_args()
-    out = Path(a.out)
+    out = Path(a.out) if a.out else None
+
+    if a.command == "retext":
+        if not a.source or not a.text:
+            return emit(False, "NO_INPUT", "retext 需要:<wordline.json> --text <校对稿.txt>", exit_code=2)
+        wl = json.loads(Path(a.source).read_text(encoding="utf-8"))
+        if wl.get("space") == "final":
+            return emit(False, "NOT_SOURCE_SPACE",
+                        "该 wordline 已在 final 域(粗剪后);请回灌到 source 域 wordline 后再重跑 remap", exit_code=2)
+        new_text = Path(a.text).read_text(encoding="utf-8")
+        new_text = " ".join(new_text.split())          # 压缩换行/多余空白
+        try:
+            doc, stats = retext_wordline(wl, new_text)
+        except ValueError as exc:
+            return emit(False, "RETEXT_REJECT", str(exc), exit_code=2)
+        msg = (f"校对回灌:{stats['replace']} 处替换 / {stats['delete']} 字删除 / "
+               f"{stats['insert']} 处插入,字符 {doc['retext']['chars']},"
+               f"相似度 {doc['retext']['similarity']:.0%}(equal 区间时间零漂移)")
+        if a.dry_run:
+            return emit(True, "RETEXT_DRYRUN", msg + "(dry-run,未写盘)",
+                        {"stats": stats, "charCount": doc["stats"]["charCount"],
+                         "sentences": len(doc["sentences"])})
+        out = out or Path(a.source)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(doc, ensure_ascii=False, indent=1), encoding="utf-8")
+        return emit(True, "RETEXT_OK", f"{msg} → {out}",
+                    {"path": str(out), "stats": stats, **doc["stats"],
+                     "sentences": len(doc["sentences"]),
+                     "hint": "下一步:rs_run --mark S1(记录新状态)→ --from S2 级联"})
 
     if a.command == "remap":
         if not a.source or not a.cutlist:
             return emit(False, "NO_INPUT", "remap 需要:<wordline.json> --cutlist <cutlist.json>", exit_code=2)
+        if not a.out:
+            return emit(False, "NO_INPUT", "remap 需要 --out", exit_code=2)
         wl = json.loads(Path(a.source).read_text(encoding="utf-8"))
         cut = json.loads(Path(a.cutlist).read_text(encoding="utf-8"))
         keep = cut.get("keep") or []
@@ -281,13 +463,19 @@ def main() -> int:
     else:
         return emit(False, "NO_INPUT", "需要 --from-transcript / --from-tts / --media 之一", exit_code=2)
 
+    if not a.out:
+        return emit(False, "NO_INPUT", "build 需要 --out", exit_code=2)
+
     doc = build_wordline(segments, source, fps=a.fps, degraded=degraded)
     doc["asr"] = asr_meta
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(doc, ensure_ascii=False, indent=1), encoding="utf-8")
     st = doc["stats"]
-    msg = (f"Wordline 已生成:{st['charCount']} 字,覆盖率 {st['coverage']:.1%},"
+    msg = (f"Wordline 已生成:{st['charCount']} 字,时间跨度覆盖率 {st['coverage']:.1%},"
            f"conf 中位数 {st['confMedian']}")
+    if st["coverage"] < MIN_COVERAGE:
+        msg += (f" ⚠ 覆盖率 {st['coverage']:.1%} < {MIN_COVERAGE:.0%}:"
+                "检查 ASR 是否漏转写开头/结尾(字间停顿不算未覆盖)")
     if asr_meta.get("backend"):
         msg = f"[ASR {asr_meta['backend']}] " + msg
     if doc["degraded"]:

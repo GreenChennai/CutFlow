@@ -28,7 +28,7 @@ DUR_MIN, DUR_MAX = 0.83, 7.0          # s
 CPS_MAX = 9.0
 LEAD_MS = 20                          # 卡片时间 = 首字 startMs - 20ms(align.md §4)
 STRIP = "。，、；：,;:…!?！？ \u3000「」“”\"'()（）"
-DIALOGUE = re.compile(r"^Dialogue:\s*[^,]*,\s*([\d:.]+),([\d:.]+),([^,]*),(.*)$")
+_OVERRIDE = re.compile(r"\{[^}]*\}")  # ASS override 标签(如 {\kf28}、{\c&H..&})
 
 
 def ass_time(s: str) -> float:
@@ -44,8 +44,10 @@ def parse_ass(path: Path) -> list[dict]:
         parts = line.split(",", 9)
         if len(parts) < 10:
             continue
-        out.append({"start": ass_time(parts[1]), "end": ass_time(parts[2]),
-                    "text": parts[9].replace("\\N", " ").strip()})
+        # dev-jj2815 实测:卡拉OK字幕行文是 {\kf28}店{\kf14}群… 形式,不剥
+        # override 标签会与 Wordline 纯文本对不上(84/84 unmatched → SYNC_FAIL)。
+        text = _OVERRIDE.sub("", parts[9]).replace("\\N", " ").strip()
+        out.append({"start": ass_time(parts[1]), "end": ass_time(parts[2]), "text": text})
     return out
 
 

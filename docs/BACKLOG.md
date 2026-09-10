@@ -13,7 +13,7 @@
 - [x] A2 vendored ONNX 推理层 + NOTICE(MIT/出处/升级方式)
 - [x] A3 `fetch_deps.py asr --onnx/--pkg/--seed-models`(目录联接零拷贝)
 - [x] A4 `rs_align` 改调自带运行器;**实测不启动任何外部服务即可转写**(68s→335字/5.7s,≈12× 实时)
-- [ ] A5 装 `pkg` 后端后验证**字级时间戳**链路(需 `fetch_deps.py asr --pkg`,约 1–2GB;未在此机器上装)
+- [x] A5 装 `pkg` 后端后验证**字级时间戳**链路 —— **已实测(2026-09-11)**:SeACo-Paraformer 944MB,334 字↔334 条时间戳,conf 0.95,degraded=False
 
 **批次 B · 验证分级**
 
@@ -49,10 +49,10 @@
 
 ### 已知待办(v5 之后)
 
-- [ ] **P1** 无字级时间戳时的**跨词硬切**(实测「再加上一 / 点耐心」):堆规则解决不了,正解是字级时间戳(pkg 后端或换带 timestamp 的 ONNX 导出);先用 pkg 后端缓解
-- [ ] **P1** `rs_render` 接入 seg 级缓存(沿用 v4 批次 B3)
+- [x] **P1** 无字级时间戳时的**跨词硬切**(实测「再加上一 / 点耐心」)—— **已解决(2026-09-11)**:pkg 字级时间戳落地,坏切分实测变为「干净的录音再加上 / 一点耐心」
+- [x] **P1** `rs_render` 接入 seg 级缓存 —— **v0.6.0 已落地(2026-09-11)**:内容寻址段缓存 + step_keys 门禁,JJAV2815 实测改字幕重出片 174s→54s(seg 8/8 命中)
 - [ ] **P1** 补 `rs_ingest`(S0)与 `deliverables.md` 生成
-- [ ] **P2** `fun_asr` 的 `pkg` 后端在**本机实际安装验证**(torch-cpu + funasr),并确认字级 timestamp 单位(ms vs 10ms 帧)
+- [x] **P2** `fun_asr` 的 `pkg` 后端在**本机实际安装验证** —— **已实测(2026-09-11)**:torch 2.14 + torchaudio 2.11 cpu(venv `tools/.venv-asr`);timestamp 单位为 ms
 - [ ] **P2** `rs_artboard` 支持动画卡 `--fps` 与时长从工程导出配置读取
 - [ ] **P2** 备份占用可视:`rs_cleanup` 一并清理 `_state/backup/`
 
@@ -72,7 +72,7 @@
 
 - [x] B1 `pipeline.json` + `_state/` + 含脚本 hash 的缓存键(已单测)
 - [x] B2 `rs_run.py --status/--from/--only/--dirty/--explain/--mark`
-- [ ] B3 `rs_render` 的 seg 级 hash 接入(结构已现成,待挂清单)
+- [x] B3 `rs_render` 的 seg 级 hash 接入 —— v0.6.0 落地(segcache + prune 3 代)
 - [ ] B4 单卡字幕重渲路径(只重生成该卡 ASS 事件 + 重叠)→ 端到端 ≤10s
 - [ ] B5 无改动重跑 `--from S3` 全程命中 ≤2s(需 B3 完成)
 
@@ -94,7 +94,7 @@
 
 ### 已知待办(v4 之后)
 
-- [ ] **P1** 上游联动:MomentShift `asr_server.py` 增补 `char_timestamps=1`,把 Paraformer 原生字级 `timestamp` 透传出来(跨项目,需用户点头后再开分支提 PR);在此之前 CutFlow 走句级降级路径
+- [x] **P1** 上游联动:MomentShift `asr_server.py` 增补 `char_timestamps=1` —— **moot(2026-09-11)**:CutFlow 自带 fun_asr pkg 后端直出字级时间戳,不再依赖上游透传
 - [ ] **P1** `rs_render` 按 `pipeline.json` 的 seg 清单做 seg 级缓存(B3)
 - [ ] **P1** 补 `rs_ingest`(S0)与 `deliverables.md` 生成,把交付清单自动化
 - [ ] **P2** `fa-zh` 强制对齐的偏移自检工具(切片起点回填;FunASR issue #2784)
@@ -122,7 +122,7 @@
 - [x] iter-02:README 已加端到端使用示例
 - [ ] **P3** rs_bench 网格加时间码标签(需解决 Windows drawtext fontconfig 依赖,可用 Pillow 事后标注)
 - [ ] **IDEA** 双后端能力对齐矩阵文档:哪些 IR 特性 FFmpeg 版有/5.9 版有,交付时展示
-- [ ] **IDEA** 卡拉OK 式逐字字幕(需字级时间戳,当前 FunASR 只有句级;可由 Agent 按字数插值)
+- [x] **IDEA** 卡拉OK 式逐字字幕 —— **v0.6.0 已落地(2026-09-11)**:`rs_subtitle --karaoke`,JJAV2815 实测 625 字 84 卡全 \kf;规则见 rules/subtitles.md §9
 
 ## 已完成
 
