@@ -23,6 +23,10 @@ __pycache__/
 *.pyc
 .venv/
 .pytest_cache/
+tools/.venv-asr/
+
+# ASR 模型(体积大,绝不入库;用 fetch_deps.py asr --seed-models 播种)
+models/
 
 # 开发临时
 *.log

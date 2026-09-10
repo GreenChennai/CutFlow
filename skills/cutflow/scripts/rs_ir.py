@@ -1,4 +1,9 @@
-"""IR 校验:schema + 语义(时间重叠/文件存在/枚举)。用法:python rs_ir.py validate <project.json>"""
+"""IR 校验与生成。
+用法:python rs_ir.py validate <project.json>
+      python rs_ir.py build --from-cutlist 04_cut/cutlist.applied.json --slug X --out 05_ir/project.json
+
+build 把 CutList 的 keep 区间转成 IR 主轨——**消灭「Agent 手写毫秒」这一整类误差**(rules/compose.md)。
+"""
 from __future__ import annotations
 
 import argparse
@@ -8,6 +13,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from rs_common import emit  # noqa: E402
+from rs_align import keep_to_segments, map_src_to_final  # noqa: E402
+
+CANVAS = {"9x16": {"width": 1080, "height": 1920}, "16x9": {"width": 1920, "height": 1080}}
 
 MOTION_IN = {"none", "fadeIn", "slideInLeft", "slideInRight", "scaleIn", "zoomIn"}
 MOTION_OUT = {"none", "fadeOut", "slideOutLeft", "slideOutRight"}
@@ -83,12 +91,75 @@ def validate(doc: dict, base_dir: Path) -> list[str]:
     return errs
 
 
+def build_from_cutlist(cutlist: dict, *, slug: str, ratio: str = "9x16",
+                       xfade_ms: int = 8, with_audio: bool = True) -> dict:
+    """CutList(keep 区间)→ IR 主视频/音频轨(时间一律经 map_src_to_final 换算)。"""
+    keep = [[int(a), int(b)] for a, b in (cutlist.get("keep") or [])]
+    if not keep:
+        raise ValueError("cutlist 缺少 keep 区间(先跑 rs_cut.py --apply)")
+    src = cutlist.get("source") or "01_materials/"
+    segs = keep_to_segments(keep)
+
+    video, audio = [], []
+    cursor = 0
+    for i, (a, b) in enumerate(keep):
+        dur = b - a
+        clip = {"src": src, "startMs": cursor, "durationMs": dur, "sourceInMs": a}
+        if i > 0 and xfade_ms > 0:
+            clip["transition"] = {"type": "fade", "ms": int(xfade_ms)}
+        video.append(clip)
+        if with_audio:
+            audio.append({"src": src, "startMs": cursor, "durationMs": dur,
+                          "sourceInMs": a, "role": "voice"})
+        cursor += dur
+
+    return {
+        "version": 1, "slug": slug, "fps": 30, "canvas": dict(CANVAS[ratio]),
+        "tracks": [{"kind": "video", "clips": video},
+                   {"kind": "audio", "clips": audio}],
+        "subtitle": {"ass": "06_output/subtitles.ass", "source": "05_ir/wordline.json"},
+        "outputs": [ratio],
+        "_meta": {"generatedFrom": "cutlist", "keepSegments": len(keep),
+                  "finalDurationMs": cursor,
+                  "mappedVia": "rs_align.map_src_to_final",
+                  "srcTotalMs": cutlist.get("srcTotalMs"),
+                  "removedMs": cutlist.get("removedMs")},
+    }
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("command", choices=["validate"])
-    ap.add_argument("project")
+    ap.add_argument("command", choices=["validate", "build"])
+    ap.add_argument("project", nargs="?")
+    ap.add_argument("--from-cutlist")
+    ap.add_argument("--slug", default="project")
+    ap.add_argument("--ratio", default="9x16", choices=["9x16", "16x9"])
+    ap.add_argument("--xfade", type=int, default=8)
+    ap.add_argument("--no-audio", action="store_true")
+    ap.add_argument("--out")
     a = ap.parse_args()
-    p = Path(a.project)
+
+    if a.command == "build":
+        cl_path = Path(a.from_cutlist or "")
+        if not cl_path.is_file():
+            return emit(False, "NO_CUTLIST", f"cutlist 不存在:{cl_path}", exit_code=2)
+        try:
+            doc = build_from_cutlist(json.loads(cl_path.read_text(encoding="utf-8")),
+                                     slug=a.slug, ratio=a.ratio, xfade_ms=a.xfade,
+                                     with_audio=not a.no_audio)
+        except (ValueError, KeyError) as exc:
+            return emit(False, "BUILD_FAIL", f"生成失败:{exc}", exit_code=2)
+        out = Path(a.out or "05_ir/project.json")
+        out.parent.mkdir(parents=True, exist_ok=True)
+        errs = validate(doc, out.parent.parent if out.parent.name == "05_ir" else out.parent)
+        out.write_text(json.dumps(doc, ensure_ascii=False, indent=1), encoding="utf-8")
+        msg = (f"IR 已生成:{doc['_meta']['keepSegments']} 段 / "
+               f"{doc['_meta']['finalDurationMs'] / 1000:.1f}s")
+        if errs:
+            msg += f"(校验 {len(errs)} 个提示:src 文件可能尚未就位)"
+        return emit(True, "IR_BUILT", msg, {"path": str(out), **doc["_meta"], "validateErrors": errs})
+
+    p = Path(a.project or "")
     if not p.is_file():
         return emit(False, "NO_PROJECT", f"IR 文件不存在:{p}", exit_code=2)
     try:

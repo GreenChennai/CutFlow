@@ -45,11 +45,10 @@ def split_sentences(text: str) -> list[str]:
     return out
 
 
-def card_split(sentence: str, max_chars: int) -> list[str]:
-    """单句 → 字幕卡(≤max_chars):优先标点断点,Netflix 逗号转空格。"""
+def card_split_length(sentence: str, max_chars: int) -> list[str]:
+    """【旧算法,仅用于复现旧工程】单句 → 字幕卡(≤max_chars):长度驱动的贪心断行。"""
     if len(sentence) <= max_chars:
         return [_clean_card(sentence)]
-    # 断点打分:问/叹句边界 > 空格 > 顿号 > 逗号;ASCII 词内禁断
     best, best_s = None, None
     for pos in range(3, min(len(sentence) - 1, max_chars)):
         left, right = sentence[:pos], sentence[pos:]
@@ -69,7 +68,7 @@ def card_split(sentence: str, max_chars: int) -> list[str]:
         if left and left[-1] in TAIL_FUNC:
             s += 30
         if left and left[-1] in "的了是在和与把被对从向于也就都更最而即Each们":
-            s += 35  # 虚词/助词收尾是自然断点
+            s += 35
         s -= 4 * abs(pos - len(sentence) // 2)
         if best_s is None or s > best_s:
             best, best_s = pos, s
@@ -77,7 +76,27 @@ def card_split(sentence: str, max_chars: int) -> list[str]:
         best = max_chars
     head = _clean_card(sentence[:best])
     tail = sentence[best:].lstrip("，，、;:,;: ")
-    return ([head] if head else []) + card_split(tail, max_chars)
+    return ([head] if head else []) + card_split_length(tail, max_chars)
+
+
+def card_split(sentence: str, max_chars: int, mode: str = "dp",
+               gaps: dict | None = None, terms=()) -> list[str]:
+    """单句 → 字幕卡。默认走**约束最优 DP**(rules/subtitles.md §4 / segmentation.py)。
+
+    mode="length" 回退旧长度驱动算法(仅用于复现旧工程)。
+    """
+    if mode == "length" or len(sentence) <= max_chars:
+        if len(sentence) <= max_chars:
+            return [_clean_card(sentence)]
+        return card_split_length(sentence, max_chars)
+    try:
+        import segmentation
+        plan = segmentation.segment(sentence, max_chars, gaps=gaps or {}, terms=terms)
+        cards = [_clean_card(c["text"]) for c in plan["cards"]]
+    except Exception:  # noqa: BLE001 — 任何异常都退回长度算法,不让字幕环节炸掉
+        return card_split_length(sentence, max_chars)
+    return [c for c in cards if c]
+
 
 
 def _clean_card(card: str) -> str:
@@ -90,9 +109,10 @@ def _clean_card(card: str) -> str:
     return card.strip()
 
 
-def build_cards(sentences: list[str], max_chars: int) -> list[str]:
+def build_cards(sentences: list[str], max_chars: int, mode: str = "dp",
+                terms=()) -> list[str]:
     """句列表 → 卡列表(保持顺序)。"""
     cards: list[str] = []
     for s in sentences:
-        cards.extend(card_split(s, max_chars))
+        cards.extend(card_split(s, max_chars, mode=mode, terms=terms))
     return [c for c in cards if c]

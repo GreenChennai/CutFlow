@@ -1,33 +1,139 @@
-# Subtitles — 字幕(Netflix 规范 + 抖音红线)
+# Subtitles — 字幕(Netflix 规范 + 抖音红线 + 两层切分)
 
-## 权威依据(ADR-0001/0002)
+> **ADR-0001(修订) / ADR-0002**。一句话:**卡与卡之间怎么切(segmentation)和一张卡内怎么折行(line break)是两件事,旧版本把它们混成了一件。**
+
+## 1. 权威依据
 
 - [Netflix 简体中文 Timed Text Style Guide](https://partnerhelp.netflixstudios.com/hc/en-us/articles/215986007-Chinese-Simplified-Timed-Text-Style-Guide):每行 ≤16 字、最多 2 行;**句号/逗号不入屏**(断点用空格);问号/感叹号保留且禁 `!?` 连用;顿号可列举行中、不入行尾;省略号统一 `…`(U+2026);全角引号;一至十用汉字、其余半角数字。
+- [BBC Subtitle Guidelines](https://www.bbc.com/accessibility/forproducts/guides/subtitles/)(**断句定论**,原文):*Sentences should be segmented at natural linguistic breaks such that each subtitle forms an integrated linguistic unit. Thus, **segmentation at clause boundaries is to be preferred.** … There is considerable evidence from the psycho-linguistic literature that normal reading is organised into word groups corresponding to syntactic clauses and phrases, and that linguistically coherent segmentation of text can significantly improve readability. **Random segmentation must certainly be avoided.***
 - [抖音低质内容判定](https://m.bjnews.com.cn/detail/1716003662168785.html):字幕**无错别字**、**时间轴与画面同步**是硬红线;
 - [星图营销平台制作规范](https://www.xingtu.cn/help-center/demander/109176):字幕不得出现促销/导流信息;
-- 口语书面化属剪辑优化:转写 → 删口水词 → 语义断句 → 校对(万兴喵影/剪映智能字幕通行流程)。
+- 字幕 onset 应在语音起始后 **1–2 帧**内 —— 这是通过线,不是"差不多就行"。
 
-## 轻改写引擎(textopt.py,默认开启)
+## 2. 两层分离(核心修订)
 
-`--no-optimize` 可关闭。规则:
+| 层 | 问题 | 旧实现 | 新实现 |
+|---|---|---|---|
+| **卡切分** segmentation | 一句话切成几张卡 | **纯长度驱动**(≤16 字) | **约束最优 DP**(§4) |
+| **行断开** line break | 一张卡内怎么折行 | 评分算法(标点+100/空格+90/ASCII 切断 −200/每填一字 −4) | **保留**,补「金字塔形、禁顶行 1–2 字」 |
+
+「滚滚长江东逝水」被切成「滚滚长」/「江东逝水」正是**长度驱动切分**的典型病理:某处刚好到字数上限就硬切,既不认专名(长江),也不认诗句整体性。BBC 的原文就是对它的判决:**Random segmentation must certainly be avoided.**
+
+## 3. 轻改写引擎(textopt.py,默认开启)
+
+`--no-optimize` 可关闭。
+
 1. 删句首 filler(嗯/呃/唉…)与句尾语气字(啊/嘛/呢/吧);
-2. 标点:句号丢弃、全半角逗号在卡内转空格、断行点优先 问叹>逗号>顿号>虚词收尾、禁 `!?` 连用、`……`→`…`;
-3. 卡级切分 ≤16 字(9:16)/≤22 字(16:9),ASCII 词内禁切;
-4. 时间插值:ASR 句级时间戳按字符数比例分摊到卡。
+2. 标点:句号丢弃、全半角逗号在卡内转空格、`……`→`…`、禁 `!?` 连用;
+3. 卡级切分走 **DP**(§4),ASCII 词内禁切;
+4. **卡的时间从 Wordline 聚合**(§5),**已彻底废除「按字符数比例分摊」**。
 
-**铁律**:只动标点/口水词/断行,不改语义不删信息(音频不动,轻改写定义见 ADR-0002)。
+**铁律**:只动标点/口水词/断句,不改语义不删信息(音频不动,轻改写定义见 ADR-0002)。
 
-## 用法
+## 4. 卡切分算法(约束最优 DP)
+
+### 4.1 候选边界集合(只有这些位置可以切)
+
+- **强标点**:`。！？；`
+- **弱标点**:`，、：`
+- **字级停顿**:Wordline 中相邻字之间 `gap ≥ 200ms`
+- **句法线索**:连词/时间副词之前(「然后」「所以」「但是」「接下来」)
+
+### 4.2 禁止边界(硬约束,直接排除)
+
+| 禁切 | 例子 |
+|---|---|
+| 专有名词内部 | brief 术语表 + NER 名单:「长江」「抖音」「GPT-SoVITS」 |
+| 成语/固定搭配内部 | 常用成语表;至少做 **4 字整体保护** |
+| 数量词 + 量词/单位之间 | 「三十五」/「岁」、「三千」/「万」 |
+| 数字与单位/百分号/货币之间 | 「9」/「秒」、「¥」/「1999」、「50」/「%」 |
+| `的 / 地 / 得 / 了 / 着 / 之` 之后 | 「美丽」/「的风景」 |
+| ASCII 词内部 | 「build123」 |
+
+### 4.3 打分函数(越大越好)
 
 ```
-rs_subtitle.py --from-transcript 02_sensed/transcript_corrected.json --style talkshow-bold --ratio 9x16 --out 06_output
+score(cut, left, right) =
+    + 2.0 * 标点层级(。！？=1.0, ；=0.8, ，=0.6, 、=0.4, 无=0.0)
+    + 1.5 * 归一化停顿( gapMs / 500ms, clip 到 [0,1] )
+    + 1.0 * 语义完整性(不以虚词结尾 +0.5, 不以连词开头 +0.5)
+    - 0.8 * 长度失衡惩罚( |chars_left - chars_right| / max_chars )
+    - 1.2 * 尾卡过短惩罚( 卡字数 < 4 时线性惩罚 → 防「悬一字」 )
+```
+
+DP 目标:在**所有合法切分方案**中最大化**总分数**,同时满足 §4.4 全部硬约束。
+
+### 4.4 硬约束(不满足即该切分方案非法)
+
+| 约束 | 值 | 依据 |
+|---|---|---|
+| 每卡字数 | 9:16 **10–12 字**;16:9 **20–22 字** | Netflix 的 16 字是**横屏**标准;竖屏 CJK 屏宽只有约 60%,行业建议 8–10 字 |
+| **CPS** | ≤ **9 字/秒**(成人);儿童 ≤7;SDH ≤11 | Netflix 简体中文 |
+| 单卡时长 | **[0.83s, 7s]**(>7s 硬失败;见下) | Netflix min 5/6s / max 7s |
+| 卡间距 | ≥ **2 帧** | 行业通行 |
+| 视觉节拍 | 卡时长宜落 **1.5–3.5s**;>4s 必切,<0.8s 必并 | ADR-0004 的 2–3s 节拍 |
+
+> **最短时长是软约束,对齐精度是硬约束。** 实施中发现两者会冲突:给过短卡硬补时长的同时会和下一卡重叠。故定序为——
+> ① `<0.8s` 先**合卡**(与相邻卡合并,前提是不超字数上限);
+> ② 合不了则**在有余量时延长后沿**,绝不越过下一卡起点;
+> ③ 仍不足则**如实告警**(`sync_report.md` 的"时长过短"栏),但不阻断交付。
+> **起点永远不变**——起点决定对齐精度,不能为了凑时长去挪它。
+
+> **竖屏字数为什么下调**:Netflix 16 字是 16:9 标准,`talkshow-bold` 直接用 16 字在 1080×1920 上会顶满安全区。`maxChars` 不写死,由**比例 + 字号**推导。旧工程按 `pipeline.json` 记录的 `maxChars` 复现,不追改。
+
+### 4.5 「节奏感」的正解
+
+节奏**不是靠"断得短"**产生的,是靠**卡时长落在视觉节拍区间(1.5–3.5s)**产生的。「滚滚长江东逝水」作为完整的 7 字诗句,一张卡 2s 念完,符合节拍;切成 3+4 反而破坏语感。
+
+> **长度约束服务于节拍,而不是反过来。**
+
+### 4.6 多假设输出
+
+DP 求最优后返回 **top-3 候选**(按 score 排序)供 Agent 挑选;若最优与次优 score 差 < **5%**,标记 `ambiguous` 并请 Agent 决断——这比"悄悄选一个错的"好得多。
+
+### 4.7 回归测试集(必须固化,这是质量的量化手段)
+
+| 用例 | 期望 | 防护机制 |
+|---|---|---|
+| `滚滚长江东逝水` | 不得切成「滚滚长」/「江东逝水」 | 专名表 + 尾卡过短惩罚 + 完整句优先 |
+| `我今年三十五岁` | 不得切成「我今年三十」/「五岁」 | 数量词 + 单位保护 |
+| `我们把那个…那个什么…对,做完了` | 删口水词后重新对齐,不产生空卡 | 轻改写 → Wordline 重聚合 |
+| `¥1999 元` | 不切 | 数字 + 单位保护 |
+| `用 GPT-SoVITS 做配音` | 不切 ASCII 词 | 已有规则 |
+
+回归集写在 `tests/` 里,批次 C 的验收线是**全绿**。
+
+## 5. 卡的时间来源(废除比例插值)
+
+> 详见 rules/align.md。**这是解决「字幕/声音/画面对不上」的关键。**
+
+| 卡的时间 | 来源 |
+|---|---|
+| `start` | 该卡**首字**的 `startMs` − 20ms 释放余量 |
+| `end` | 该卡**末字**的 `endMs` + 20ms 释放余量 |
+| 单字卡 | 最短时长补足到 **0.83s**(Netflix 最短时长) |
+| 相邻卡 | 间距 ≥ 2 帧;不足则前卡收早 / 后卡推迟 |
+
+**明令禁止**:`时長 * len(card) / total_chars` 这类写法(旧 `build_events` 的 optimize 分支)。语速不均时它必错,而且是系统性误差。
+
+## 6. 用法
+
+```
+# 首选:从 Wordline 取时(字级精确)
+rs_subtitle.py --from-wordline 05_ir/wordline.json --style talkshow-bold --ratio 9x16 --out 06_output
+
+# 兼容:纯文案 TTS(时间 = 合成实长,ffprobe 实测)
 rs_subtitle.py --from-tts 03_assets/tts/manifest.json --style tutorial-clean --ratio 9x16 --out 06_output
+
+# 兼容:无 Wordline 的降级路径(句级时间 + 停顿锚点,会在报告里标注 degraded)
+rs_subtitle.py --from-transcript 02_sensed/transcript_corrected.json --style subtitle-white --ratio 16x9 --out 06_output
 ```
 
-- `--from-transcript` 必须用 **Agent 校对后的** transcript_corrected(原始 ASR 错字是抖音红线);
-- `--from-tts` 时间戳即合成实长,天然同步。
+- `--from-transcript` 必须用 **Agent 校对后的** `transcript_corrected`(原始 ASR 错字是抖音红线);
+- `--segment dp`(默认)/ `--segment length`(回退旧长度驱动,仅用于复现旧工程);
+- `--top 3` 输出候选方案到 `06_output/segments_candidates.json`,供 Agent 决断 `ambiguous` 卡。
 
-## 风格
+## 7. 风格
 
 | style | 用途 | 特点 |
 |---|---|---|
@@ -35,4 +141,15 @@ rs_subtitle.py --from-tts 03_assets/tts/manifest.json --style tutorial-clean --r
 | tutorial-clean | 教程 | 底部半透明底条(BorderStyle=3) |
 | subtitle-white | 通用白字黑边 | |
 
-安全区(9:16):底 25%、顶 12% 不放字幕。
+安全区(9:16):底 25%、顶 12% 不放字幕。**Logo 同样不得进入字幕带**。
+
+## 8. 门禁与验收
+
+| 检查 | 通过线 |
+|---|---|
+| 断句回归 | §4.7 五条用例全绿 |
+| CPS 合规 | 抽样 20 卡,CPS 全部 ≤ 9 字/秒 |
+| 竖屏可读性 | 9:16 每卡 ≤ 12 字,无顶行 1–2 字 |
+| 单卡时长 | `>7s` 必须为 0(硬失败);`<0.83s` 应尽量为 0,残余项可由 `sync_report.md` 解释 |
+| 对齐偏移 | 中位数 ≤ 40ms、95 分位 ≤ 80ms(由 `rs_sync.py` 断言) |
+| 错别字 | 0(校对后文本;抖音硬红线) |

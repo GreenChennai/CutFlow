@@ -1,5 +1,30 @@
 # artboard 桥 — 图形素材(片头/片尾/封面/信息卡/小动画)
 
+> **ADR-0017**。闭环目标:**改完图 → 一键出新片**,不需要 Agent 重新找轨道、改路径、算时间。
+
+## 闭环三件套
+
+```
+artboard 工程(src/)  ──export──►  产物(png/mp4)  ──apply──►  IR overlay 轨  ──►  S4 起级联
+        ▲                                        ▲
+   source_hash 变了才重导                  尺寸/时长校验
+```
+
+清单 `03_assets/artboard/manifest.json` 是**唯一映射表**:工程 ↔ 产物 ↔ IR 挂点(`usedIn`)。
+
+```powershell
+python skills/cutflow/scripts/rs_artboard.py --scan 03_assets/artboard --out 03_assets/artboard/manifest.json
+python skills/cutflow/scripts/rs_artboard.py 03_assets/artboard/manifest.json --export
+python skills/cutflow/scripts/rs_artboard.py 03_assets/artboard/manifest.json --apply 05_ir/project.json
+python 03_assets/artboard/rebuild.py     # 一条龙:上面三步 + 从 S4 级联
+```
+
+- **`--export` 按 `source_hash` 判断**,没改的卡片不重导(内容寻址);
+- **尺寸不符直接报错、不拉伸**:导出尺寸必须等于画幅(9:16=1080×1920 / 16:9=1920×1080);
+- **时长变化会传播**:动画卡改长了,`--apply` 自动平移后续 clip,并给出需重跑的下游阶段(时长变 → S4–S9;仅路径变 → S4/S5/S8);
+- 清单里没挂进 IR 的卡片会被点名提醒,不会静默丢弃;
+- artboard 目录取自 `config.artboard_dir`;缺失会给人话错误,不会半路炸。
+
 ## 何时用
 
 - 片头/片尾板(静态 PNG 或 ≤15s MP4 动画)、封面、信息卡/数据卡、章节转场卡。

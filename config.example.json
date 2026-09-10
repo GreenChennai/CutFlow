@@ -1,8 +1,10 @@
 {
   "ffmpeg_dir": "E:\\Tools\\ffmpeg\\bin",
   "asr": {
-    "url": "http://127.0.0.1:8000",
-    "model": "paraformer-large"
+    "backend": "auto",
+    "models_dir": "",
+    "model": "paraformer-large",
+    "url": "http://127.0.0.1:8000"
   },
   "tts": {
     "url": "http://127.0.0.1:9885",
