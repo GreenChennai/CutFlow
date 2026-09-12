@@ -10,6 +10,18 @@
 - **分镜表**:含镜头号/画面描述/台词/时长的剧本表格。
 - **原声 / 配音声源**:口播视频自带的真人声音,或 TTS 合成的**音色卡**声音。二者互斥或混用时须在 brief 里声明。
 
+## 视频类型(videoType)
+
+- **videoType**:一级路由,决定管线分支。封闭枚举:`talking-head`(纯口播)/ `talking-head+animation`(口播+动画)/ `pure-animation`(纯动画)。预留扩展位:`screen-recording` / `interview` / `drama` / `film-commentary`(暂不实现)。分册见 `skills/cutflow/rules/video-types/`,取代原 `rules/genres/` 六册(ADR-0018)。
+- **纯口播**:真人出镜 + 绿幕抠像 + 字幕;动画密度少或零;粗剪必做。
+- **口播+动画**:纯口播 + artboard 卡片;额外要求**流畅性**(缓动/时长)与**贴合性**(卡片时间窗落在所解说句子的时间窗内)。
+- **纯动画**:无真人画面,场景卡串联;声音来源二选一 —— 音色卡 TTS 或视频中人物原声。
+
+## 平台与画幅
+
+- **平台预设**:`templates/platforms.json`,每平台定画幅 / 安全区 / 字号 / 每卡字数 / 风格;由 `rs_subtitle --platform` 消费。
+- **画幅**:`rs_common.RATIOS` 是"比例 → 宽高"的唯一真相源(`9x16` / `3x4` / `16x9`);其余模块一律查表,禁止字符串比较。
+
 ## 时间线与渲染
 
 - **IR**(Intermediate Representation):毫秒级项目时间线 project.json,成片与剪映草稿的唯一事实源。

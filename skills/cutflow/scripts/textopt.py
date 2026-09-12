@@ -80,10 +80,11 @@ def card_split_length(sentence: str, max_chars: int) -> list[str]:
 
 
 def card_split(sentence: str, max_chars: int, mode: str = "dp",
-               gaps: dict | None = None, terms=()) -> list[str]:
+               gaps: dict | None = None, terms=(), degrade: list | None = None) -> list[str]:
     """单句 → 字幕卡。默认走**约束最优 DP**(rules/subtitles.md §4 / segmentation.py)。
 
     mode="length" 回退旧长度驱动算法(仅用于复现旧工程)。
+    `degrade`:传入列表则把"退回长度算法"这类降级原因写进去 —— **降级必须留痕,不许静默**。
     """
     if mode == "length" or len(sentence) <= max_chars:
         if len(sentence) <= max_chars:
@@ -93,7 +94,9 @@ def card_split(sentence: str, max_chars: int, mode: str = "dp",
         import segmentation
         plan = segmentation.segment(sentence, max_chars, gaps=gaps or {}, terms=terms)
         cards = [_clean_card(c["text"]) for c in plan["cards"]]
-    except Exception:  # noqa: BLE001 — 任何异常都退回长度算法,不让字幕环节炸掉
+    except Exception as exc:  # noqa: BLE001 — 退回长度算法,但记降级原因(不让字幕环节炸掉)
+        if degrade is not None:
+            degrade.append(f"DP 分段失败,退回长度算法({type(exc).__name__}: {exc})")
         return card_split_length(sentence, max_chars)
     return [c for c in cards if c]
 
@@ -110,9 +113,9 @@ def _clean_card(card: str) -> str:
 
 
 def build_cards(sentences: list[str], max_chars: int, mode: str = "dp",
-                terms=()) -> list[str]:
+                terms=(), degrade: list | None = None) -> list[str]:
     """句列表 → 卡列表(保持顺序)。"""
     cards: list[str] = []
     for s in sentences:
-        cards.extend(card_split(s, max_chars, mode=mode, terms=terms))
+        cards.extend(card_split(s, max_chars, mode=mode, terms=terms, degrade=degrade))
     return [c for c in cards if c]

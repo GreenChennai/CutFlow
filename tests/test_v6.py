@@ -663,7 +663,7 @@ def test_rs_sync_parse_ass_strips_karaoke_tags(tmp_path):
 def test_rs_sync_karaoke_ass_sync_ok(tmp_path, monkeypatch, capsys):
     """卡拉OK ASS + Wordline 端到端 → SYNC_OK(修复前 84/84 unmatched)。"""
     import rs_sync
-    wl = {"chars": [{"ch": ch, "i": i, "startMs": 990 + i * 60, "endMs": 1050 + i * 60}
+    wl = {"chars": [{"ch": ch, "i": i, "startMs": 990 + i * 280, "endMs": 1270 + i * 280}
                     for i, ch in enumerate("店群运营")]}
     wlp = tmp_path / "wordline.json"
     wlp.write_text(json.dumps(wl, ensure_ascii=False), encoding="utf-8")

@@ -87,6 +87,7 @@ def build_wordline(segments: list[dict], source: str, *, fps: int = 30,
     chars: list[dict] = []
     sentences: list[dict] = []
     degrade_reasons = [degraded] if degraded else []
+    char_timing_estimated = False     # 无字级时间戳 → 字时间是句内估算,不可当字级用
 
     for si, seg in enumerate(segments):
         raw_text = seg.get("text") or ""
@@ -115,10 +116,12 @@ def build_wordline(segments: list[dict], source: str, *, fps: int = 30,
                 a = int(round(st_ms + span * k / n))
                 b = int(round(st_ms + span * (k + 1) / n))
                 chars.append({"i": len(chars), "ch": ch, "startMs": a, "endMs": max(b, a + 20),
-                              "srcStartMs": a, "srcEndMs": max(b, a + 20), "conf": 0.40})
+                              "srcStartMs": a, "srcEndMs": max(b, a + 20), "conf": 0.40,
+                              "estimated": True})
                 idxs.append(len(chars) - 1)
             if text:
-                degrade_reasons.append("字级时间戳缺失:句内按均分估算")
+                char_timing_estimated = True
+                degrade_reasons.append("字级时间戳缺失:句内按均分估算(不可当字级用)")
 
         punc = ""
         for ch in reversed(text):
@@ -154,6 +157,8 @@ def build_wordline(segments: list[dict], source: str, *, fps: int = 30,
                   "confMedian": round(statistics.median(confs), 3)},
         "degraded": bool(degrade_reasons),
         "degradeReasons": sorted(set(degrade_reasons)),
+        # 字级时间是"句内均分估算"而非真实时间戳 → 下游只能按句级用,不得细分到字
+        "charTimingEstimated": char_timing_estimated,
     }
 
 
@@ -219,14 +224,83 @@ def _spread(text: str, a: int, b: int, conf: float) -> list[dict]:
     return out
 
 
-def retext_wordline(wl: dict, new_text: str) -> tuple[dict, dict]:
-    """把校对后的文本回灌到 **source 域** wordline:改动锚定在字级时间戳上。
+def _apply_opcodes(ref: list[dict], new_text: str, sm, conf: float) -> tuple[list[dict], dict]:
+    """把 `new_text` 的时间锚到 `ref` 上(retext 回灌 / 配音强制对齐共用的核心)。
 
-    - equal 区间:原锚点原样保留(时间零漂移)
+    - equal 区间:原锚点原样保留(**时间零漂移**)
     - replace:新字在旧区间 [首字start, 末字end] 内均分(有真实锚点兜底)
     - delete:锚点一并删除
     - insert:在相邻两字的 [prev.end, next.start] 区间内均分;区间过窄则压缩单字时长,
       **绝不平移既有锚点**(保住与音频的真实对应)
+    """
+    durs = sorted(max(c["endMs"] - c["startMs"], 1) for c in ref)
+    med = durs[len(durs) // 2]
+    out: list[dict] = []
+    stats = {"replace": 0, "delete": 0, "insert": 0, "editChars": 0}
+    for tag, i1, i2, j1, j2 in sm.get_opcodes():
+        if tag == "equal":
+            out.extend(ref[i1:i2])
+        elif tag == "delete":
+            stats["delete"] += i2 - i1
+            stats["editChars"] += i2 - i1
+        elif tag == "replace":
+            stats["replace"] += 1
+            stats["editChars"] += (i2 - i1) + (j2 - j1)
+            a = ref[i1]["startMs"]
+            b = max(ref[i2 - 1]["endMs"], a + 40 * (j2 - j1))
+            out.extend(_spread(new_text[j1:j2], a, b, conf))
+        elif tag == "insert":
+            stats["insert"] += 1
+            stats["editChars"] += j2 - j1
+            text = new_text[j1:j2]
+            if out and i2 < len(ref):            # 中间插入:[prev.end, next.start]
+                a = out[-1]["endMs"]
+                b = ref[i2]["startMs"]
+                if b < a:
+                    b = a
+                out.extend(_spread(text, a, b, conf))
+            elif out:                            # 末尾插入
+                a = out[-1]["endMs"]
+                out.extend(_spread(text, a, a + med * len(text), conf))
+            else:                                # 开头插入
+                f = ref[i2] if i2 < len(ref) else ref[-1]
+                a = max(0, f["startMs"] - med * len(text))
+                out.extend(_spread(text, a, f["startMs"], conf))
+    prev = 0
+    for c in out:                                # 单调化(保险):起点不减,终点至少 +1ms
+        if c["startMs"] < prev:
+            c["startMs"] = prev
+        if c["endMs"] <= c["startMs"]:
+            c["endMs"] = c["startMs"] + 1
+        prev = c["startMs"]
+    for k, c in enumerate(out):
+        c["i"] = k
+    return out, stats
+
+
+def retime_to_reference(ref_chars: list[dict], text: str, *, conf: float = INSERT_CONF,
+                        min_ratio: float = 0.5) -> tuple[list[dict], dict]:
+    """把 `text` 的每个字锚到 `ref_chars` 的**真实**字级时间戳上(TTS 配音强制对齐,#10)。
+
+    与 `retext_wordline` 同一套 opcode 逻辑,区别只在方向:
+    retext 是"拿校对稿去改已有锚点";本函数是"拿真实锚点去给目标文本定时间"。
+    """
+    from difflib import SequenceMatcher
+    if not ref_chars:
+        raise ValueError("参考时间轴没有 chars,无法对齐")
+    orig = "".join(c["ch"] for c in ref_chars)
+    sm = SequenceMatcher(None, orig, text, autojunk=False)
+    if sm.ratio() < min_ratio:
+        raise ValueError(f"配音转写与目标文本相似度过低({sm.ratio():.0%}),疑似拿错音频/文本")
+    out, stats = _apply_opcodes(ref_chars, text, sm, conf)
+    stats["similarity"] = round(sm.ratio(), 4)
+    return out, stats
+
+
+def retext_wordline(wl: dict, new_text: str) -> tuple[dict, dict]:
+    """把校对后的文本回灌到 **source 域** wordline:改动锚定在字级时间戳上。
+
+    逻辑见 `_apply_opcodes`;相似度 <0.5 直接拒绝(疑似拿错文件)。
     """
     from difflib import SequenceMatcher
     chars = wl.get("chars") or []
@@ -236,52 +310,7 @@ def retext_wordline(wl: dict, new_text: str) -> tuple[dict, dict]:
     sm = SequenceMatcher(None, orig, new_text, autojunk=False)
     if sm.ratio() < 0.5:
         raise ValueError(f"校对稿与原稿相似度过低({sm.ratio():.0%}),疑似拿错文件")
-    durs = sorted(max(c["endMs"] - c["startMs"], 1) for c in chars)
-    med = durs[len(durs) // 2]
-
-    out: list[dict] = []
-    stats = {"replace": 0, "delete": 0, "insert": 0, "editChars": 0}
-    for tag, i1, i2, j1, j2 in sm.get_opcodes():
-        if tag == "equal":
-            out.extend(chars[i1:i2])
-        elif tag == "delete":
-            stats["delete"] += i2 - i1
-            stats["editChars"] += i2 - i1
-        elif tag == "replace":
-            stats["replace"] += 1
-            stats["editChars"] += (i2 - i1) + (j2 - j1)
-            a = chars[i1]["startMs"]
-            b = max(chars[i2 - 1]["endMs"], a + 40 * (j2 - j1))
-            out.extend(_spread(new_text[j1:j2], a, b, INSERT_CONF))
-        elif tag == "insert":
-            stats["insert"] += 1
-            stats["editChars"] += j2 - j1
-            text = new_text[j1:j2]
-            if out and i2 < len(chars):          # 中间插入:[prev.end, next.start]
-                a = out[-1]["endMs"]
-                b = chars[i2]["startMs"]
-                if b < a:
-                    b = a
-                out.extend(_spread(text, a, b, INSERT_CONF))
-            elif out:                            # 末尾插入
-                a = out[-1]["endMs"]
-                out.extend(_spread(text, a, a + med * len(text), INSERT_CONF))
-            else:                                # 开头插入
-                f = chars[i2] if i2 < len(chars) else chars[-1]
-                a = max(0, f["startMs"] - med * len(text))
-                out.extend(_spread(text, a, f["startMs"], INSERT_CONF))
-
-    # 单调化(保险):起点不减,终点至少 +1ms
-    prev = 0
-    for c in out:
-        if c["startMs"] < prev:
-            c["startMs"] = prev
-        if c["endMs"] <= c["startMs"]:
-            c["endMs"] = c["startMs"] + 1
-        prev = c["startMs"]
-        c["i"] = 0
-    for k, c in enumerate(out):
-        c["i"] = k
+    out, stats = _apply_opcodes(chars, new_text, sm, INSERT_CONF)
 
     doc = dict(wl)
     doc["chars"] = out
@@ -384,6 +413,8 @@ def main() -> int:
     ap.add_argument("--max-end-sil", dest="max_end_sil", type=int, default=0,
                     help="VAD 静音切分阈值 ms(0=用工具默认 400)")
     ap.add_argument("--cutlist")
+    ap.add_argument("--src", help="覆盖 wordline.source;--from-transcript 时用它指向真实素材路径"
+                                  "(否则下游 IR 会把转写稿当成视频源)")
     ap.add_argument("--text", help="retext:校对后的纯文本文件(标点可有可无)")
     ap.add_argument("--out", required=False)
     ap.add_argument("--fps", type=int, default=30)
@@ -440,7 +471,7 @@ def main() -> int:
     asr_meta: dict = {}
     if a.from_transcript:
         p = Path(a.from_transcript)
-        segments, source = _load_segments(p), str(p)
+        segments, source = _load_segments(p), (a.src or str(p))
     elif a.from_tts:
         p = Path(a.from_tts)
         man = json.loads(p.read_text(encoding="utf-8"))

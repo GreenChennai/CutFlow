@@ -12,7 +12,7 @@ Write-Host "Skill root: $skillRoot"
 
 if (-not (Test-Path $skillRoot)) { New-Item -ItemType Directory -Path $skillRoot | Out-Null }
 
-foreach ($name in @("cutflow", "cutflow-prompt")) {
+foreach ($name in @("cutflow")) {
     $target = Join-Path $repo "skills\$name"
     $link = Join-Path $skillRoot $name
     if (Test-Path $link) {

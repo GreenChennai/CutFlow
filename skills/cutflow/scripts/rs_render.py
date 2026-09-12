@@ -25,9 +25,10 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from rs_common import die, emit, ffmpeg_bin, ffprobe_json, load_config, media_duration_s, run  # noqa: E402
+from rs_common import (RATIOS, die, emit, ffmpeg_bin, ffprobe_json, load_config,  # noqa: E402
+                       media_duration_s, ratio_for_canvas, run)
 
-RATIO = {"9x16": (1080, 1920), "16x9": (1920, 1080)}
+RATIO = dict(RATIOS)             # 画幅唯一真相源在 rs_common(新增画幅只改那里)
 LOUDNORM_BUS = "loudnorm=I=-14:TP=-1.0:LRA=11"
 LOUDNORM_VOICE = "loudnorm=I=-16:TP=-1.5:LRA=11"
 CACHE_VER = "v2"                 # 渲染语义变更时 +1,防旧缓存幽灵命中
@@ -696,7 +697,7 @@ def render(doc: dict, project_path: Path, ratio: str, profile: str, *,
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("project")
-    ap.add_argument("--ratio", default=None, choices=["9x16", "16x9"])
+    ap.add_argument("--ratio", default=None, choices=list(RATIO))
     ap.add_argument("--profile", default="final", choices=["final", "preview", "draft"])
     ap.add_argument("--ass", default=None, help="覆盖 IR 的字幕 ass 路径(每比例各一个 ass)")
     ap.add_argument("--explain", action="store_true",
@@ -713,7 +714,10 @@ def main() -> int:
     if errs:
         return emit(False, "IR_INVALID", f"渲染前校验失败 {len(errs)} 项", {"errors": errs}, exit_code=2)
     canvas = f"{doc['canvas']['width']}x{doc['canvas']['height']}"
-    ratio = a.ratio or ("9x16" if canvas == "1080x1920" else "16x9")
+    try:
+        ratio = a.ratio or ratio_for_canvas(doc["canvas"]["width"], doc["canvas"]["height"])
+    except ValueError as exc:
+        return emit(False, "BAD_CANVAS", str(exc), exit_code=2)
     if a.ass:
         doc.setdefault("subtitle", {})["ass"] = a.ass
     data = render(doc, p, ratio, a.profile,

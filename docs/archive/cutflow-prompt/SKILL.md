@@ -5,6 +5,9 @@ description: AI 生视频提示词生成:产"首帧(可选尾帧)图片生成提
 
 # cutflow-prompt — AI 生视频提示词
 
+> **归档说明(2026-09-12)**:本技能组已于 v0.7.2 停用(见 `docs/OPTIMIZATION-v7.md` #5:先完善第一个技能 `cutflow`,第二个删掉)。
+> 内容原样保留在此备查;不再随仓库迭代维护,`tools/install.ps1` 也不再安装它。如需复活,把本目录搬回 `skills/cutflow-prompt/` 并恢复安装脚本即可。
+
 一句话:给画面构想/分镜/图片 → 产出**首帧图提示词** + **首帧标注式 5–10s 图生视频提示词**(可选尾帧)。方法论蓝本:make-prompt-seedance2(structured-prompt 四段公式 + 真人感九维度)。
 
 ## 输入

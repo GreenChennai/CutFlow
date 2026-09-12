@@ -14,8 +14,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 from rs_common import emit  # noqa: E402
 from rs_align import keep_to_segments, map_src_to_final  # noqa: E402
+from rs_common import RATIOS  # noqa: E402
 
-CANVAS = {"9x16": {"width": 1080, "height": 1920}, "16x9": {"width": 1920, "height": 1080}}
+CANVAS = {k: {"width": w, "height": h} for k, (w, h) in RATIOS.items()}
+_CANVAS_PAIRS = tuple(RATIOS.values())
 
 MOTION_IN = {"none", "fadeIn", "slideInLeft", "slideInRight", "scaleIn", "zoomIn"}
 MOTION_OUT = {"none", "fadeOut", "slideOutLeft", "slideOutRight"}
@@ -62,8 +64,9 @@ def validate(doc: dict, base_dir: Path) -> list[str]:
         errs.append("version 必须为 1")
     canvas = doc.get("canvas", {})
     w, h = canvas.get("width"), canvas.get("height")
-    if (w, h) not in ((1080, 1920), (1920, 1080)):
-        errs.append(f"canvas 非法:{w}x{h}(仅 1080x1920 / 1920x1080)")
+    if (w, h) not in _CANVAS_PAIRS:
+        allowed = " / ".join(f"{a}x{b}" for a, b in _CANVAS_PAIRS)
+        errs.append(f"canvas 非法:{w}x{h}(可选 {allowed})")
     if doc.get("fps") not in (24, 25, 30, 50, 60):
         errs.append(f"fps 非法:{doc.get('fps')}")
 
@@ -168,7 +171,7 @@ def main() -> int:
     ap.add_argument("project", nargs="?")
     ap.add_argument("--from-cutlist")
     ap.add_argument("--slug", default="project")
-    ap.add_argument("--ratio", default="9x16", choices=["9x16", "16x9"])
+    ap.add_argument("--ratio", default="9x16", choices=list(RATIOS))
     ap.add_argument("--xfade", type=int, default=8)
     ap.add_argument("--no-audio", action="store_true")
     ap.add_argument("--out")

@@ -20,6 +20,7 @@ description: AI 视频制作总控技能:接收口播视频/文案/剧本分镜/
 |---|---|---|
 | 环境体检、依赖部署、模型播种 | **脚本** | `rs_doctor` / `fetch_deps` |
 | 转写、字级对齐 | **脚本** | `tools/fun_asr.py` / `rs_align` |
+| 配音强制对齐(TTS 补字级) | **脚本** | `rs_dub` |
 | 粗剪检测 + guard + CutList | **脚本** | `rs_cut` |
 | 断句 DP + 硬约束 + 卡时间 | **脚本** | `segmentation` / `rs_subtitle` |
 | 渲染、混音、编码、变体、烧录 | **脚本** | `rs_render` / `rs_brand` |
@@ -43,6 +44,7 @@ description: AI 视频制作总控技能:接收口播视频/文案/剧本分镜/
 | 字级对齐 / 重映射 / Wordline | `rules/align.md` |
 | 粗剪 / CutList / guard | `rules/roughcut.md` |
 | 字幕断句 / CPS / 卡片 | `rules/subtitles.md` |
+| 平台预设 / 画幅适配 | `rules/platforms.md` |
 | 感知与校对(OCR/VQA/抽帧) | `rules/sense.md` |
 | 配音 TTS | `rules/tts.md` |
 | IR 与渲染 / 中间件 | `rules/compose.md` |
@@ -56,7 +58,7 @@ description: AI 视频制作总控技能:接收口播视频/文案/剧本分镜/
 | 剪映草稿双通道 | `rules/jianying.md` |
 | 工程归档与命名 | `rules/archive.md` |
 | 自评闭环细节 | `rules/selfcheck.md` |
-| 类型节奏默认值 | `rules/genres/<类型>.md`(**仅一册**) |
+| 类型节奏/管线分支默认值 | `rules/video-types/<videoType>.md`(**仅一册**) |
 
 > **禁止**:一次读两个以上规则文件(用户明确要求交叉说明时除外)。
 
@@ -74,7 +76,7 @@ S0 素材 ─► S1 转写+字级对齐 ─► S2 粗剪 ─► S3 基础合成 
 
 | 阶段 | 名称 | 主要脚本 | 产物 | 门禁 |
 |---|---|---|---|---|
-| **S0** | 基础素材 | `rs_doctor` | `01_materials/` + `brief.md` | 素材可解码 |
+| **S0** | 基础素材 | `rs_ingest` + `rs_doctor` | `01_materials/manifest.json` + `brief.md` | 素材可解码 |
 | **S1** | 转写与字级对齐 | `rs_align`(→`tools/fun_asr.py`) | `05_ir/wordline.json` | 覆盖率 ≥99% |
 | **S2** | 粗剪处理 | `rs_cut` | `04_cut/cutlist.json` | remove 刀 guard 全过 |
 | **S3** | 基础合成 | `rs_ir build` + `rs_render` | `seg_*/base/` | IR validate |
@@ -107,9 +109,11 @@ S0 素材 ─► S1 转写+字级对齐 ─► S2 粗剪 ─► S3 基础合成 
 14. **竖屏(9:16)每卡 10–12 字、CPS ≤9 字/秒、单卡 0.83–7s**;旧工程按当时 `maxChars` 复现,不追改。
 15. 素材/中间件/git:`01_materials` 只读;大文件与 `models/` 不进 git;工程目录 `<YYYYMMDD>-<中文标题>-<类型>`;产物中文命名并带 variantId;测试件用 `dev-` 前缀,交付前 `rs_cleanup` 必删。
 16. 感知备选:Agent 自带视觉优先自己看图;OCR/VQA 仅在批量/无视觉/`force_local` 时用。
-17. 开工必读 brief.类型 对应的 `rules/genres/` 分册(**仅一册**)。
+17. 开工必读 `brief.videoType`(`talking-head` / `talking-head+animation` / `pure-animation`)对应的 `rules/video-types/` 分册(**仅一册**);它同时定义该类型的**管线分支**(绿幕抠像 / 动画密度与贴合 / 声音来源)。预留扩展位:`screen-recording` / `interview` / `drama` / `film-commentary`(暂不实现)。
 18. **卡拉OK(--karaoke)**:挂字必须在必并/合规校验**之前**,以「显示字形」(含标点,`_clean_card` 剥掉的标点会在 `\kf` 层经 chars 带回)为唯一预算口径;合并事件同步拼 `chars`;任何 ASS Dialogue 文本匹配/计数前必须剥 `{...}` override 标签(rs_sync 已内置)。
 19. **必并线 = 单卡时长下限(0.83s)**,两线之间不留死区(不并又延不满 → L0 硬失败);预算放不下时向下一卡吞并,起点取短卡(对齐精度不动)。
+20. **卡时间的调整只能在「释放余量」内**:起点 ≤ 首字 `startMs`、终点 ≥ 末字 `endMs` 且延长 ≤ +0.30s;余量耗尽仍不足 2 帧就保留字级精确时间(对齐精度 > 卡间距)。`rs_sync` 同时校验起点与**终点**偏移。
+21. **画幅/平台只查表**:比例→宽高的唯一真相源是 `rs_common.RATIOS`,平台参数在 `templates/platforms.json`;禁止写死 `1080x1920` 字符串比较,CPS 上限按当前比例取(`segmentation.cps_max_for`)。
 
 ---
 
@@ -118,6 +122,7 @@ S0 素材 ─► S1 转写+字级对齐 ─► S2 粗剪 ─► S3 基础合成 
 | 环节 | 命令 |
 |------|------|
 | 体检 | `rs_doctor.py --report` |
+| **素材摄取(S0)** | `rs_ingest.py scan <工程>` / `rs_ingest.py deliverables <工程>` |
 | **阶段状态 / 增量** | `rs_run.py --status` / `--from S3` / `--only S7` / `--dirty` / `--explain S7` |
 | **一键重建** | `rs_run.py --init`(生成 rebuild.py)/ `--from S8 --force` / `--rollback` |
 | **分级自检** | `rs_verify.py <工程>` / `--level L1` / `--mark-first` |
@@ -131,7 +136,7 @@ S0 素材 ─► S1 转写+字级对齐 ─► S2 粗剪 ─► S3 基础合成 
 | 渲染 | `rs_render.py 05_ir/project.json --ratio 9x16 --profile final` |
 | 品牌变体 | `rs_brand.py --expand --logos a,b --ratios 9x16,16x9 --out 05_ir/variants.json` |
 | 音效落点 | `rs_sfx.py 05_ir/project.json --auto --wordline 05_ir/wordline.json` |
-| 字幕 | `rs_subtitle.py --from-wordline 05_ir/wordline.json --style talkshow-bold --ratio 9x16 --out 06_output` |
+| 字幕 | `rs_subtitle.py --from-wordline 05_ir/wordline.json --platform douyin --out 06_output`（`--platform` 取预设；显式 `--style/--ratio/--max-chars` 优先） |
 | **artboard 闭环** | `rs_artboard.py 03_assets/artboard/manifest.json --export\|--apply` |
 | 对齐自检 | `rs_sync.py --wordline ... --ass 06_output/subtitles.ass --out 06_output` |
 | 抽帧目测 | `rs_bench.py <成片> --ir 05_ir/project.json --out 06_output/bench.png` |
@@ -139,6 +144,7 @@ S0 素材 ─► S1 转写+字级对齐 ─► S2 粗剪 ─► S3 基础合成 
 | 剪映草稿 | `rs_jy_draft.py 05_ir/project.json --name <名>` |
 | 抽帧 / 感知 | `rs_frames.py` / `rs_sense.py` |
 | 配音 | `rs_tts.py --script 文案.txt --out 03_assets/tts` |
+| **配音强制对齐** | `rs_dub.py align --wordline 05_ir/wordline.json --audio 03_assets/tts/all.wav --write`（TTS 句内估算 → 真实字级） |
 | 清理 | `rs_cleanup.py <工程> [--apply]` |
 
 ---
@@ -199,7 +205,7 @@ S0 素材 ─► S1 转写+字级对齐 ─► S2 粗剪 ─► S3 基础合成 
 - **草稿直写**(主):`rs_jy_draft` → 用户获得可编辑工程;绿幕叠加无对应字段会警告。
 - **GUI 自动导出**(辅,computer-use):控件锚点见 `references/jianying-gui-anchors.md`(11.3 草稿加密,永不操作)。
 - 变体标记 `backends`;剪映缺特性(如 chroma)自动降级并在交付说明标注。
-- **AI 生视频**:只产提示词(首帧图 + 5–10s i2v),转 `cutflow-prompt` 技能;**绝不调用任何生图/生视频 API**。
+- **AI 生视频**:只产提示词(首帧图 + 5–10s i2v);原 `cutflow-prompt` 技能组已停用并归档到 `docs/archive/cutflow-prompt/`(见 OPTIMIZATION-v7 #5),**绝不调用任何生图/生视频 API**。
 
 ---
 

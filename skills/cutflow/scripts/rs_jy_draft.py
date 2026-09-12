@@ -96,7 +96,7 @@ from pyJianYingDraft.metadata import TransitionType  # noqa: E402
 JY_TRANSITION = {"fade": "叠化", "wipeleft": "向左擦除", "wipeup": "向上擦除",
                  "slideleft": "左移", "circleopen": "叠化"}
 
-SUB_SIZE = {"9x16": 9.0, "16x9": 7.5}
+SUB_SIZE = {"9x16": 9.0, "3x4": 8.5, "16x9": 7.5}
 
 
 def assert_jianying_closed() -> None:
@@ -222,7 +222,10 @@ def build_draft(doc: dict, project_path: Path, name: str, cfg: dict, warnings: l
             events = [{"start": s["start_s"], "end": s["end_s"], "text": s["text"]} for s in docj["sentences"]]
         else:  # transcript
             events = [{"start": s["start"], "end": s["end"], "text": s["text"]} for s in docj["segments"]]
-        ratio = "9x16" if doc["canvas"]["width"] == 1080 else "16x9"
+        try:                                   # 画幅查表(1080 不再等价于 9x16,有 3x4)
+            ratio = rs_common.ratio_for_canvas(doc["canvas"]["width"], doc["canvas"]["height"])
+        except ValueError:
+            ratio = "9x16"
         style = TextStyle(size=SUB_SIZE[ratio], bold=True, color=(1.0, 1.0, 1.0), align=1)
         border = TextBorder(color=(0.0, 0.0, 0.0), width=25.0)
         clipset = ClipSettings(transform_y=-0.8)

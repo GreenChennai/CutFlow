@@ -13,7 +13,7 @@ from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from rs_common import emit, load_config, ffprobe_bin, resolve_voice  # noqa: E402
+from rs_common import emit, ensure_utf8, load_config, ffprobe_bin, resolve_voice  # noqa: E402
 
 
 def _check(name: str, ok: bool, detail: str, fatal: bool = True, group: str = "通用", hint: str = "") -> dict:
@@ -106,7 +106,7 @@ def main() -> int:
             if c["group"] != cur:
                 cur = c["group"]
                 print(f"\n【{cur}】")
-            mark = "✓ 就绪" if c["ok"] else ("✗ 未就绪" if c["fatal"] else "△ 未就绪(可后补)")
+            mark = "√ 就绪" if c["ok"] else ("× 未就绪" if c["fatal"] else "△ 未就绪(可后补)")
             print(f"  {mark}  {c['name']}")
             print(f"          {c['detail']}")
             if not c["ok"] and c["hint"]:
@@ -114,7 +114,7 @@ def main() -> int:
         ready = sum(1 for c in checks if c["ok"])
         print("\n" + "-" * W)
         print(f"就绪度: {ready}/{len(checks)}   致命缺失: {len(fatal_bad)}   "
-              f"结论: {'✅ 可开工' if all_ok else '❌ 有致命缺失,先修复上方 ✗ 项'}")
+              f"结论: {'[OK] 可开工' if all_ok else '[FAIL] 有致命缺失,先修复上方 × 项'}")
         print("-" * W)
         return emit(all_ok, "DOCTOR_OK" if all_ok else "DOCTOR_FAIL",
                     f"{ready}/{len(checks)} 项就绪", {"checks": checks},
@@ -126,4 +126,5 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    ensure_utf8()
     sys.exit(main())

@@ -5,6 +5,35 @@
 
 ## 待办
 
+### v7 落地进度(2026-09-12,来源 `docs/OPTIMIZATION-v7.md`)
+
+**v0.7.0 字幕与粗剪修复(已完成,测试 118 → 137 全绿)**
+
+- [x] #1 字幕↔音频同步三件套:`rs_sync` 终点偏移校验(早退 >25ms / 滞留 >350ms 硬失败)+ `rs_subtitle` 锚点有界后沿策略 + 帧对齐 + `charTimingEstimated` 显式标注(不再静默当字级)
+- [x] #2 断句连词切词:`NO_TAIL` 收尾强惩罚 + 连词起首加分(从句边界优先)+ `CUT_COST` 治过度切分 + 连词回归用例
+- [x] #3 粗剪废片段:跨句重录(滑动窗口 + 多次旧尝试串一刀)、`retake_block`(整段重来)、`dead_air`(音频能量/字间 gap)、`self_negative`(元话语)、**guard 按 reason 分档**
+- [x] #11 清理 `rs_cut` 死代码 + 新增 `--media` / `--retake-ratio`
+
+**v0.7.1 – v0.8.0(全部完成,测试 118 → 165 全绿)**
+
+- [x] **P0** #4 平台字幕预设档案(抖音 / 视频号 / 小红书 / B站)+ 新增 **1080×1440(3:4)** 画幅全链路 —— **v0.7.1 已落地**:`templates/platforms.json` + `rs_common.RATIOS` 单一事实源 + `rs_subtitle --platform` + schema/verify/render/brand/ir/artboard/jy 全查表,并修掉 CPS 写死 9x16 的口径错
+- [x] **P0** #5 删除 `cutflow-prompt` 技能组并归档到 `docs/archive/cutflow-prompt/` —— **v0.7.2 已落地**
+- [x] **P0** #6 videoType 三类型(纯口播 / 口播+动画 / 纯动画)取代 `rules/genres/` 六册 —— **v0.7.2 已落地**（含管线分支、流畅性/贴合性硬线、纯动画双声源、题材红线并入 `_通用规则`）
+- [x] **P1** #7 脚本鲁棒性审计(消灭静默降级)—— **v0.8.0 已落地**:`rs_cut` 审查包抽音频失败留痕、`textopt`/`rs_subtitle` DP 降级逐句记录、`resolve_voice` 坏卡点名、`ensure_utf8` + doctor GBK 安全
+- [x] **P1** #8 ADR-0018(videoType 取代 genres)/ ADR-0019(平台字幕预设) —— **v0.7.2 已落地**
+- [x] **P1** #9 补 `rs_ingest`(S0)+ `deliverables.md` 自动生成 —— **v0.8.0 已落地**
+- [x] **P1** #10 `rs_dub align`:TTS 配音强制对齐 —— **v0.8.0 已落地**（真实字级回填 + 漂移报告 + 无字级戳时拒绝写回）
+- [x] **P2** #12 `rs_sync` 增加「卡片 ↔ 动画卡时间窗」重叠检查 —— **v0.8.0 已落地**
+
+**v7 验收欠账(需真实素材)**
+
+- [ ] #A1 真实长口播素材端到端:终点偏移达标、中间段残留 ≤1 处/10min、连词不落卡尾
+- [ ] #A2 真实素材上 `--media` 的 `dead_air` 音频能量探测实测
+- [ ] #A3 `rs_cut` 的 `retakeRatio` 按 `brief.videoType` 自动取默认值(当前只有 `--retake-ratio` 手动旋钮)
+- [ ] #A4 videoType 三类型各跑一条端到端(现 e2e 只覆盖 `talking-head` + 口播+动画的卡片安全区由 rs_artboard 测试覆盖)
+- [ ] #A5 `rs_sync` 补「字幕时间与最近帧差 ≤1 帧」断言与段级抽样(现只校验起点/终点偏移与总时长)
+- [ ] #A6 `platforms.json` 的 `safeArea` 目前只作为 Agent/目测清单的参考,未进脚本硬校验(字幕位置仍由 `STYLES.margin_v` 决定);若要硬校验,需把 marginV 由 safeArea 反推
+
 ### v5 落地验收清单(2026-09-10,来源 `docs/OPTIMIZATION-v5.md` §8)
 
 **批次 A · 自带 ASR**
@@ -55,6 +84,9 @@
 - [x] **P2** `fun_asr` 的 `pkg` 后端在**本机实际安装验证** —— **已实测(2026-09-11)**:torch 2.14 + torchaudio 2.11 cpu(venv `tools/.venv-asr`);timestamp 单位为 ms
 - [ ] **P2** `rs_artboard` 支持动画卡 `--fps` 与时长从工程导出配置读取
 - [ ] **P2** 备份占用可视:`rs_cleanup` 一并清理 `_state/backup/`
+- [→] **P2** 粗剪 retake 相似度阈值**按素材类型分档** → 已部分落地(v0.7.0 加 `--retake-ratio`,短剧可提到 0.86);按 `brief.videoType` 自动取默认值待接(#6)
+- [→] **P2** `rs_sync` 增加「卡片 ↔ 动画卡时间窗」重叠检查 → 归入 v7 #12
+- [→] **P2** `fa-zh` 强制对齐偏移自检 → 并入 v7 #10 `rs_dub align`
 
 ### v4 落地验收清单(2026-09-10,来源 `docs/OPTIMIZATION-v4.md` §9)
 

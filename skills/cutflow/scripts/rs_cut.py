@@ -22,16 +22,34 @@ from difflib import SequenceMatcher
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from rs_common import emit  # noqa: E402
+from rs_common import emit, guard_passed  # noqa: E402
 
-DETECTOR_VERSION = "cutflow-1.0"
+DETECTOR_VERSION = "cutflow-1.1"
 REASONS = {"silence", "breath", "filler", "false_start", "retake",
            "stumble", "repetition", "off_topic", "manual"}
 CONF_REMOVE, CONF_REVIEW = 0.90, 0.60
 SILENCE_MIN_MS = 600          # 静音判定:VAD 间隔 ≥600ms
+DEAD_AIR_MIN_MS = 1200        # "有画面无语音"长段(调整仪容/换提词器)
 TAIL_KEEP_MS = 60             # 切点后释放余量(Descript "Avoid harsh cuts")
 NEAR_SILENCE_MS = 120         # 切点前后多远内有静音算"落在静音区"
 RHETORIC_ORIG_MS, RHETORIC_AFTER_MS = 700, 200
+
+# guard 按 reason 分档(OPTIMIZATION-v7 #3):
+#   「重录/整段重来」的切点本就紧邻语音,要求它落在静音区 = 永远无法 remove;
+#   但 `wordClipped`(不切断字内音素)永不放松 —— 这是"宁可漏删不可错删"的底线。
+GUARD_ALL = ("inSilence", "outSilence", "wordClipped", "tailKeep")
+GUARD_REQUIRED: dict[str, tuple[str, ...]] = {
+    "retake": ("wordClipped", "tailKeep"),
+    "false_start": ("wordClipped", "tailKeep"),
+    "stumble": ("wordClipped", "tailKeep"),
+    "repetition": ("wordClipped", "tailKeep"),
+    "off_topic": ("wordClipped", "tailKeep"),
+    "manual": ("wordClipped", "tailKeep"),
+    "silence": GUARD_ALL, "breath": GUARD_ALL, "filler": GUARD_ALL,
+}
+# 应被剪掉的"元话语":口播人员要求重来的话,不该出现在成片里(review 候选,不自动删)
+SELF_NEGATIVE = ("说错了", "重新说", "再来一遍", "这段不算", "重来一遍", "不对不对",
+                 "我们重新来过", "重录一下")
 
 FILLERS: dict[str, float] = {
     "嗯": 0.72, "呃": 0.72, "啊": 0.70, "诶": 0.70, "哦": 0.70, "唉": 0.70,
@@ -98,10 +116,24 @@ def guard(cut: dict, chars: list[dict], gaps: list[dict]) -> dict:
         if int(c["startMs"]) >= out_ms:
             tail = int(c["startMs"]) - out_ms
             break
-    ok = bool(in_sil and out_sil and not word_clipped and tail >= TAIL_KEEP_MS)
-    return {"inSilence": bool(in_sil), "outSilence": bool(out_sil),
-            "wordClipped": bool(word_clipped), "tailKeepMs": int(min(tail, 10 ** 9)),
-            "ok": ok}
+    g = {"inSilence": bool(in_sil), "outSilence": bool(out_sil),
+         "wordClipped": bool(word_clipped), "tailKeepMs": int(min(tail, 10 ** 9))}
+    reason = cut.get("reason") or ""
+    g["required"] = list(GUARD_REQUIRED.get(reason, GUARD_ALL))
+    # ok = 四项全过(保守口径,保留给调用方参考);okByReason = 该 reason 的硬过项
+    g["ok"] = bool(in_sil and out_sil and not word_clipped and tail >= TAIL_KEEP_MS)
+    g["okByReason"] = _guard_pass(g, reason)
+    return g
+
+
+def _guard_pass(g: dict, reason: str) -> bool:
+    """按 reason 取硬过项判定 guard。`wordClipped`(不切断字内音素)任何 reason 下都硬。"""
+    if g.get("wordClipped"):
+        return False
+    need = GUARD_REQUIRED.get(reason, GUARD_ALL)
+    if "tailKeep" in need and g.get("tailKeepMs", 0) < TAIL_KEEP_MS:
+        return False
+    return all(g.get(k) for k in need if k not in ("wordClipped", "tailKeep"))
 
 
 def _is_edge(chars: list[dict], t: int) -> bool:
@@ -111,16 +143,20 @@ def _is_edge(chars: list[dict], t: int) -> bool:
 
 
 def classify(cut: dict) -> dict:
-    """按 conf 三级定 action;guard 不过则降级 review(绝不放宽)。"""
+    """按 conf 三级定 action;guard 不过则降级 review(绝不放宽)。
+
+    guard 判定用**该 reason 的硬过项**(`okByReason`)——重录类不再因"切点不落静音区"被压进 review。
+    """
     g = cut.get("guard") or {}
     conf = float(cut.get("conf", 0.0))
-    if conf >= CONF_REMOVE and g.get("ok"):
+    passed = guard_passed(g)
+    if conf >= CONF_REMOVE and passed:
         action = "remove"
     elif conf >= CONF_REVIEW:
         action = "review"
     else:
         action = "keep"
-    if conf >= CONF_REMOVE and not g.get("ok"):
+    if conf >= CONF_REMOVE and not passed:
         action = "review"
         failed = [k for k in ("inSilence", "outSilence", "wordClipped") if not g.get(k)]
         if g.get("tailKeepMs", 0) < TAIL_KEEP_MS:
@@ -152,8 +188,6 @@ def detect_filler(wl: dict) -> list[dict]:
     chars, out = wl.get("chars", []), []
     for word, conf in FILLERS.items():
         for a, b in _find_all(text, word):
-            if a == 0 and len(text) > len(word) and text[b:b + 1] not in "，。！？…":
-                pass
             in_ms, out_ms = _span_ms(chars, cmap[a], cmap[b - 1] + 1)
             if out_ms - in_ms <= 0 or out_ms - in_ms > 1500:
                 continue
@@ -185,36 +219,187 @@ def detect_repetition(wl: dict) -> list[dict]:
     return _dedupe(out)
 
 
-def detect_retake(wl: dict, max_gap_ms: int = 15000, min_ratio: float = 0.80) -> list[dict]:
-    """重录:相邻两句高度相似且后者更完整 → 删前者、留后者(人总把好的说在最后)。"""
+def _more_complete(new: str, old: str) -> bool:
+    """后者更完整(人总把好的说在最后)。"""
+    if len(new) > len(old):
+        return True
+    return len(new) >= len(old) and new.rstrip()[-1:] in "。！？…"
+
+
+def _sentence_spans(wl: dict) -> list[dict]:
+    """句 → {id, text, startMs, endMs}。粗剪检测间通用。"""
     sents = wl.get("sentences") or []
     chars = wl.get("chars", [])
     out = []
-    for a, b in zip(sents, sents[1:]):
-        ta, tb = a.get("text", ""), b.get("text", "")
-        if not ta or not tb:
+    for s in sents:
+        a, b = s.get("span", [0, 0])
+        a, b = max(0, int(a)), min(int(b), len(chars))
+        if b <= a:
             continue
-        sa, ea = a.get("span", [0, 0])
-        sb, eb = b.get("span", [0, 0])
-        if not (ea > sa and eb > sb):
+        out.append({"id": s.get("id", len(out)),
+                    "text": s.get("text") or "".join(c["ch"] for c in chars[a:b]),
+                    "startMs": int(chars[a]["startMs"]),
+                    "endMs": int(chars[b - 1]["endMs"])})
+    return out
+
+
+def _chain_merge(cuts: list[dict], tol_ms: int = 300) -> list[dict]:
+    """把同一段话的连续重录刀串成一刀 —— 否则两个旧尝试之间会留下几十毫秒的碎片。"""
+    if not cuts:
+        return []
+    ordered = sorted(cuts, key=lambda c: (c["inMs"], c["outMs"]))
+    out = [dict(ordered[0])]
+    for c in ordered[1:]:
+        last = out[-1]
+        if c["inMs"] <= last["outMs"] + tol_ms:
+            last["outMs"] = max(last["outMs"], c["outMs"])
+            last["note"] = f"{last.get('note', '')}; {c.get('note', '')}".strip("; ")
+        else:
+            out.append(dict(c))
+    return out
+
+
+def detect_retake(wl: dict, max_gap_ms: int = 30000, min_ratio: float = 0.80,
+                  max_sents: int = 6) -> list[dict]:
+    """重录:**滑动窗口内任意两句**高度相似且后者更完整 → 删 [最早旧尝试, 最后一次尝试)。
+
+    v0.7.0(OPTIMIZATION-v7 #3):旧实现只比相邻两句,而"说完一段/调整后再重来"常跨
+    2–3 句、间隔更久 → 大量漏检;且每次只删紧邻前一次,同一段录三次会残留中间那次。
+    现在:窗口 = 句数 ≤max_sents 或时间间隔 ≤max_gap_ms;命中后**一刀删掉全部旧尝试**。
+    出点取「最后一次尝试起点 − TAIL_KEEP_MS」,留出自然起音,同时满足 tailKeep 硬项。
+    """
+    spans = _sentence_spans(wl)
+    out: list[dict] = []
+    for i, a in enumerate(spans):
+        if not a["text"]:
             continue
-        t_a_end = int(chars[min(ea, len(chars)) - 1]["endMs"])
-        t_b_start = int(chars[min(sb, len(chars) - 1)]["startMs"])
-        if t_b_start - t_a_end > max_gap_ms:
+        best = -1
+        for j in range(i + 1, min(len(spans), i + 1 + max_sents)):
+            b = spans[j]
+            if not b["text"]:
+                continue
+            if b["startMs"] - a["endMs"] > max_gap_ms:
+                break
+            if not _more_complete(b["text"], a["text"]):
+                continue
+            if SequenceMatcher(None, a["text"], b["text"]).ratio() < min_ratio:
+                continue
+            best = j                       # 取窗口内**最后一次**相似尝试
+        if best < 0:
             continue
-        ratio = SequenceMatcher(None, ta, tb).ratio()
-        if ratio < min_ratio:
-            continue
-        more_complete = len(tb) >= len(ta) and tb[-1:] in "。！？…" or len(tb) > len(ta)
-        if not more_complete:
-            continue
-        in_ms = int(chars[min(sa, len(chars) - 1)]["startMs"])
-        out_ms = t_b_start
-        if out_ms - in_ms < 200:
-            continue
+        in_ms = a["startMs"]
+        out_ms = max(in_ms + 200, spans[best]["startMs"] - TAIL_KEEP_MS)
+        ratio = SequenceMatcher(None, a["text"], spans[best]["text"]).ratio()
         out.append({"inMs": in_ms, "outMs": out_ms, "reason": "retake",
                     "conf": round(min(0.97, 0.72 + ratio * 0.3), 3),
-                    "note": f"第 {a['id'] + 1} 次尝试(相似度 {ratio:.2f}),保留后一次"})
+                    "note": f"第 {i + 1}→{best + 1} 句重录(相似度 {ratio:.2f}),保留最后一次"})
+    return _dedupe(_chain_merge(out))
+
+
+def detect_retake_block(wl: dict, min_chars: int = 8, max_gap_ms: int = 60000) -> list[dict]:
+    """段落级整段重来:同一段话(连续 ≥min_chars 字)**原样**再说一遍 → 删旧留新。
+
+    用于"说完一整段觉得不满意,整段重来"。判据取保守的**逐字相同**,宁可漏删不可错删。
+    """
+    text, cmap = _text_and_map(wl)
+    chars = wl.get("chars", [])
+    n = len(text)
+    if n < 2 * min_chars or not chars:
+        return []
+    out: list[dict] = []
+    k = 0
+    while k + min_chars <= n:
+        best_pos, best_len = -1, 0
+        for p in range(k + 1, n - min_chars + 1):
+            L = 0
+            while (k + L < p) and (p + L < n) and text[k + L] == text[p + L]:
+                L += 1
+            if L > best_len:
+                best_pos, best_len = p, L
+        if best_len < min_chars:
+            k += 1
+            continue
+        in_ms = int(chars[cmap[k]]["startMs"])
+        out_ms = max(in_ms + 200, int(chars[cmap[best_pos]]["startMs"]) - TAIL_KEEP_MS)
+        if out_ms - in_ms >= 200 and out_ms - in_ms <= max_gap_ms:
+            out.append({"inMs": in_ms, "outMs": out_ms, "reason": "false_start",
+                        "conf": 0.92,
+                        "note": f"整段重来「{text[k:k + min(min_chars, 12)]}…」({best_len} 字),保留后一次"})
+        k = best_pos + best_len            # 跳过已匹配区间,避免同一处反复出刀
+    return _dedupe(out)
+
+
+_SIL_START = re.compile(r"silence_start:\s*(-?[\d.]+)")
+_SIL_END = re.compile(r"silence_end:\s*(-?[\d.]+)")
+
+
+def parse_silencedetect(stderr: str) -> list[dict]:
+    """解析 ffmpeg `silencedetect` 的输出 → [{startMs, endMs, ms}]。"""
+    out, cur = [], None
+    for line in stderr.splitlines():
+        m = _SIL_START.search(line)
+        if m:
+            cur = float(m.group(1))
+            continue
+        m = _SIL_END.search(line)
+        if m and cur is not None:
+            end = float(m.group(1))
+            start_ms, end_ms = int(cur * 1000), int(end * 1000)
+            if end_ms > start_ms:
+                out.append({"startMs": start_ms, "endMs": end_ms, "ms": end_ms - start_ms})
+            cur = None
+    return out
+
+
+def _probe_silence(media: Path, db: float, min_ms: int) -> list[dict] | None:
+    """用 ffmpeg 能量探测静音段。工具不可用时返回 None(调用方退回字间 gap)。"""
+    try:
+        from rs_common import ffmpeg_bin, load_config, run
+        p = run([ffmpeg_bin(load_config()), "-hide_banner", "-nostats", "-i", str(media),
+                 "-af", f"silencedetect=noise={db}dB:d={min_ms / 1000.0:.3f}",
+                 "-f", "null", "-"])
+        return parse_silencedetect(p.stderr or "")
+    except Exception:  # noqa: BLE001 — 无 ffmpeg / 解码失败 → 由调用方退回 gap
+        return None
+
+
+def detect_dead_air(wl: dict, media: str | None = None, min_ms: int = DEAD_AIR_MIN_MS,
+                    db: float = -35.0) -> list[dict]:
+    """「有画面无语音」长段(调整仪容 / 换提词器):优先按素材音频能量探测。
+
+    给了 media 且 ffmpeg 可用 → `silencedetect` 能量探测(能抓到 ASR 却把静音写成了
+    文本的情况);否则退回 wordline 的字间 gap,只认 ≥min_ms 的空档。
+    """
+    spans: list[dict] = []
+    if media:
+        spans = _probe_silence(Path(media), db, min_ms) or []
+    if not spans:
+        spans = [g for g in _gap_windows(wl.get("chars", [])) if g["ms"] >= min_ms]
+    out = []
+    for g in spans:
+        in_ms, out_ms = int(g["startMs"]) + 120, int(g["endMs"]) - 120
+        if out_ms - in_ms < 200:
+            continue
+        out.append({"inMs": in_ms, "outMs": out_ms,
+                    "reason": "breath" if g["ms"] < min_ms * 2 else "silence",
+                    "conf": 0.95,
+                    "note": f"无有效语音 {g['ms']}ms(疑似调整仪容/换提词器)"})
+    return _dedupe(out)
+
+
+def detect_self_negative(wl: dict, max_len_ms: int = 4000) -> list[dict]:
+    """口播里的"元话语"(说错了/再来一遍…)—— 成片里不该出现;只进 review,不自动删。"""
+    text, cmap = _text_and_map(wl)
+    chars = wl.get("chars", [])
+    out = []
+    for phrase in SELF_NEGATIVE:
+        for a, b in _find_all(text, phrase):
+            in_ms = int(chars[cmap[a]]["startMs"])
+            out_ms = int(chars[cmap[b - 1]]["endMs"])
+            if out_ms - in_ms > max_len_ms:
+                continue
+            out.append({"inMs": in_ms, "outMs": out_ms, "reason": "off_topic", "conf": 0.85,
+                        "note": f"疑似元话语「{phrase}」,人工/Agent 确认后删"})
     return _dedupe(out)
 
 
@@ -229,8 +414,10 @@ def detect_off_topic(wl: dict, spans: list[list[int]] | None = None) -> list[dic
     return out
 
 
-DETECTORS = {"silence": detect_silence, "filler": detect_filler,
-             "repetition": detect_repetition, "retake": detect_retake}
+DETECTORS = {"silence": detect_silence, "dead_air": detect_dead_air,
+             "filler": detect_filler, "repetition": detect_repetition,
+             "retake": detect_retake, "retake_block": detect_retake_block,
+             "self_negative": detect_self_negative}
 
 
 # ---------------------------------------------------------------- 融合
@@ -286,7 +473,8 @@ def build_cutlist(wl: dict, cuts: list[dict], params: dict | None = None) -> dic
             raise ValueError(f"未知 reason:{c['reason']}")
         c.setdefault("note", "")
         classify(c)
-        if rhetorical_suspect(c, merged):
+        # 反向保护只针对"停顿类"刀:重录/整段重来删掉的是一整段重复内容,不是修辞停顿
+        if c["reason"] in ("silence", "breath") and rhetorical_suspect(c, merged):
             c["action"] = "review"
             c["note"] = (c["note"] + " [rhetorical_pause_suspect]").strip()
     removed = [c for c in merged if c["action"] == "remove"]
@@ -340,17 +528,27 @@ def write_report(cl: dict, path: Path) -> None:
     ]
     for c in cuts:
         g = c["guard"]
-        gs = "✓" if g["ok"] else f"✗({','.join(k for k in ('inSilence', 'outSilence', 'wordClipped') if not g[k])})"
+        need = g.get("required") or list(GUARD_ALL)
+        passed = guard_passed(g)
+        hard_bad = [k for k in ("inSilence", "outSilence", "wordClipped") if k in need and not g.get(k)]
+        if "tailKeep" in need and g.get("tailKeepMs", 0) < TAIL_KEEP_MS:
+            hard_bad.append("tailKeepMs")
+        warn = [k for k in ("inSilence", "outSilence") if k not in need and not g.get(k)]
+        gs = ("✓硬过" if passed else "✗" + ",".join(hard_bad)) + \
+             (f" 告警:{','.join(warn)}" if warn else "")
         lines.append(f"| {c['id']} | {c['inMs']} | {c['outMs']} | {c['reason']} | {c['conf']} | "
                      f"{c['action']} | {gs} | {c.get('note', '')} |")
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def write_review_pack(cl: dict, outdir: Path, src: str | None = None) -> int:
-    """每刀一个 md(有 ffmpeg 且给了源素材时附切点前后各 1.5s 音频)。"""
+    """每刀一个 md(有 ffmpeg 且给了源素材时附切点前后各 1.5s 音频)。
+
+    抽音频失败**不阻塞**,但会把失败项记进 `review/_DEGRADED.md`(不再静默吞掉)。
+    """
     rev = outdir / "review"
     rev.mkdir(parents=True, exist_ok=True)
-    n = 0
+    n, failed = 0, []
     for c in cl["cuts"]:
         if c["action"] != "review":
             continue
@@ -361,15 +559,25 @@ def write_review_pack(cl: dict, outdir: Path, src: str | None = None) -> int:
                 f"- guard: {json.dumps(c['guard'], ensure_ascii=False)}",
                 f"- 说明: {c.get('note', '')}", "",
                 "> 听 `%s.wav`(切点前后各 1.5s),approve 则把 action 改为 remove 并重跑 `--apply`。" % c["id"]]
+        if src and not _extract_clip(Path(src), rev / f"{c['id']}.wav", c["inMs"], c["outMs"]):
+            failed.append(c["id"])
+            body.append("")
+            body.append("> ⚠ 切点音频抽取失败(无 ffmpeg / 解码失败):只能看上面的区间自行判断。")
         (rev / f"{c['id']}.md").write_text("\n".join(body) + "\n", encoding="utf-8")
-        if src:
-            _extract_clip(Path(src), rev / f"{c['id']}.wav", c["inMs"], c["outMs"])
+    if failed:
+        (rev / "_DEGRADED.md").write_text(
+            "# 审查包降级说明\n\n以下刀未能抽出切点音频(无 ffmpeg / 素材解码失败):\n\n"
+            + "\n".join(f"- {i}" for i in failed) + "\n\n"
+            "修复:`--media <源素材>` 指向可解码文件,或先跑 `rs_doctor --report` 查 ffmpeg。\n",
+            encoding="utf-8")
+    else:
+        (rev / "_DEGRADED.md").unlink(missing_ok=True)
     return n
 
 
-def _extract_clip(src: Path, dst: Path, in_ms: int, out_ms: int) -> None:
+def _extract_clip(src: Path, dst: Path, in_ms: int, out_ms: int) -> bool:
+    """切点前后各 1.5s 抽成 wav。返回是否成功(失败不抛,由调用方记降级)。"""
     try:
-        sys.path.insert(0, str(Path(__file__).parent))
         from rs_common import ffmpeg_bin, load_config, run
         start = max(0, in_ms - 1500) / 1000
         dur = (out_ms - in_ms + 3000) / 1000
@@ -377,8 +585,11 @@ def _extract_clip(src: Path, dst: Path, in_ms: int, out_ms: int) -> None:
                  "-t", f"{dur:.3f}", "-i", str(src), "-vn", str(dst)])
         if p.returncode != 0 or not dst.is_file():
             dst.unlink(missing_ok=True)
-    except Exception:  # noqa: BLE001
-        pass  # 无 ffmpeg 时只留 md,不阻塞
+            return False
+        return True
+    except Exception:  # noqa: BLE001 — 无 ffmpeg / 配置缺失:降级留痕,不阻塞
+        dst.unlink(missing_ok=True)
+        return False
 
 
 def finalize_cutlist(cl: dict) -> dict:
@@ -411,6 +622,9 @@ def main() -> int:
     ap.add_argument("--off-topic", dest="off_topic", default="",
                     help="Agent 判定的跑题段落,格式 '起-止,起-止'(chars 下标)")
     ap.add_argument("--min-silence-ms", type=int, default=SILENCE_MIN_MS)
+    ap.add_argument("--media", help="源素材路径(给 dead_air 做音频能量探测;不给则退回字间 gap)")
+    ap.add_argument("--retake-ratio", dest="retake_ratio", type=float, default=0.80,
+                    help="重录相似度阈值(口播 0.80;怕误删的类型可提到 0.86)")
     a = ap.parse_args()
 
     if a.review_pack:
@@ -451,7 +665,12 @@ def main() -> int:
         fn = DETECTORS.get(name)
         if not fn:
             return emit(False, "BAD_DETECTOR", f"未知检测器:{name}(可选 {list(DETECTORS)})", exit_code=2)
-        got = fn(wl)
+        if name == "dead_air":
+            got = fn(wl, media=a.media)
+        elif name == "retake":
+            got = fn(wl, min_ratio=a.retake_ratio)
+        else:
+            got = fn(wl)
         counts[name] = len(got)
         cuts.extend(got)
     if a.off_topic:
@@ -463,7 +682,8 @@ def main() -> int:
         cuts.extend(detect_off_topic(wl, spans))
 
     params = {"silenceMinMs": a.min_silence_ms, "tailKeepMs": TAIL_KEEP_MS,
-              "confRemove": CONF_REMOVE, "confReview": CONF_REVIEW}
+              "retakeRatio": a.retake_ratio, "confRemove": CONF_REMOVE,
+              "confReview": CONF_REVIEW}
     try:
         cl = build_cutlist(wl, cuts, params)
     except ValueError as exc:

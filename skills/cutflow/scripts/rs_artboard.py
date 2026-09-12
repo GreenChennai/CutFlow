@@ -24,10 +24,10 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from rs_common import emit, load_config  # noqa: E402
+from rs_common import RATIOS, emit, load_config  # noqa: E402
 
 REGISTRY = "manifest.json"
-SIZE_BY_RATIO = {"9x16": (1080, 1920), "16x9": (1920, 1080)}
+SIZE_BY_RATIO = dict(RATIOS)
 
 
 # ---------------------------------------------------------------- 清单

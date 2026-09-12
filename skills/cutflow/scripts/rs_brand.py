@@ -16,7 +16,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from rs_common import emit  # noqa: E402
+from rs_common import canvas_for, emit  # noqa: E402
 
 SCRIPTS_DIR = Path(__file__).resolve().parent
 
@@ -66,8 +66,8 @@ def check_safe_area(rect: dict, canvas: dict) -> list[str]:
 def variant_ir(ir: dict, variant: dict, logo: dict, ratio: str) -> dict:
     """在 IR 末尾追加一条 logo overlay 轨(纯声明,不改动其它轨道)。"""
     doc = json.loads(json.dumps(ir))
-    doc["canvas"] = {"9x16": {"width": 1080, "height": 1920},
-                     "16x9": {"width": 1920, "height": 1080}}[ratio]
+    w, h = canvas_for(ratio)                       # 画幅查表(rs_common 唯一真相源)
+    doc["canvas"] = {"width": w, "height": h}
     rect = logo_rect(logo, doc["canvas"], ratio)
     doc["outputs"] = [ratio]
     doc["variantId"] = variant["id"]

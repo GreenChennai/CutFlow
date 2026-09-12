@@ -26,6 +26,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from rs_common import emit  # noqa: E402
+import segmentation  # noqa: E402
 
 SCRIPTS_DIR = Path(__file__).resolve().parent
 CST = timezone(timedelta(hours=8))
@@ -41,7 +42,8 @@ def spec() -> list[dict]:
     return [
         {"id": "S0", "name": "基础素材", "manual": True,
          "inputs": ["00_brief/brief.md", "01_materials/*"],
-         "outputs": ["01_materials/*"], "scripts": []},
+         "outputs": ["01_materials/manifest.json"], "scripts": ["rs_ingest.py"],
+         "cmd": ["rs_ingest.py", "scan", ".", "--slug", "{slug}"]},
         {"id": "S1", "name": "转写与字级对齐",
          "inputs": ["01_materials/*"], "outputs": ["05_ir/wordline.json"],
          "scripts": ["rs_align.py"],
@@ -173,7 +175,7 @@ def params_of(root: Path) -> dict:
             return (json.loads(p.read_text(encoding="utf-8")).get("params") or {})
         except json.JSONDecodeError:
             pass
-    return {"maxChars": {"9x16": 12, "16x9": 22}, "cpsMax": 9}
+    return {"maxChars": dict(segmentation.MAX_CHARS), "cpsMax": 9}
 
 
 def evaluate(root: Path, st: dict) -> dict:

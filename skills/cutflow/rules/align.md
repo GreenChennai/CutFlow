@@ -53,7 +53,7 @@
 | 素材 | 字级来源 | 说明 |
 |---|---|---|
 | **口播视频**(首选) | **FunASR Paraformer 原生 `timestamp`** | 一次调用即得逐字 `[[880,1120],...]`;`res[0]["text"]` 与 `res[0]["timestamp"]` 逐字对应 |
-| **纯文案 TTS** | 逐句 wav **ffprobe 实测**时长 + 句内字级对齐 | **禁止**用估算/字符数累加;句内位置由对齐模型给出 |
+| **纯文案 TTS** | 逐句 wav **ffprobe 实测**时长 → 句级真实区间;字级由 **`rs_dub align`** 强制对齐补上 | 实测时长可用;句内位置**不许当字级用** —— 未对齐前标 `charTimingEstimated`(见 §5) |
 | **兜底** | `fa-zh` 强制对齐 | ⚠️ **慎用**,见 §5 |
 
 ### 3.1 取 Paraformer 原生字级时间戳(性价比最高的一步)
@@ -106,6 +106,8 @@ def map_src_to_final(t_src_ms: float, segments: list[dict]) -> float:
 | **旧覆盖公式语义颠倒** | 真实字级时间戳恒判 ~75% 不达标(词间停顿全算"未覆盖"),降级均分反而 100%——好坏倒挂 | v0.6.0 起 `rs_align.py` 用**跨度覆盖率** =(首字起点→末字终点)÷转写声明区间,只对漏转写敏感;<0.99 输出 ⚠ 软警告 |
 | **retext 补标点孤立成句** | 校对插入的标点零宽继承邻字时间 → 与前字 gap 巨大 → gap 切句 → 单标点成卡缺 startMs → 排最前污染首卡 | `_resplit_sentences` 把孤立标点并入前句;`rs_subtitle` 侧用 `_PUNCT_ONLY` 显式跳过纯标点文本(不能拿 `_clean_card` 当 skip 判据,它设计上保留 ?! 语气) |
 | retext 统计字段位置 | 测试按 `doc["retext"]["stats"]["editChars"]` 断言 KeyError | 统计**平铺**在 `doc["retext"]` 下(如 `editChars`/`similarity`),没有嵌套 stats 层 |
+| **无字级时间戳时"卡内位置"是估算的** | 被当成字级用 → 逐字染色/终点校验失去意义 | v0.7.0(#1)起 `build_wordline` 置 `charTimingEstimated=True`、逐字打 `estimated` 标,`degradeReasons` 明写"卡内位置为估算(不可当字级用)";卡拉OK 显式拒绝;正解是 `rs_dub align` 做强制对齐(#10) |
+| **估算时间仍会造成卡内漂移** | 只有句级时间准 → 句内快慢靠运气 | 这是**已知且有意的折中**:句级整句卡会伤长句可读性,所以在 `max_chars` 内出卡并**显式标注**;真正的字级必须走 `rs_dub align`(译文:L1 目测清单会把"卡内位置为估算"列为待确认项) |
 
 ## 6. 门禁与验收
 

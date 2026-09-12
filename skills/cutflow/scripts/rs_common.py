@@ -16,6 +16,60 @@ CONFIG_PATH = REPO_ROOT / "config.json"
 
 EXIT_OK, EXIT_INPUT, EXIT_DEP, EXIT_EXEC = 0, 2, 3, 4
 
+# 画幅唯一真相源(OPTIMIZATION-v7 #4):新增画幅只改这里 + templates/platforms.json
+RATIOS: dict[str, tuple[int, int]] = {
+    "9x16": (1080, 1920),      # 抖音 / 视频号
+    "3x4": (1080, 1440),       # 小红书
+    "16x9": (1920, 1080),      # B站 / YouTube
+}
+
+
+def p95(values: list[float]) -> float:
+    """95 分位(小样本取上界)。各处自检报告统一口径,别再各写一遍索引式。"""
+    if not values:
+        return 0.0
+    s = sorted(values)
+    return s[min(len(s) - 1, int(len(s) * 0.95))]
+
+
+def guard_passed(guard: dict | None) -> bool:
+    """粗剪 guard 是否通过(`okByReason` 优先,兼容老工程的 `ok`)。粗剪/自检共用一套口径。"""
+    g = guard or {}
+    return bool(g.get("okByReason", g.get("ok")))
+
+
+def canvas_for(ratio: str) -> tuple[int, int]:
+    """比例 → (宽, 高);未知比例报错而不是静默猜。"""
+    if ratio not in RATIOS:
+        raise ValueError(f"未知比例 {ratio!r}(可选 {'/'.join(RATIOS)})")
+    return RATIOS[ratio]
+
+
+def ratio_for_canvas(width: int, height: int) -> str:
+    """(宽, 高) → 比例;查不到时报错(旧实现是字符串比较,新画幅必然漏)。"""
+    for name, (w, h) in RATIOS.items():
+        if (w, h) == (int(width), int(height)):
+            return name
+    raise ValueError(f"画布 {width}x{height} 不对应任何已知比例({'/'.join(RATIOS)})")
+
+
+def ensure_utf8() -> None:
+    """把 stdout/stderr 切到 UTF-8(带 replace 兜底)。
+
+    Windows 控制台默认 cp936,打印 `✓`/`↔`/emoji 会 UnicodeEncodeError 直接崩脚本。
+    已被重定向或被测试框架替换的流没有 reconfigure → 静默跳过(绝不因它抛异常)。
+    """
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")   # type: ignore[union-attr]
+        except Exception:  # noqa: BLE001 — 无 reconfigure / 已关闭 → 不阻塞
+            pass
+
+
+# 导入即兜底:任何 rs_*.py 只要 import rs_common,就不再因控制台编码把脚本打崩
+# (实测踩坑:rs_verify 的检查名含 `↔`,GBK 控制台下 emit() 直接 UnicodeEncodeError)
+ensure_utf8()
+
 
 def load_config() -> dict:
     if not CONFIG_PATH.is_file():
@@ -80,11 +134,12 @@ def resolve_voice(voice: str, cfg: dict | None = None) -> Path:
     direct = voices / voice / "card.json"
     if direct.is_file():
         return direct
-    hits = []
+    hits, broken = [], []
     for card_path in voices.glob("*/card.json"):
         try:
             card = json.loads(card_path.read_text(encoding="utf-8"))
-        except Exception:
+        except (json.JSONDecodeError, OSError) as exc:
+            broken.append(f"{card_path.parent.name}({type(exc).__name__})")   # 不静默吞掉坏卡
             continue
         hay = " ".join([card.get("name", ""), card.get("gpt", ""), card.get("sovits", "")]).lower()
         if voice.lower() == card.get("name", "").lower() or voice.lower() in hay:
@@ -92,7 +147,8 @@ def resolve_voice(voice: str, cfg: dict | None = None) -> Path:
     if len(hits) == 1:
         return hits[0]
     if not hits:
-        raise FileNotFoundError(f"找不到音色卡:{voice}(voices_dir={voices})")
+        extra = f";另有 {len(broken)} 张卡读取失败:{','.join(broken)}" if broken else ""
+        raise FileNotFoundError(f"找不到音色卡:{voice}(voices_dir={voices}){extra}")
     raise ValueError(f"音色名 {voice} 命中多张卡:{[h.parent.name for h in hits]}")
 
 

@@ -22,6 +22,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
+import rs_common  # noqa: E402
 from rs_common import emit  # noqa: E402
 import rs_ir  # noqa: E402
 import rs_sync  # noqa: E402
@@ -92,17 +93,33 @@ def picture_changed(root: Path) -> list[str]:
 
 # ---------------------------------------------------------------- L0 判据
 
+def _ratio_of(root: Path) -> str:
+    """从 IR 画布反查比例。新画幅(3x4)必须走查表,不能拿字符串比较 1080x1920。"""
+    p = root / "05_ir" / "project.json"
+    if p.is_file():
+        try:
+            c = (json.loads(p.read_text(encoding="utf-8")) or {}).get("canvas") or {}
+            from rs_common import ratio_for_canvas
+            return ratio_for_canvas(c.get("width", 1080), c.get("height", 1920))
+        except Exception:  # noqa: BLE001 — 画布异常 → 退回默认比例,不阻塞自检
+            pass
+    return "9x16"
+
+
 def _max_chars(root: Path) -> int:
+    ratio = _ratio_of(root)
+    if ratio not in DEFAULT_MAX_CHARS:
+        ratio = "9x16"
     p = root / "05_ir" / "pipeline.json"
     if p.is_file():
         try:
             params = json.loads(p.read_text(encoding="utf-8")).get("params") or {}
-            v = (params.get("maxChars") or {}).get("9x16")
+            v = (params.get("maxChars") or {}).get(ratio)
             if isinstance(v, int) and 4 <= v <= 40:
                 return v
         except json.JSONDecodeError:
             pass
-    return DEFAULT_MAX_CHARS["9x16"]
+    return DEFAULT_MAX_CHARS[ratio]
 
 
 def check_ir(root: Path) -> dict:
@@ -156,7 +173,8 @@ def check_cutlist(root: Path) -> dict:
     except json.JSONDecodeError as exc:
         return {"name": "粗剪 guard 全过", "ok": False, "detail": f"JSON 解析失败:{exc}"}
     removes = [c for c in cl.get("cuts", []) if c.get("action") == "remove"]
-    bad = [c["id"] for c in removes if not (c.get("guard") or {}).get("ok")]
+
+    bad = [c["id"] for c in removes if not rs_common.guard_passed(c.get("guard"))]
     total = int(cl.get("srcTotalMs") or 0)
     keep = cl.get("keep") or []
     cover_ok = bool(keep) and keep[0][0] == 0 and keep[-1][1] == total
@@ -187,11 +205,12 @@ def check_subtitles(root: Path) -> dict:
                       "startMs": int(e["start"] * 1000), "endMs": int(e["end"] * 1000),
                       "durMs": dur_ms,
                       "cps": round(len(txt) / (dur_ms / 1000.0), 2) if dur_ms else 0.0})
-    viol = segmentation.check_constraints(cards, max_chars, segmentation.CPS_MAX["9x16"])
+    viol = segmentation.check_constraints(cards, max_chars, segmentation.cps_max_for(max_chars))
     over = [v for v in viol if "时长" in v and ">" in v]
     return {"name": "字幕合规(字数/CPS/时长/不重叠)", "ok": not viol,
             "detail": "; ".join(viol[:5]), "eventCount": len(events),
-            "maxChars": max_chars, "violations": viol, "hardDuration": over}
+            "ratio": _ratio_of(root), "maxChars": max_chars,
+            "violations": viol, "hardDuration": over}
 
 
 def check_alignment(root: Path) -> dict:
@@ -237,7 +256,7 @@ def collect_l0(root: Path) -> dict:
 
 L1_CHECKLIST = [
     "画面无黑帧 / 花屏 / 绿幕残留",
-    "字幕未压脸、未出安全区(9:16 底部 25% 与顶部 12%)",
+    "字幕未压脸、未出安全区(9:16 底 25%/顶 12%;3:4 底 18%/顶 10%;16:9 底 16%/顶 8%)",
     "信息卡/动画卡内容在安全带内(顶部 12% / 底部 30% / 左右 8%)",
     "Logo 未进入字幕带、未遮挡关键信息",
     "转场无跳变、无音画错位可感知",

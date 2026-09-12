@@ -15,13 +15,36 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from rs_common import emit  # noqa: E402
+from rs_common import RATIOS, canvas_for, emit  # noqa: E402
 import segmentation  # noqa: E402
 import textopt  # noqa: E402
+
+PLATFORMS_PATH = Path(__file__).resolve().parents[1] / "templates" / "platforms.json"
+
+
+def load_platforms() -> dict:
+    """读平台预设档案(templates/platforms.json)。缺文件返回空表,不阻塞普通出片。"""
+    if not PLATFORMS_PATH.is_file():
+        return {}
+    try:
+        return json.loads(PLATFORMS_PATH.read_text(encoding="utf-8")).get("platforms") or {}
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def resolve_platform(name: str | None) -> dict:
+    """平台名 → 预设;未知名直接报错(不静默退回默认,否则会出一版错规格的片子)。"""
+    if not name:
+        return {}
+    table = load_platforms()
+    if name not in table:
+        raise KeyError(f"未知平台 {name!r}(可选 {'/'.join(table) or '无'})")
+    return dict(table[name])
 
 MAX_CHARS = dict(segmentation.MAX_CHARS)          # 9x16=12 / 16x9=22(竖屏已从 16 下调)
 TAIL_STOP = "。!?…;:!?"
@@ -32,25 +55,28 @@ BAD_END = "我你他她它们这那就都也很不有在和与跟对往朝从被
 FRAME_MS = 1000 / 30.0                            # 卡间距 ≥2 帧
 MIN_GAP_FRAMES = 2
 
+RELEASE_MS = segmentation.RELEASE_MS             # 卡相对首/末字的时间释放余量
+EXTEND_MAX_S = 0.30                               # 为凑最短时长可延长的后沿上限(秒)
+
 _PUNCT_ONLY = set("。,、;::!?!?…,. ;:~·—–-()()《》「」『』【】[]“”‘’\"' ")
 
 STYLES = {
     "talkshow-bold": {
-        "font": "Microsoft YaHei", "size": {"9x16": 78, "16x9": 64},
+        "font": "Microsoft YaHei", "size": {"9x16": 78, "3x4": 72, "16x9": 64},
         "primary": "&H00FFFFFF", "outline": "&H00101010", "back": "&H80000000",
-        "outline_w": 3, "shadow": 1, "margin_v": {"9x16": 500, "16x9": 120},
+        "outline_w": 3, "shadow": 1, "margin_v": {"9x16": 500, "3x4": 400, "16x9": 120},
         "align": 2, "bold": 1,
     },
     "tutorial-clean": {
-        "font": "Microsoft YaHei", "size": {"9x16": 62, "16x9": 56},
+        "font": "Microsoft YaHei", "size": {"9x16": 62, "3x4": 58, "16x9": 56},
         "primary": "&H00FFFFFF", "outline": "&H00000000", "back": "&H60000000",
-        "outline_w": 2, "shadow": 0, "margin_v": {"9x16": 520, "16x9": 90},
+        "outline_w": 2, "shadow": 0, "margin_v": {"9x16": 520, "3x4": 430, "16x9": 90},
         "align": 2, "bold": 0, "border_style": 3,
     },
     "subtitle-white": {
-        "font": "Microsoft YaHei", "size": {"9x16": 68, "16x9": 58},
+        "font": "Microsoft YaHei", "size": {"9x16": 68, "3x4": 64, "16x9": 58},
         "primary": "&H00FFFFFF", "outline": "&H00000000", "back": "&H00000000",
-        "outline_w": 2, "shadow": 1, "margin_v": {"9x16": 320, "16x9": 110},
+        "outline_w": 2, "shadow": 1, "margin_v": {"9x16": 320, "3x4": 280, "16x9": 110},
         "align": 2, "bold": 1,
     },
 }
@@ -156,11 +182,31 @@ def _sentence_slices(wl: dict) -> list[tuple[str, list[int], dict]]:
     return out
 
 
+def _to_cards(events: list[dict]) -> list[dict]:
+    """事件 → 约束校验用的卡结构(与 events_from_wordline 尾部同口径)。"""
+    out = []
+    for i, e in enumerate(events):
+        n_chars = len(e["text"].replace(" ", ""))
+        dur_ms = int(round((e["end"] - e["start"]) * 1000))
+        out.append({"i": i, "text": e["text"], "chars": n_chars,
+                    "startMs": int(e["start"] * 1000), "endMs": int(e["end"] * 1000),
+                    "durMs": dur_ms,
+                    "cps": round(n_chars / (dur_ms / 1000.0), 2) if dur_ms else 0.0})
+    return out
+
+
 def events_from_wordline(wl: dict, max_chars: int, *, terms=(), top: int = 3,
-                         mode: str = "dp", karaoke: bool = False) -> tuple[list[dict], dict]:
-    """Wordline → 字幕事件。卡时间 = 首字/末字时间戳聚合(align.md §4)。"""
+                         mode: str = "dp", karaoke: bool = False,
+                         cps_max: float | None = None) -> tuple[list[dict], dict]:
+    """Wordline → 字幕事件。卡时间 = 首字/末字时间戳聚合(align.md §4)。
+
+    `wl.charTimingEstimated`(无字级时间戳)时,卡内位置是**估算**的:仍按 max_chars
+    出卡以保证可读性,但在 `degradeReasons` 里显式标注"卡内位置为估算",并由
+    `meta["charTimingEstimated"]` 告知上游 —— 真正的字级时间由 `rs_dub align`(#10)补齐。
+    """
     events: list[dict] = []
     candidates: list[dict] = []
+    seg_degrade: list[str] = []      # 单句 DP 失败 → 退回长度算法,但必须留痕
     for text, idxmap, gaps in _sentence_slices(wl):
         if all(ch in _PUNCT_ONLY or not ch.strip() for ch in text):
             continue          # 纯标点句跳过:DP 对它产卡缺 startMs(会以 0.0s 污染排序)
@@ -169,8 +215,15 @@ def events_from_wordline(wl: dict, max_chars: int, *, terms=(), top: int = 3,
                      for i, c in enumerate(textopt.card_split(text, max_chars, mode="length"))]
             plan = {"cards": cards, "violations": [], "ambiguous": False}
         else:
-            plan = segmentation.segment(text, max_chars, gaps=gaps, index_map=idxmap,
-                                        char_times=wl.get("chars"), terms=terms, top=top)
+            try:
+                plan = segmentation.segment(text, max_chars, gaps=gaps, index_map=idxmap,
+                                            char_times=wl.get("chars"), terms=terms, top=top)
+            except Exception as exc:  # noqa: BLE001 — 单句分段失败不该炸掉整条字幕
+                seg_degrade.append(f"句「{text[:12]}」DP 分段失败,退回长度算法"
+                                   f"({type(exc).__name__}: {exc})")
+                plan = {"cards": [{"i": i, "text": c, "startMs": None, "endMs": None}
+                                  for i, c in enumerate(textopt.card_split_length(text, max_chars))],
+                        "violations": [], "ambiguous": False, "plans": []}
         candidates.append({"sentence": text, "ambiguous": plan.get("ambiguous", False),
                            "plans": [{"score": p["score"], "cards": [c["text"] for c in p["cards"]]}
                                      for p in plan.get("plans", [])]})
@@ -182,6 +235,9 @@ def events_from_wordline(wl: dict, max_chars: int, *, terms=(), top: int = 3,
                 ev = {"start": 0.0, "end": 0.0, "text": cleaned, "degraded": True}
             else:
                 ev = {"start": c["startMs"] / 1000.0, "end": c["endMs"] / 1000.0, "text": cleaned}
+                # 字级锚点:后沿/起点调整只能在释放余量内做(见 _enforce_gaps / _extend_short)
+                ev["anchorStart"] = c.get("anchorStartMs", c["startMs"] + RELEASE_MS) / 1000.0
+                ev["anchorEnd"] = c.get("anchorEndMs", c["endMs"] - RELEASE_MS) / 1000.0
             events.append(ev)
 
     events.sort(key=lambda e: e["start"])
@@ -196,17 +252,16 @@ def events_from_wordline(wl: dict, max_chars: int, *, terms=(), top: int = 3,
     extended = _extend_short(events)
     _enforce_gaps(events)
     # 约束校验必须在**可读性调整之后**做,否则报的是已经不存在的问题
-    final_cards = []
-    for i, e in enumerate(events):
-        n_chars = len(e["text"].replace(" ", ""))
-        dur_ms = int(round((e["end"] - e["start"]) * 1000))
-        final_cards.append({"i": i, "text": e["text"], "chars": n_chars,
-                            "startMs": int(e["start"] * 1000), "endMs": int(e["end"] * 1000),
-                            "durMs": dur_ms,
-                            "cps": round(n_chars / (dur_ms / 1000.0), 2) if dur_ms else 0.0})
-    violations = segmentation.check_constraints(final_cards, max_chars, segmentation.CPS_MAX["9x16"])
+    final_cards = _to_cards(events)
+    violations = segmentation.check_constraints(
+        final_cards, max_chars, cps_max or segmentation.cps_max_for(max_chars))
+    reasons = list(wl.get("degradeReasons", [])) + seg_degrade
+    estimated = bool(wl.get("charTimingEstimated"))
+    if estimated and not any("估算" in r for r in reasons):
+        reasons.append("卡内位置为估算(无字级时间戳),建议 rs_dub align 补字级")
     meta = {"degraded": bool(wl.get("degraded")) or any(e.get("degraded") for e in events),
-            "degradeReasons": wl.get("degradeReasons", []),
+            "degradeReasons": reasons,
+            "charTimingEstimated": estimated,
             "violations": violations, "candidates": candidates,
             "mergedShort": merged_short, "extendedShort": extended,
             "karaokeAttached": kar_attached,
@@ -243,6 +298,8 @@ def _merge_short(events: list[dict], max_chars: int,
             if short and len(text.replace(" ", "")) <= max_chars:
                 prev["end"] = e["end"]
                 prev["text"] = text
+                if "anchorEnd" in e:
+                    prev["anchorEnd"] = e["anchorEnd"]      # 合并后占的是后一卡的时间
                 if e.get("chars"):
                     # 卡拉OK:合并文本必须同步合并逐字时间,否则 _kar_text 丢字
                     prev["chars"] = (prev.get("chars") or []) + e["chars"]
@@ -261,6 +318,8 @@ def _merge_short(events: list[dict], max_chars: int,
         if len(text.replace(" ", "")) <= max_chars:
             nxt["text"] = text
             nxt["start"] = e["start"]
+            if "anchorStart" in e:
+                nxt["anchorStart"] = e["anchorStart"]      # 起点取短卡(对齐精度)
             if e.get("chars"):
                 nxt["chars"] = (e.get("chars") or []) + (nxt.get("chars") or [])
             out.pop(i)
@@ -271,30 +330,76 @@ def _merge_short(events: list[dict], max_chars: int,
 
 
 def _extend_short(events: list[dict], min_dur: float = MIN_DUR_S) -> int:
-    """仍有余量时,把过短卡的后沿延到最短时长——**绝不越过下一卡的起点**。"""
+    """仍有余量时,把过短卡的后沿延到最短时长——**绝不超过锚点上限**。
+
+    上限 = min(末字 endMs + EXTEND_MAX_S, 下一卡起点 − 2 帧)。延长只是让字多在
+    屏上停一会(可读性),不能一路延到下一卡导致字幕滞留到停顿里。
+    """
     min_gap = MIN_GAP_FRAMES * FRAME_MS / 1000.0
     n = 0
     for i, e in enumerate(events):
         if e["end"] - e["start"] >= min_dur:
             continue
-        ceiling = (events[i + 1]["start"] - min_gap) if i + 1 < len(events) else None
         want = e["start"] + min_dur
-        if ceiling is not None:
-            want = min(want, ceiling)
+        if "anchorEnd" in e:
+            want = min(want, e["anchorEnd"] + EXTEND_MAX_S)
+        if i + 1 < len(events):
+            want = min(want, events[i + 1]["start"] - min_gap)
         if want > e["end"]:
             e["end"] = want
             n += 1
     return n
 
 
-def _enforce_gaps(events: list[dict]) -> None:
-    """卡间距 ≥2 帧;在满足间距的前提下尽量保住最短时长(收早优先,不推迟后卡起点)。"""
-    min_gap = MIN_GAP_FRAMES * FRAME_MS / 1000.0
+def _enforce_gaps(events: list[dict], fps: float = 30.0,
+                  min_gap_frames: int = MIN_GAP_FRAMES) -> int:
+    """卡间距 ≥2 帧;**但对齐精度优先**——只在释放余量内调整,绝不动字级锚点。
+
+    释放余量 = 卡起点与其首字 startMs 之差、卡终点与其末字 endMs 之差(各 ≤RELEASE_MS)。
+    调整顺序:① 推迟后卡起点(最多到其首字锚点);② 收早前卡终点(最多到其末字锚点)。
+    余量耗尽仍不足 2 帧 → 保持字级精确时间(宁可间距紧,不可音画错位)。返回仍不足项数。
+    """
+    min_gap = min_gap_frames * (1000.0 / fps) / 1000.0
+    tight = 0
     for a, b in zip(events, events[1:]):
-        if b["start"] - a["end"] >= min_gap:
+        need = min_gap - (b["start"] - a["end"])
+        if need <= 1e-9:
             continue
-        floor = a["start"] + 0.2
-        a["end"] = max(floor, b["start"] - min_gap)
+        if "anchorStart" in b:
+            b["start"] += min(need, max(0.0, b["anchorStart"] - b["start"]))
+            need = min_gap - (b["start"] - a["end"])
+        if need > 1e-9 and "anchorEnd" in a:
+            a["end"] -= min(need, max(0.0, a["end"] - a["anchorEnd"]))
+            need = min_gap - (b["start"] - a["end"])
+        if need > 1e-9:
+            tight += 1
+    # 防御:任何情况下不得重叠(锚点保证 ≥0;无锚点事件走这里兜底)
+    for a, b in zip(events, events[1:]):
+        if b["start"] < a["end"]:
+            b["start"] = a["end"]
+    return tight
+
+
+def snap_events_to_frames(events: list[dict], fps: float = 30.0) -> int:
+    """把字幕时间量化到帧:起点向下取整、终点向上取整(渲染只认帧)。
+
+    返回被调整的事件数。fps ≤ 0 时不处理。
+    """
+    if not fps or fps <= 0:
+        return 0
+    frame = 1.0 / fps
+    n = 0
+    for e in events:
+        s = math.floor(round(e["start"] / frame, 6)) * frame
+        t = math.ceil(round(e["end"] / frame, 6)) * frame
+        if s < 0:
+            s = 0.0
+        if t <= s:
+            t = s + frame
+        if abs(s - e["start"]) > 1e-9 or abs(t - e["end"]) > 1e-9:
+            e["start"], e["end"] = s, t
+            n += 1
+    return n
 
 
 # ---------------------------------------------------------------- 兼容入口
@@ -377,7 +482,11 @@ def _kar_text(e: dict) -> str:
     parts = []
     for k, c in enumerate(chs):
         cur = c["startMs"] if k > 0 else min(c["startMs"], ev_start)
-        nxt = chs[k + 1]["startMs"] if k + 1 < len(chs) else ev_end
+        if k + 1 < len(chs):
+            nxt = chs[k + 1]["startMs"]
+        else:
+            # 末字吃到末字真实结束时刻(而非卡尾)——卡尾可能因可读性被延长
+            nxt = min(ev_end, int(chs[-1].get("endMs", ev_end)))
         cs = max(1, int(round((nxt - cur) / 10.0)))
         parts.append(f"{{\\kf{cs}}}{c['ch']}")
     return "".join(parts)
@@ -445,9 +554,12 @@ def main() -> int:
     ap.add_argument("--from-wordline")
     ap.add_argument("--from-tts")
     ap.add_argument("--from-transcript")
-    ap.add_argument("--style", default="subtitle-white")
-    ap.add_argument("--ratio", default="9x16", choices=["9x16", "16x9"])
-    ap.add_argument("--canvas", default=None, help="如 1080x1920,默认按比例推断")
+    ap.add_argument("--style", default=None, help="字幕样式(默认按平台预设,再退回 subtitle-white)")
+    ap.add_argument("--ratio", default=None, choices=list(RATIOS), help="画幅比例(默认按平台预设)")
+    ap.add_argument("--canvas", default=None, help="如 1080x1920,默认按比例/平台预设推断")
+    ap.add_argument("--platform", default=None,
+                    help="平台预设:douyin / shipinhao / xiaohongshu / bilibili(见 templates/platforms.json)")
+    ap.add_argument("--max-chars", dest="max_chars", type=int, default=None, help="覆盖每卡字数上限")
     ap.add_argument("--out", required=True)
     ap.add_argument("--terms", default="", help="专有名词表(逗号分隔),断句禁切用")
     ap.add_argument("--top", type=int, default=3, help="输出前 N 个切分候选")
@@ -457,11 +569,29 @@ def main() -> int:
                     help="逐字卡拉OK字幕(\\kf 染色;需 pkg 后端字级时间戳的 wordline)")
     ap.add_argument("--allow-degraded", dest="allow_degraded", action="store_true",
                     help="卡拉OK 但 wordline 降级时,降级为普通字幕而不是报错")
+    ap.add_argument("--fps", type=float, default=30.0, help="帧率(字幕时间量化到帧)")
+    ap.add_argument("--no-snap", dest="no_snap", action="store_true",
+                    help="不做帧对齐,保留亚帧精度")
     a = ap.parse_args()
 
-    canvas = a.canvas or {"9x16": "1080x1920", "16x9": "1920x1080"}[a.ratio]
+    # 优先级:显式参数 > 平台预设 > 内置默认(见 templates/platforms.json)
+    try:
+        preset = resolve_platform(a.platform)
+    except KeyError as exc:
+        return emit(False, "BAD_PLATFORM", str(exc), exit_code=2)
+    ratio = a.ratio or preset.get("ratio") or "9x16"
+    if ratio not in RATIOS:
+        return emit(False, "BAD_RATIO", f"未知比例 {ratio}(可选 {'/'.join(RATIOS)})", exit_code=2)
+    style = a.style or preset.get("style") or "subtitle-white"
+    if a.canvas:
+        canvas = a.canvas
+    elif preset.get("canvas"):
+        canvas = f"{preset['canvas'][0]}x{preset['canvas'][1]}"
+    else:
+        w, h = canvas_for(ratio)
+        canvas = f"{w}x{h}"
     terms = tuple(t.strip() for t in a.terms.split(",") if t.strip())
-    max_chars = MAX_CHARS[a.ratio]
+    max_chars = a.max_chars or preset.get("maxChars") or MAX_CHARS[ratio]
 
     if a.from_wordline:
         wl = json.loads(Path(a.from_wordline).read_text(encoding="utf-8"))
@@ -508,17 +638,20 @@ def main() -> int:
             kar_note = "卡拉OK 降级:字级时间未覆盖任何字幕卡"
     else:
         events, meta = events_from_wordline(wl, max_chars, terms=terms, top=a.top,
-                                            mode=a.segment, karaoke=karaoke)
+                                            mode=a.segment, karaoke=karaoke,
+                                            cps_max=preset.get("cpsMax"))
         if karaoke and not meta.get("karaokeAttached"):
             karaoke = False
             kar_note = "卡拉OK 降级:字级时间未覆盖任何字幕卡"
     if kar_note:
         meta["degradeReasons"] = list(meta.get("degradeReasons") or []) + [kar_note]
+    if not a.no_snap:
+        meta["snapped"] = snap_events_to_frames(events, a.fps)
 
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
     write_srt(events, out / "master.srt")
-    write_ass(events, out / "subtitles.ass", a.style, a.ratio, canvas, karaoke=karaoke)
+    write_ass(events, out / "subtitles.ass", style, ratio, canvas, karaoke=karaoke)
 
     if meta["candidates"]:
         (out / "segments_candidates.json").write_text(
@@ -534,9 +667,11 @@ def main() -> int:
 
     return emit(True, "SUBTITLE_OK", msg,
                 {"srt": str(out / "master.srt"), "ass": str(out / "subtitles.ass"),
-                 "style": a.style, "canvas": canvas, "count": len(events),
+                 "style": style, "ratio": ratio, "platform": a.platform,
+                 "canvas": canvas, "count": len(events),
                  "maxChars": max_chars, "ambiguous": meta["ambiguous"],
                  "violations": meta["violations"][:20], "degraded": meta["degraded"],
+                 "charTimingEstimated": bool(meta.get("charTimingEstimated")),
                  "degradeReasons": meta["degradeReasons"]})
 
 

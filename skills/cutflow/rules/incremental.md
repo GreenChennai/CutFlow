@@ -28,7 +28,7 @@
   "version": 1,
   "slug": "20260910-demo-口播",
   "createdAt": "2026-09-10T14:02:11+08:00",
-  "params": {"maxChars": {"9x16": 12, "16x9": 22}, "cpsMax": 9},
+  "params": {"maxChars": {"9x16": 12, "3x4": 15, "16x9": 22}, "cpsMax": 9},
   "stages": {
     "S1": {
       "status": "done",

@@ -3,10 +3,12 @@
 > 本文件是唯一决策契约:此后一切制作决策只查此文件,不再询问。
 
 ## 目标
-- 类型(决定 genres 分册):口播绿幕
-- 穿插动画密度:少(无/少/多)
+- videoType(决定 `rules/video-types/` 分册与管线分支):
+  `talking-head`(纯口播 · 绿幕抠像 + 字幕) / `talking-head+animation`(口播+动画) / `pure-animation`(纯动画)
+- 穿插动画密度:少(无/少/多;纯口播可填"无")
+- 声音来源(纯动画必填):TTS 音色卡(默认 koubo-test) / 视频中人物原声
 - 用途/平台:
-- 比例:9:16(双出:否)
+- 比例/平台预设:9:16(双出:否;平台预设见 `rules/platforms.md`:`douyin` / `shipinhao` / `xiaohongshu` / `bilibili`)
 - 目标时长:
 
 ## 风格

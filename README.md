@@ -4,8 +4,8 @@
 「转写对齐 → 粗剪 → 合成 → 剪辑 → 字幕 → 烧录 → 自检 → 封面文案」产出成片与平台物料,
 并同步生成**可在剪映 5.9 继续精修的草稿工程**。
 
-- 支持:口播绿幕 / 纯文案动画 / 剧本分镜 / 图片素材;9:16 与 16:9;多 Logo × 多比例变体
-- 六类视频各有剪辑手册:`skills/cutflow/rules/genres/`(口播知识 / 动画教程 / 新闻采访 / 短剧 / 影视解说 / 通用规则)
+- 支持:口播绿幕 / 纯文案动画 / 剧本分镜 / 图片素材;**平台字幕预设(抖音 / 视频号 / 小红书 / B站)**,画幅 9:16 / 3:4 / 16:9;多 Logo × 多比例变体
+- 三种 videoType 各有管线手册:`skills/cutflow/rules/video-types/`(纯口播 / 口播+动画 / 纯动画 / 通用规则),并预留扩展位
 - **自带语音识别**,不依赖任何外部服务;脚本纯 Python 标准库 + FFmpeg,零第三方依赖
 
 ---
@@ -199,7 +199,7 @@ S0 素材 ─► S1 转写+字级对齐 ─► S2 粗剪 ─► S3 基础合成 
      全程:阶段缓存(增量重跑) + rebuild.py(手改级联重建) + 分级验证(L0/L1/L2)
 ```
 
-领域术语见 `CONTEXT.md`,六类视频剪辑手册见 `skills/cutflow/rules/genres/`,Agent 编排总控见 `skills/cutflow/SKILL.md`。
+领域术语见 `CONTEXT.md`,三种 videoType 的剪辑手册见 `skills/cutflow/rules/video-types/`,平台/画幅预设见 `skills/cutflow/rules/platforms.md`,Agent 编排总控见 `skills/cutflow/SKILL.md`。
 
 ## 致谢
 

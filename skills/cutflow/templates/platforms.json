@@ -1,0 +1,54 @@
+{
+ "version": 1,
+ "_doc": "平台字幕预设(单一事实源)。ratio/canvas 决定画幅;style 决定字号与位置(STYLES[style][ratio]);maxChars/cpsMax 是字幕合规上限;safeArea 为安全区比例(top/bottom 对画高,left/right 对画宽)。显式 --style/--ratio/--canvas/--max-chars 优先于本文件。",
+ "platforms": {
+  "douyin": {
+   "label": "抖音",
+   "ratio": "9x16",
+   "canvas": [1080, 1920],
+   "style": "talkshow-bold",
+   "maxChars": 12,
+   "cpsMax": 9.0,
+   "safeArea": {"top": 0.12, "bottom": 0.25, "left": 0.08, "right": 0.08},
+   "coverSize": [1080, 1920],
+   "durationHint": "15-60s 完播优先",
+   "note": "底部 25% 是评论/文案区,字幕不得进入"
+  },
+  "shipinhao": {
+   "label": "视频号",
+   "ratio": "9x16",
+   "canvas": [1080, 1920],
+   "style": "talkshow-bold",
+   "maxChars": 12,
+   "cpsMax": 9.0,
+   "safeArea": {"top": 0.12, "bottom": 0.25, "left": 0.09, "right": 0.09},
+   "coverSize": [1080, 1920],
+   "durationHint": "30-90s",
+   "note": "留白略多于抖音;朋友圈横滑场景下字幕同样居中偏下"
+  },
+  "xiaohongshu": {
+   "label": "小红书",
+   "ratio": "3x4",
+   "canvas": [1080, 1440],
+   "style": "talkshow-bold",
+   "maxChars": 15,
+   "cpsMax": 9.0,
+   "safeArea": {"top": 0.10, "bottom": 0.18, "left": 0.07, "right": 0.07},
+   "coverSize": [1080, 1440],
+   "durationHint": "20-60s",
+   "note": "3:4 竖屏正文;底部无评论遮挡带,故安全区下探更深,每卡字数可比 9:16 放宽到 15"
+  },
+  "bilibili": {
+   "label": "B站",
+   "ratio": "16x9",
+   "canvas": [1920, 1080],
+   "style": "tutorial-clean",
+   "maxChars": 22,
+   "cpsMax": 9.0,
+   "safeArea": {"top": 0.08, "bottom": 0.16, "left": 0.05, "right": 0.05},
+   "coverSize": [1920, 1080],
+   "durationHint": "3-10min 教程",
+   "note": "底部字幕条;弹幕开关不影响字幕带(字幕贴底,弹幕默认在顶部 1/3)"
+  }
+ }
+}

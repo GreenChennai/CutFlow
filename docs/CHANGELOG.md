@@ -1,5 +1,125 @@
 # Changelog
 
+## v0.8.0 (2026-09-12) — 鲁棒性 · S0 摄取 · 配音对齐 · 动画卡重叠（OPTIMIZATION-v7 #7/#9/#10/#12）
+
+**R1 消灭静默降级(#7)**
+
+- `rs_cut._extract_clip` 改为返回 `bool`;审查包抽音频失败写 `review/_DEGRADED.md`,并在该刀 md 里标注 —— 不再 `except: pass`。
+- `textopt.card_split / build_cards` 新增 `degrade` 列表:退回长度算法时记录原因;`rs_subtitle.events_from_wordline` 把**单句 DP 失败**降级为"该句退回长度算法"(不再让一句炸掉整条字幕),原因写进 `degradeReasons`。
+- `rs_common.resolve_voice`:坏掉的音色卡不再静默 `continue`,找不到音色时点名"另有 N 张卡读取失败"。
+- `rs_common.ensure_utf8()` + `rs_doctor` 报告符号 GBK 安全(修 cp936 下 `--report` 崩溃)。
+
+**R2 S0 素材摄取 + 交付清单(#9)**
+
+- 新增 `rs_ingest.py scan <工程>`:`01_materials/` → probe → `manifest.json` + `MANIFEST.md`(probe 失败写 `failed/unavailable` 并点名,不阻塞),并生成 `05_ir/project.skeleton.json`(**不覆盖**已有 `project.json`)。
+- 新增 `rs_ingest.py deliverables <工程>` → `06_output/deliverables.md`(成片清单 / 画幅 / 验证等级 / 粗剪与对齐摘要 / 缺失项点名)。
+- `rs_run` 的 S0 登记 `rs_ingest.py`;`SKILL.md` 阶段表与命令表同步。
+
+**R3 配音强制对齐 `rs_dub`(#10)**
+
+- 新增 `rs_dub.py align --wordline … (--audio … | --from-asr …) [--write]`:自带 ASR 转写**配音音频**取真实字级时间戳作为参考轴 → `rs_align.retime_to_reference()` 把目标文本锚上去(equal 区间零漂移)→ 逐句漂移报告 `06_output/dub_report.md`;`--write` 写回并置 `charTimingEstimated=False / degraded=False`。
+- **ASR 拿不到字级时间戳时拒绝写回**(`DUB_NO_WORD_TS`,退出码 3)并给出 `--backend pkg` 修复提示 —— TTS 路径不再有"估算当字级"的空子。
+- `rs_align` 抽出 `_apply_opcodes`(retext 与 dub 共用)+ 新增 `retime_to_reference()`。
+
+**R4 字幕 ↔ 动画卡重叠检查(#12)**
+
+- `rs_sync` 新增 `check_card_overlap()` 与 `--ir / --strict-cards`:artboard 卡片时间窗压住字幕卡时在报告点名(默认告警,`--strict-cards` 才判未通过);普通素材轨(口播/绿幕)不算重叠。
+
+**质量与验证**
+
+- 测试 152 → **165 全绿**；新增 `tests/test_v7_e2e.py`（lavfi 合成素材端到端：S0 摄取 → S1 对齐 → S2 粗剪(带音频探测) → S3 IR → S7 字幕(3:4 平台预设) → S8 真渲染 → 对齐自检 → L0 自检 → 交付清单；无 ffmpeg 时整模块跳过）。
+
+**R5 复核整改（code-review 两轴）**
+
+- 端到端抓到并修掉：`rs_verify` 检查名含 `↔`，GBK 控制台下 `emit()` 崩脚本 → `rs_common` **导入即** `ensure_utf8()`。
+- 文档失真修正：`rules/platforms.md` 的"新画幅改两处"→ **三处**（补 `rs_subtitle.STYLES[*].size/margin_v`，并加一致性用例说明）；`rules/align.md` 的 TTS 条目改为描述现状（句级实测 + 句内估算**显式标注**，字级由 `rs_dub` 补）。
+- 代码去重：新增 `rs_common.guard_passed()`（粗剪/自检共用一套 guard 口径，替换 3 处重复的 `okByReason` 兜底）与 `rs_common.p95()`（替换 2 处索引式分位）。
+- `rs_dub` 报告不再失真：未加 `--write` 时明写"**未写回**"。
+- `detect_dead_air` 补 `reason` 分档（短 `breath` / 长 `silence`）。
+- 补齐规格项：`rs_sync --legacy-end`（历史工程终点门禁只告警）；平台预设 `cpsMax` 真正被 `rs_subtitle` 消费（此前是死数据）。
+- 测试 165 → **170 全绿**（连词 20 句抽样、`--legacy-end`、平台 `cpsMax` 消费、dead_air 分档）。
+
+## v0.7.2 (2026-09-12) — videoType 三类型取代 genres · 技能组精简（OPTIMIZATION-v7 #5/#6/#8）
+
+**R1 删除第二个技能组(#5)**
+
+- `skills/cutflow-prompt/` 内容归档到 `docs/archive/cutflow-prompt/SKILL.md` 后删除;`tools/install.ps1` 现在只安装 `cutflow`。
+- 同步清理引用:`skills/cutflow/SKILL.md` 的"AI 生视频"指引改为指向归档;`docs/PLAN.md` 加停用横幅并标注 §6.3(历史段落不改写);`docs/CHANGELOG.md` 的历史记录保留不动。
+
+**R2 `videoType` 取代 `rules/genres/`(#6)**
+
+- **一级枚举**:`talking-head`(纯口播)/ `talking-head+animation`(口播+动画)/ `pure-animation`(纯动画);**预留扩展位** `screen-recording` / `interview` / `drama` / `film-commentary`(只写注释,不建空文件)。
+- 新增 `rules/video-types/` 四册,每册固定结构「管线分支 → 节奏参数表 → 结构模板 → CutFlow 对应 → 红线」:
+  - `纯口播.md`:绿幕必抠(`cropTopPct` → `colorkey`+`despill`,禁裸 `chromakey`)、虚拟背景、字幕重中之重、动画密度少/零、粗剪必做;
+  - `口播+动画.md`:继承纯口播 + artboard 卡片体系,新增**流畅性硬线**(缓动/200–300ms/禁线性匀速/文字 1s·13 字/最短停留 1.5s)与**贴合性硬线**(卡片时间窗必须落在所解说句子的时间窗内、错位 >1 卡不合格、人物与卡片切换时口播不停);
+  - `纯动画.md`:场景卡 + 6s 循环背景,**声音来源二选一**(音色卡 TTS / 视频中人物原声),TTS 无字级戳时标 `charTimingEstimated`;
+  - `_通用规则.md`:响度/安全区/字幕三定律/节奏/混音/版权 + **类型补充**(原新闻采访·短剧·影视解说的题材红线,标注"暂停维护")。
+- `rules/genres/` 六册**先并入再删除**;同步 `templates/brief.md`(videoType + 声音来源 + 平台预设)、`rules/intake.md` 项 0、`SKILL.md` 路由表与 Hard Rule 17、`README.md`、`CONTEXT.md`(新增"视频类型""平台与画幅"两节)。
+- **ADR**:新增 `docs/adr/0018-videoType取代genres.md`、`docs/adr/0019-平台字幕预设.md`;`0010` 顶部标注被 0018 取代。
+
+**质量与验证**
+
+- 测试 146 → **152 全绿**。
+
+## v0.7.1 (2026-09-12) — 平台字幕预设 · 新增 1080×1440（3:4）（OPTIMIZATION-v7 #4）
+
+- 新增 `templates/platforms.json`：抖音 / 视频号 / 小红书 / B站 四平台预设（比例、画布、风格、每卡字数、安全区、封面尺寸、时长倾向）。**字幕规格终于有数据可查**，不再靠人记。
+- **画幅单一事实源** `rs_common.RATIOS`（9x16 / **3x4** / 16x9）+ `canvas_for()` / `ratio_for_canvas()`。`rs_render`、`rs_brand`、`rs_ir`、`rs_artboard`、`rs_jy_draft`、`rs_verify` 的硬编码/字符串比较全部收敛为查表。
+- **新增画幅 1080×1440（小红书 3:4）**：`segmentation.MAX_CHARS` 增 `3x4=15`（可调）、`CPS_MAX` 增 `3x4`；`rs_subtitle.STYLES` 三档样式补 `3x4` 字号与 `marginV`；`project.schema.json` 的 canvas 枚举加 `1440`、outputs 枚举加 `3x4`；`rs_ir.validate` 画布白名单改查表。
+- `rs_subtitle` 新增 **`--platform`**（+ `--max-chars`）：**显式 `--style/--ratio/--canvas/--max-chars` > 平台预设 > 内置默认**；未知平台直接 `BAD_PLATFORM` 报错（不静默退回默认，避免悄悄出一版错规格的片子）；`--style` 默认值改为 None 以便让预设生效；输出 data 增 `ratio/platform/canvas/charTimingEstimated`。
+- **修掉 CPS 口径错**：`rs_subtitle` / `rs_verify` 原先无论什么比例都取 `CPS_MAX["9x16"]`，现改用 `segmentation.cps_max_for(max_chars)`；`rs_verify` 从 IR 画布反查比例取 `maxChars`。
+- 新增 `rules/platforms.md`（平台预设说明 + 安全区表 + 优先级 + 坑位），并在 `SKILL.md` 路由表/命令表登记；新增硬规则 20（卡时间只在释放余量内调整）与 21（画幅/平台只查表）。
+- 测试 139 → **146 全绿**：四平台预设覆盖、比例表一致性（新增画幅防漏改）、CPS 按比例取值、schema 允许 3:4、`--platform` 生效、显式参数优先、未知平台报错。
+
+## v0.7.0 (2026-09-12) — 字幕同步 · 断句连词 · 粗剪废片段（OPTIMIZATION-v7 #1/#2/#3/#11）
+
+针对用户三大成片问题（字幕与声音对不上 / 断句切词 / 口播废片段没剪掉）落地。测试 118 → **137 全绿**（新增 `tests/test_v7.py` 19 项）。基线方案见 `docs/OPTIMIZATION-v7.md`。
+
+**R1 字幕↔音频同步三件套(#1)**
+
+- `rs_sync` 补**终点偏移**校验：`endOffsetMs = 卡尾 − (末字 endMs + 20ms)`；新增两个硬失败项「**早退**（终点早于末字 >25ms = 切掉语音）」与「**滞留过久**（终点晚于末字 >350ms）」，外加终点中位数/95 分位（60/120ms）。报告与 `sync_rows.json` 同步扩展。
+- `rs_subtitle._enforce_gaps` 改为**锚点有界**：只在「释放余量」内调整（起点 ≤ 首字 `startMs`、终点 ≥ 末字 `endMs`），余量耗尽仍不足 2 帧 → **保持字级精确时间**（对齐精度 > 卡间距）。不再为凑间距切掉末字语音（"偏快"根因）。
+- `_extend_short` 设上限 = 末字 `endMs` + **0.30s**，且不越过下一卡（"字幕滞留到停顿里"根因）。
+- `_merge_short` 合并同步锚点；`_kar_text` 末字结束时间改取**末字真实 `endMs`**（卡尾可能被可读性延长）。
+- 新增 `snap_events_to_frames`：ASS 时间量化到帧（起点向下、终点向上）；`rs_subtitle --fps / --no-snap`。
+- `rs_align.build_wordline` 无字级时间戳时置 `charTimingEstimated=True`、逐字打 `estimated`，`degradeReasons` 明写"卡内位置为估算(不可当字级用)"。**落地修订**：原计划的"整句一卡"实测会让长句超字数、直接伤观感，故**保留按 `max_chars` 出卡**，但卡内位置不再被当成字级（显式标注 + 拒绝用于卡拉OK + 报告点名）；真字级由 #10 `rs_dub align` 补齐。
+- `segmentation._relax_gaps` 同样改为锚点有界。
+- `CPS_MAX` 取值新增 `segmentation.cps_max_for(max_chars)`，替代 `rs_subtitle` / `rs_verify` 里写死的 `CPS_MAX["9x16"]`（为 #4 多画幅铺路）。
+
+**R2 断句连词切词(#2)**
+
+- `cut_score` 方向纠正：**以连词/引导字（`NO_TAIL`）收尾 −2.0 强惩罚**；**以连词（`CONJ_HEAD`）起首 +0.5**（从句边界优先，与本节引用的 BBC 一致）。旧实现是 `not in CONJ_HEAD` 才加分，方向正好相反 —— 用户实例「…店铺违规**而** / 被连带处理…」即由此产生。
+- 新增 `CUT_COST = −1.0`（每刀固定代价）：治"过度切分"（同一句被切成一片 4 字卡同样是断句拉跨）。
+- `NO_TAIL` 覆盖 `而但并且或及与则却故因若虽如由然所`；`REGRESSION` 新增 3 条连词用例。
+- 用户实例实测修正为：`可能因为其中一家店铺违规 / 而被连带处理最终一同遭殃`。
+
+**R3 粗剪废片段(#3/#11)**
+
+- `detect_retake` 重写：**滑动窗口内任意两句**（句数 ≤6 或间隔 ≤30s）比对；一刀删掉**全部旧尝试**（`_chain_merge` 把连续重录刀串成一刀，不留几十毫秒碎片）；出点取「最后一次尝试起点 − 60ms」留自然起音并满足 `tailKeep`。
+- 新增 `detect_retake_block`（整段重来：连续 ≥8 字逐字相同 → `false_start`）。
+- 新增 `detect_dead_air`：给 `--media <源素材>` 时用 ffmpeg `silencedetect` 探音频能量（含纯函数 `parse_silencedetect`），否则退回字间 gap（≥1.2s）。
+- 新增 `detect_self_negative`（`说错了/再来一遍…` → `off_topic`，**仅 review，不自动删**）。
+- **guard 按 `reason` 分档**：`silence/breath/filler` 保持四项全过；`retake/false_start/stumble/repetition/off_topic/manual` 只硬要求「不切断字内音素 + 后留 ≥60ms」。**`wordClipped` 永不放松**。`guard` 新增 `okByReason`/`required`，`classify` 改用它，`cut_report.md` 分列硬过项/告警项，`rs_verify.check_cutlist` 同步。
+- `rhetorical_suspect` 反向保护**只作用于 `silence`/`breath`**（重录/整段重来删的是一整段内容，不是修辞停顿）——此前它会把单刀/末刀一律降级为 review。
+- 清理 `detect_filler` 死代码；`DETECTORS` 扩为 silence/dead_air/filler/repetition/retake/retake_block/self_negative；`rs_cut` 新增 `--media` / `--retake-ratio`。
+
+**测试与夹具**
+
+- 新增 `tests/test_v7.py`（19 项）：终点偏移/早退/滞留、锚点有界、估算标注、连词不落卡尾、跨句重录、多次旧尝试合并、guard 分档、段落重来、`silencedetect` 解析。
+- 修正 `tests/test_v6.py::test_rs_sync_karaoke_ass_sync_ok` 夹具：该 ASS 终点相对其 wordline 末字多出 870ms（旧口径不校验终点才成立），把夹具的字级间隔调为 280ms 使其自洽；测试意图（override 标签剥离 → SYNC_OK）不变。
+
+**文档**
+
+- `rules/subtitles.md`：连词禁切 / 打分函数 / 释放余量边界 / 终点门禁。
+- `rules/roughcut.md`：新检测器、guard 分档表、门禁。
+- `rules/align.md`：`charTimingEstimated` 坑位。
+- `docs/OPTIMIZATION-v7.md`：#1 方案 3 记录落地修订。
+
+**R4 附带（部分 #7 鲁棒性）**
+
+- 新增 `rs_common.ensure_utf8()`：stdout/stderr 切 UTF-8（`errors="replace"` 兜底）；已被重定向/被测试框架替换的流**静默跳过**，绝不因它抛异常。
+- `rs_doctor --report` 的符号改为 GBK 安全（`√ / × / △` + `[OK] / [FAIL]`）—— 此前在 cp936 控制台会因 `✓` / `✅` 触发 `UnicodeEncodeError` 直接崩掉报告。
+
 ## v0.6.0 (2026-09-11) — seg 缓存 · retext 回灌 · 卡拉OK · JJAV2815 一条龙实测
 
 P0 三件套(OPTIMIZATION-v6.md)+ 真实素材一条龙实测驱动的 11 项修复。测试 68 → **118 全绿**(test_v6.py 50 项)。

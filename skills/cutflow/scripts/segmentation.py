@@ -24,6 +24,12 @@ WEAK_PUNCT = "，、："
 # (如「?关于店群运营」)——标点必须挂在上一卡尾部,任何位置都不得在标点前切。
 TRAIL_PUNCT = STRONG_PUNCT + WEAK_PUNCT + ",.?!;:"
 CONJ_HEAD = "然所但而并因如虽接下首其另例同此"
+# 连词/引导字:只能领起从句,**不能收尾**。以它们收尾 = 把「而被/而且/然后」这类
+# 固定搭配切开(用户实例:「…店铺违规而 | 被连带处理…」)。见 OPTIMIZATION-v7 #2。
+NO_TAIL = "而但并且或及与则却故因若虽如由然所"
+NO_TAIL_PENALTY = -2.0      # 强惩罚而非硬禁切:避免极端句无解(DP 无候选 → 单卡超字数)
+CUT_COST = -1.0             # 每切一刀的固定代价:防 DP 为了拿语义加分而把一个句子
+                            # 切成一片 4 字卡(过度切分同样是「断句拉跨」)
 TAIL_FUNC = "的了着地吧呢啊吗嘛"
 CN_DIGITS = "零一二两三四五六七八九十百千万"
 CN_UNITS = "个岁次天年月日时秒分元块毛角米厘斤吨度倍页条第名位件台只张片章节课"
@@ -42,8 +48,9 @@ DEFAULT_IDIOMS = (
 )
 
 # 每卡字数(2026-09 起:竖屏从 16 下调到 10–12,依据见 rules/subtitles.md §4.4)
-MAX_CHARS = {"9x16": 12, "16x9": 22}
-CPS_MAX = {"9x16": 9.0, "16x9": 9.0}
+# 3x4 = 小红书竖屏正文:屏宽介于 9:16 与 16:9 之间,平台预设取 15(见 templates/platforms.json)
+MAX_CHARS = {"9x16": 12, "3x4": 15, "16x9": 22}
+CPS_MAX = {"9x16": 9.0, "3x4": 9.0, "16x9": 9.0}
 DUR_RANGE = (0.83, 7.0)      # Netflix 最短 5/6s,最长 7s
 MIN_CHARS = 2
 RELEASE_MS = 20           # 卡片相对首/末字的时间释放余量(align.md §4)
@@ -54,6 +61,13 @@ REGRESSION = (
     {"text": "我今年三十五岁", "terms": (), "must_not_split": ("三十五",)},
     {"text": "这套设备要 ¥1999 元", "terms": (), "must_not_split": ("¥1999",)},
     {"text": "用 GPT-SoVITS 做配音", "terms": (), "must_not_split": ("GPT-SoVITS",)},
+    # 连词不得收尾(OPTIMIZATION-v7 #2):「而」必须领起后一卡
+    {"text": "可能因为其中一家店铺违规而被连带处理最终一同遭殃", "terms": (),
+     "must_not_split": ("而被",)},
+    {"text": "这个方案便宜而且好用所以我们决定立刻采用它", "terms": (),
+     "must_not_split": ("而且", "所以")},
+    {"text": "他非常努力地准备但是没有成功最后还是失败了", "terms": (),
+     "must_not_split": ("但是",)},
 )
 
 
@@ -116,8 +130,10 @@ def cut_score(text: str, pos: int, gap_ms: float = 0.0, max_chars: int = 12,
     s += 1.5 * min(max(gap_ms, 0.0) / 500.0, 1.0)
     if left and left[-1] not in TAIL_FUNC:
         s += 0.5                                     # 不以虚词结尾
-    if right and right[0] not in CONJ_HEAD:
-        s += 0.5                                     # 不以连词开头
+    if left and left[-1] in NO_TAIL:
+        s += NO_TAIL_PENALTY                         # 连词/引导字不得收尾(防切词)
+    if right and right[0] in CONJ_HEAD:
+        s += 0.5                                     # 连词起首 = 从句边界(BBC:clause boundary)
     if not preferred:
         s -= 0.5                                     # 非候选边界需付出代价
     return s
@@ -144,6 +160,7 @@ def plan_score(text: str, cuts: list[int], max_chars: int,
     prev = 0
     for c in cuts:
         score += cut_score(text, c, gaps.get(c, 0.0), max_chars, c in preferred)
+        score += CUT_COST
         score += _card_penalty(c - prev, max_chars)
         prev = c
     score += _card_penalty(len(text) - prev, max_chars)
@@ -176,6 +193,7 @@ def _dp(text: str, max_chars: int, min_chars: int, forb: set[int],
                     add += _card_penalty(L, max_chars)
                 else:
                     add += cut_score(text, e, gaps.get(e, 0.0), max_chars, e in preferred)
+                    add += CUT_COST
                     add += _card_penalty(L, max_chars)
                 bucket = states.setdefault(e, [])
                 bucket.append((sc + add, cuts + (e,), L))
@@ -220,13 +238,19 @@ def _attach_times(cards: list[dict], index_map: list[int | None],
         first, last = min(idxs), max(idxs)
         first, last = max(0, min(first, len(char_times) - 1)), max(0, min(last, len(char_times) - 1))
         card["charSpan"] = [min(idxs), max(idxs) + 1]
+        # 字级锚点:卡时间的唯一合法边界(见 _relax_gaps)。起点 ≤ 首字 startMs,终点 ≥ 末字 endMs。
+        card["anchorStartMs"] = int(char_times[first]["startMs"])
+        card["anchorEndMs"] = int(char_times[last]["endMs"])
         card["startMs"] = max(0, char_times[first]["startMs"] - RELEASE_MS)
         card["endMs"] = char_times[last]["endMs"] + RELEASE_MS
     _relax_gaps(cards)
 
 
 def _relax_gaps(cards: list[dict], min_gap_ms: int = 66) -> None:
-    """相邻卡不得重叠,间距 ≥2 帧。**只收早,不改起点**——起点决定对齐精度。
+    """相邻卡不得重叠,间距 ≥2 帧;**但对齐精度优先**。
+
+    只在「释放余量」内调整:后卡起点最多推迟到其首字 startMs,前卡终点最多提前到其
+    末字 endMs。余量耗尽仍不足 2 帧 → **保持字级精确时间**(宁可间距紧,不可音画错位)。
 
     最短时长(0.83s)不在这里补:补时长会制造重叠。可读性调整放在 rs_subtitle
     的事件层(先「必并」合卡,再在有余量时延长)。
@@ -235,13 +259,33 @@ def _relax_gaps(cards: list[dict], min_gap_ms: int = 66) -> None:
     for card in cards:
         if "startMs" not in card:
             continue
-        if prev is not None and card["startMs"] - prev["endMs"] < min_gap_ms:
-            prev["endMs"] = max(prev["startMs"] + 200, card["startMs"] - min_gap_ms)
+        if prev is not None:
+            need = min_gap_ms - (card["startMs"] - prev["endMs"])
+            if need > 0:
+                room_b = int(card.get("anchorStartMs", card["startMs"] + RELEASE_MS)) - card["startMs"]
+                take = min(need, max(0, room_b))
+                card["startMs"] += take
+                need -= take
+                if need > 0:
+                    room_a = prev["endMs"] - int(prev.get("anchorEndMs", prev["endMs"] - RELEASE_MS))
+                    prev["endMs"] -= min(need, max(0, room_a))
             prev["durMs"] = prev["endMs"] - prev["startMs"]
             prev["cps"] = round(prev["chars"] / (prev["durMs"] / 1000.0), 2) if prev["durMs"] else 0.0
         card["durMs"] = card["endMs"] - card["startMs"]
         card["cps"] = round(card["chars"] / (card["durMs"] / 1000.0), 2) if card["durMs"] else 0.0
         prev = card
+
+
+def cps_max_for(max_chars: int) -> float:
+    """按「每卡字数上限」反查 CPS 上限。
+
+    调用方(如 rs_subtitle)只拿到 max_chars、拿不到比例;写死 `CPS_MAX["9x16"]`
+    会在 16x9 / 3x4 下用错口径(见 OPTIMIZATION-v7 #4)。查不到时取最严档。
+    """
+    for ratio, mc in MAX_CHARS.items():
+        if mc == max_chars:
+            return float(CPS_MAX.get(ratio, 9.0))
+    return float(min(CPS_MAX.values()))
 
 
 def check_constraints(cards: list[dict], max_chars: int, cps_max: float,
