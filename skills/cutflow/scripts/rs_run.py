@@ -86,8 +86,9 @@ def spec() -> list[dict]:
         {"id": "S9", "name": "自评与对齐断言",
          "inputs": ["06_output/subtitles.ass"], "outputs": ["06_output/sync_report.md"],
          "scripts": ["rs_sync.py"],
-         "cmd": ["rs_sync.py", "--wordline", "05_ir/wordline.json",
-                 "--ass", "06_output/subtitles.ass", "--out", "06_output"]},
+         "cmd": ["rs_sync.py", "--wordline", "{final_wordline}",
+                 "--ass", "06_output/subtitles.ass", "--out", "06_output",
+                 "--video", "{final_video}", "--audio-content"]},
         {"id": "S10", "name": "封面与文案",
          "inputs": ["05_ir/wordline.json", "00_brief/brief.md"],
          "outputs": ["06_output/metadata.json"], "scripts": ["rs_meta.py"],
@@ -300,6 +301,7 @@ REBUILD_TMPL = '''"""一键重建 —— {label}
   3) 跑完输出成片 + 自检报告
 
 只改这一个文件夹 → 只点这一个脚本。不要手动去调 rs_render。
+{extra_note}
 """
 import subprocess
 import sys
@@ -311,6 +313,15 @@ sys.exit(subprocess.run(
     [sys.executable, RUNNER, "--root", str(ROOT), "--from", "{sid}", "--force"],
     cwd=str(ROOT)).returncode)
 '''
+
+# B8(BUGREPORT-20260913):05_ir 的级联起点是 S3 —— 会重新生成 project.json,
+# 手注的 chroma/背景/单 clip 音频全被冲掉。必须在脚本头部写明正确出路。
+REBUILD_EXTRA_NOTES = {
+    "05_ir": """⚠ 例外:若你**手改过 05_ir/project.json**(手注 chroma/背景/单 clip 音频/
+   转场修正等),不要跑本脚本 —— S3 会重新生成 IR 把手注冲掉。
+   正确做法:改跑 `06_output/rebuild.py`(S8:只用现有 ass 重烧录导出,不碰 IR)。
+   (rs_ir build 也会检测手注痕迹并拒绝覆盖,除非显式 --force。)""",
+}
 
 INIT_MAP = [("04_cut", "S2", "粗剪决策(CutList)"), ("05_ir", "S3", "IR / Wordline"),
             ("03_assets/artboard", "S4", "artboard 卡片"),
@@ -362,11 +373,12 @@ def init_rebuild(root: Path) -> list[str]:
             body = ARTBOARD_REBUILD_TMPL.format(scripts=SCRIPTS_DIR)
         else:
             body = REBUILD_TMPL.format(label=label, folder=folder, sid=sid, runner=str(runner),
-                                       depth=1)
+                                       depth=1,
+                                       extra_note=REBUILD_EXTRA_NOTES.get(folder, ""))
         (d / "rebuild.py").write_text(body, encoding="utf-8")
         made.append(f"{folder}/rebuild.py")
     body = REBUILD_TMPL.format(label="全量重建", folder="工程根", sid="S0", runner=str(runner),
-                               depth=0)
+                               depth=0, extra_note="")
     (root / "rebuild.py").write_text(body, encoding="utf-8")
     made.append("rebuild.py")
     readme = ["# 改了东西怎么办?", "",
@@ -425,12 +437,35 @@ def verify_policy(root: Path) -> tuple[str, str]:
 
 # ---------------------------------------------------------------- 执行
 
+# S1 的 --media 候选:可抽音频的容器。01_materials 里还躺着 manifest.json/MANIFEST.md(S0 产物)
+# 与图片素材,且 Windows 下 Path 排序大小写不敏感(manifest.json 会排在 MANIFEST.md 之前),
+# 不过滤会把 manifest 喂给 ffmpeg(v0.10 店群工程实测 S1 必崩)。
+ASR_MEDIA_EXTS = {".mp4", ".mov", ".mkv", ".avi", ".webm", ".m4v", ".ts", ".flv",
+                  ".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg", ".opus", ".wma"}
+
+
+def pick_asr_media(mats: list[Path]) -> Path | None:
+    return next((p for p in mats if p.suffix.lower() in ASR_MEDIA_EXTS), None)
+
+
 def build_cmd(root: Path, st: dict) -> list[str] | None:
     if not st.get("cmd"):
         return None
     mats = expand(root, ["01_materials/*"])
-    mapping = {"{first_material}": str(mats[0].relative_to(root)) if mats else "01_materials/",
-               "{slug}": root.name}
+    media = pick_asr_media(mats)
+    # "最新成片"按 mtime 取,不按文件名排序 —— 变体名(final_*_916_logoA.mp4)字典序
+    # 与产出顺序无关,按名取会把 Logo 变体误当最新主成片。
+    finals = sorted(((root / "06_output").glob("final_*.mp4") if (root / "06_output").is_dir() else []),
+                    key=lambda p: p.stat().st_mtime)
+    # S9 对账必须用**成片空间**的 wordline(remap 产物,rs_verify 同一约定);
+    # wordline.json 始终是源空间 —— 拿它对账时长必然差一个粗剪裁剪量。
+    fw = root / "05_ir" / "wordline.final.json"
+    final_wl = str(fw.relative_to(root)) if fw.is_file() else "05_ir/wordline.json"
+    mapping = {"{first_material}": str(media.relative_to(root)) if media else "01_materials/",
+               "{slug}": root.name,
+               "{final_wordline}": final_wl,
+               "{final_video}": str(finals[-1].relative_to(root)) if finals
+               else "06_output/final_latest.mp4"}
     out = [sys.executable, str(SCRIPTS_DIR / st["cmd"][0])]
     for tok in st["cmd"][1:]:
         out.append(mapping.get(tok, tok))

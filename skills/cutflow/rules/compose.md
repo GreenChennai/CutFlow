@@ -27,7 +27,7 @@ python skills/cutflow/scripts/rs_ir.py build --from-cutlist 04_cut/cutlist.json 
 ```
 
 - keep 区间 → `clips[]`,时间由 `map_src_to_final()` 换算(`sourceInMs` 仍指源素材位置);
-- 切点处自动带 `transition` 或 8ms afade(由 `--xfade ms` 控制,默认 8)。
+- 切点处自动带 `transition`(默认 8ms 亚帧,`--xfade` 控制);渲染时 0<durMs<1帧 会被**提升为 120ms 交叉溶解**(ADR-0023),源间隙放不下才回退 concat。
 
 ## 流程
 

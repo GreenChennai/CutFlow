@@ -19,11 +19,11 @@ python skills/cutflow/scripts/rs_artboard.py 03_assets/artboard/manifest.json --
 python 03_assets/artboard/rebuild.py     # 一条龙:上面三步 + 从 S4 级联
 ```
 
-- **`--export` 按 `source_hash` 判断**,没改的卡片不重导(内容寻址);
+- **`--export` 按 `source_hash` 判断**,没改的卡片不重导(内容寻址);hash 与 manifest 的 `project` 字段统一按 **`<卡片>/src` 目录**算(v0.8.1;旧清单不带 `/src` 也兼容);
 - **尺寸不符直接报错、不拉伸**:导出尺寸必须等于画幅(9:16=1080×1920 / 16:9=1920×1080);
 - **时长变化会传播**:动画卡改长了,`--apply` 自动平移后续 clip,并给出需重跑的下游阶段(时长变 → S4–S9;仅路径变 → S4/S5/S8);
-- 清单里没挂进 IR 的卡片会被点名提醒,不会静默丢弃;
-- artboard 目录取自 `config.artboard_dir`;缺失会给人话错误,不会半路炸。
+- **未被 IR 引用的卡片(v0.8.1)**:默认**跳过+告警**(`APPLY_OK` 的 `skipped` 列表,不静默丢弃也不硬停);`--strict` 恢复硬失败;`--only id1,id2` 只校验选中的卡片——多变体/多场景不必再为每次 apply 拆 manifest。IR 里的挂点路径写**工程根相对**或绝对都行(按归一化绝对路径匹配);
+- artboard 目录取自 `config.artboard_dir`;config 查找**仓库根优先、`skills/config.json` 兜底**(junction 安装下两者都能读到);缺失会给人话错误,不会半路炸。
 
 ## 何时用
 

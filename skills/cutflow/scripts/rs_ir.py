@@ -44,6 +44,17 @@ def _validate_chroma_bg(where: str, clip: dict, base_dir: Path, errs: list[str])
             v = chroma.get(k)
             if v is not None and not (isinstance(v, (int, float)) and 0 <= v <= 0.9):
                 errs.append(f"{where}.chroma.{k} 应在 0..0.9:{v}")
+        eb = chroma.get("edgeBlur")
+        if eb is not None and not (isinstance(eb, (int, float)) and 0 <= eb <= 5):
+            errs.append(f"{where}.chroma.edgeBlur 应在 0..5:{eb}")
+        for i, r in enumerate(chroma.get("killRects") or []):
+            try:
+                x0, y0, x1, y1 = (float(v) for v in r)
+            except (TypeError, ValueError):
+                errs.append(f"{where}.chroma.killRects[{i}] 应为 4 个数字:{r}")
+                continue
+            if not (0 <= x0 < x1 <= 1 and 0 <= y0 < y1 <= 1):
+                errs.append(f"{where}.chroma.killRects[{i}] 应满足 0≤x0<x1≤1 / 0≤y0<y1≤1:{r}")
     if bg:
         t = bg.get("type")
         if t not in BG_TYPES:
@@ -107,8 +118,16 @@ def validate(doc: dict, base_dir: Path) -> list[str]:
             if motion.get("out", "none") not in MOTION_OUT:
                 errs.append(f"{where}.motion.out 非法:{motion.get('out')}")
             tr = clip.get("transition")
-            if tr and tr.get("type") not in TRANSITIONS:
-                errs.append(f"{where}.transition.type 非法:{tr.get('type')}")
+            if tr:
+                if tr.get("type") not in TRANSITIONS:
+                    errs.append(f"{where}.transition.type 非法:{tr.get('type')}")
+                # B2(BUGREPORT-20260913):唯一合法字段是 durMs。旧版 rs_ir 写过
+                # "ms" —— schema/rs_render 都不认,静默落回默认 500ms 吞时长。
+                if "ms" in tr and "durMs" not in tr:
+                    errs.append(f"{where}.transition 用了旧字段 ms(唯一合法字段是 durMs,"
+                                "旧版会静默按 500ms 吞时长)")
+                if "durMs" in tr and not isinstance(tr["durMs"], (int, float)):
+                    errs.append(f"{where}.transition.durMs 应为数字:{tr.get('durMs')}")
             if kind == "video":
                 _validate_chroma_bg(where, clip, base_dir, errs)
         spans.sort()
@@ -144,7 +163,9 @@ def build_from_cutlist(cutlist: dict, *, slug: str, ratio: str = "9x16",
         dur = b - a
         clip = {"src": src, "startMs": cursor, "durationMs": dur, "sourceInMs": a}
         if i > 0 and xfade_ms > 0:
-            clip["transition"] = {"type": "fade", "ms": int(xfade_ms)}
+            # B2:唯一合法字段是 durMs(schema/rs_render 同口径);旧字段 "ms" 会被
+            # 静默落回默认 500ms,7 处转场吞掉 3.5s 造成音画错位。
+            clip["transition"] = {"type": "fade", "durMs": int(xfade_ms)}
         video.append(clip)
         if with_audio:
             audio.append({"src": src, "startMs": cursor, "durationMs": dur,
@@ -165,6 +186,27 @@ def build_from_cutlist(cutlist: dict, *, slug: str, ratio: str = "9x16",
     }
 
 
+def _manual_edits(out: Path) -> list[str]:
+    """检测现存 project.json 的手注痕迹(B8):这些字段 fresh build 永不产生,
+    出现即说明 Agent 手改过 IR —— 重建覆盖前必须显式确认,防止静默冲掉。"""
+    if not out.is_file():
+        return []
+    try:
+        old = json.loads(out.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return []
+    hits: list[str] = []
+    if (old.get("_meta") or {}).get("manualEdit"):
+        hits.append("_meta.manualEdit")
+    for ti, t in enumerate(old.get("tracks", [])):
+        for ci, c in enumerate(t.get("clips", [])):
+            if c.get("chroma"):
+                hits.append(f"tracks[{ti}].clips[{ci}].chroma")
+            if c.get("background"):
+                hits.append(f"tracks[{ti}].clips[{ci}].background")
+    return hits
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("command", choices=["validate", "build"])
@@ -174,6 +216,8 @@ def main() -> int:
     ap.add_argument("--ratio", default="9x16", choices=list(RATIOS))
     ap.add_argument("--xfade", type=int, default=8)
     ap.add_argument("--no-audio", action="store_true")
+    ap.add_argument("--force", action="store_true",
+                    help="检测到手注痕迹时仍覆盖(放弃手注;BUGREPORT B8)")
     ap.add_argument("--out")
     a = ap.parse_args()
 
@@ -189,6 +233,12 @@ def main() -> int:
             return emit(False, "BUILD_FAIL", f"生成失败:{exc}", exit_code=2)
         out = Path(a.out or "05_ir/project.json")
         out.parent.mkdir(parents=True, exist_ok=True)
+        manual = _manual_edits(out)
+        if manual and not a.force:
+            return emit(False, "IR_MANUAL_EDITS",
+                        f"现存 IR 含手注痕迹,重建会冲掉:{';'.join(manual[:4])};"
+                        "确认放弃手注请加 --force;要保留手注只重烧录用 python 06_output/rebuild.py"
+                        "(S8,只用现有 ass,不碰 IR;BUGREPORT B8)", exit_code=2)
         errs = validate(doc, out.parent.parent if out.parent.name == "05_ir" else out.parent)
         out.write_text(json.dumps(doc, ensure_ascii=False, indent=1), encoding="utf-8")
         msg = (f"IR 已生成:{doc['_meta']['keepSegments']} 段 / "

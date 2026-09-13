@@ -19,15 +19,64 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from rs_common import RATIOS, emit, load_config  # noqa: E402
+from rs_common import RATIOS, REPO_ROOT, emit  # noqa: E402
 
 REGISTRY = "manifest.json"
 SIZE_BY_RATIO = dict(RATIOS)
+
+
+# ---------------------------------------------------------------- 归一助手(v0.8.1)
+
+def _src_dir(root: Path, item: dict) -> Path:
+    """卡片源码目录:manifest 的 project 带 /src 后缀(v0.8.1 起的 scan 口径)或
+    不带(旧清单)都能归一到 **src 目录**——artboard 导出脚本的 --source 吃的是它,
+    hash 也必须按它算(旧版 scan 按 src、changed/export 按卡片目录,口径不一致)。"""
+    p = root / item["project"]
+    if p.name != "src" and (p / "src").is_dir():
+        return p / "src"
+    return p
+
+
+def _norm_path(p: str | Path, root: Path) -> str:
+    """路径归一:相对/绝对/正反斜杠统一成「root 下解析后的 posix 小写」。
+
+    IR 里的 clip src 可以写工程根相对路径,也可以写绝对路径——旧版字符串全等
+    匹配在多变体/手工改路径的场景下匹配不上。
+    """
+    q = Path(str(p))
+    if not q.is_absolute():
+        q = root / q
+    return os.path.normpath(str(q)).replace("\\", "/").lower()
+
+
+def _load_artboard_config(repo_cfg: Path | None = None,
+                          local_cfg: Path | None = None) -> dict:
+    """config 查找(v0.8.1 修 junction 错位):仓库根优先,skills/config.json 兜底。
+
+    junction 安装下 parents[2] 指向 <repo>/skills——旧实现只查那里,仓库根的
+    config.json(含 artboard_dir)反而读不到。两处都读:仓库根键优先(单一事实源),
+    兜底文件只补缺(通常只含 artboard_dir)。
+    """
+    def _read(p: Path | None) -> dict:
+        if p is None or not p.is_file():
+            return {}
+        try:
+            d = json.loads(p.read_text(encoding="utf-8"))
+            return d if isinstance(d, dict) else {}
+        except (OSError, json.JSONDecodeError):
+            return {}
+
+    merged = dict(_read(repo_cfg if repo_cfg is not None else REPO_ROOT / "config.json"))
+    for k, v in _read(local_cfg if local_cfg is not None
+                      else Path(__file__).resolve().parents[2] / "config.json").items():
+        merged.setdefault(k, v)
+    return merged
 
 
 # ---------------------------------------------------------------- 清单
@@ -48,13 +97,16 @@ def hash_source(project: Path) -> str:
 
 
 def scan(root: Path, artboard_dir: str = "") -> dict:
-    """扫描 03_assets/artboard 下的卡片工程(scaffold 产出 src/ 的目录)。"""
+    """扫描 03_assets/artboard 下的卡片工程(scaffold 产出 src/ 的目录)。
+
+    v0.8.1:`project` 统一写 `<卡片>/src`(导出 --source 与 hash 的真实口径)。
+    """
     items = []
     for proj in sorted(p for p in root.rglob("src") if p.is_dir()):
         card = proj.parent
         rel = card.relative_to(root).as_posix()
         out_rel = f"{rel}/export/{card.name}.png"
-        items.append({"id": card.name, "project": rel, "sourceHash": hash_source(proj),
+        items.append({"id": card.name, "project": f"{rel}/src", "sourceHash": hash_source(proj),
                       "output": out_rel, "kind": "png", "size": [1080, 1920],
                       "durationMs": None, "usedIn": []})
     return {"version": 1, "artboardDir": artboard_dir, "root": ".", "items": items}
@@ -73,7 +125,7 @@ def save_manifest(doc: dict, path: Path) -> None:
 def changed_items(doc: dict, root: Path) -> list[dict]:
     out = []
     for it in doc["items"]:
-        cur = hash_source(root / it["project"])
+        cur = hash_source(_src_dir(root, it))
         if cur != it.get("sourceHash"):
             out.append(it)
     return out
@@ -96,7 +148,7 @@ def export_item(item: dict, root: Path, artboard_dir: Path, timeout: int = 900) 
     w, h = item.get("size") or SIZE_BY_RATIO["9x16"]
     out = root / item["output"]
     out.parent.mkdir(parents=True, exist_ok=True)
-    cmd = [sys.executable, str(script), "--source", str(root / item["project"]),
+    cmd = [sys.executable, str(script), "--source", str(_src_dir(root, item)),
            "--output", str(out), "--width", str(w), "--height", str(h)]
     if item.get("kind") == "mp4":
         cmd += ["--format", "MP4", "--fps", str(item.get("fps") or 25)]
@@ -127,21 +179,34 @@ def shift_track(clips: list[dict], index: int, delta_ms: int) -> int:
     return n
 
 
-def apply_to_ir(doc: dict, ir: dict, root: Path) -> tuple[dict, list[str], list[dict]]:
-    """把清单里的产物路径与尺寸回填 IR。返回 (新 IR, 问题列表, 变更列表)。"""
+def apply_to_ir(doc: dict, ir: dict, root: Path, *, strict: bool = False,
+                only: set[str] | None = None) -> tuple[dict, list[str], list[dict], list[dict]]:
+    """把清单里的产物路径与尺寸回填 IR。返回 (新 IR, 硬问题, 变更, 跳过)。
+
+    v0.8.1:
+    · 匹配 = 归一化绝对路径(相对/绝对/反斜杠一视同仁),不再是字符串全等;
+    · 未被 IR 引用的卡片**默认跳过+告警**(skipped),`--strict` 才恢复硬失败——
+      多变体/多场景不再要求"清单卡片全部被单个 IR 引用";
+    · `only` 过滤后未选中的卡片不参与校验(配 CLI 的 --only id1,id2)。
+    """
     issues: list[str] = []
     changes: list[dict] = []
+    skipped: list[dict] = []
+    items = [it for it in doc["items"] if not only or it["id"] in only]
     canvas = ir.get("canvas") or {}
     cw, ch = canvas.get("width"), canvas.get("height")
 
-    by_out = {it["output"]: it for it in doc["items"]}
+    by_out = {_norm_path(it["output"], root): it for it in items}
+    referenced: set[str] = set()
     for ti, track in enumerate(ir.get("tracks", [])):
         if track.get("kind") != "video":
             continue
         clips = track.get("clips", [])
         for ci, clip in enumerate(clips):
-            src = str(clip.get("src", "")).replace("\\", "/")
-            item = by_out.get(src)
+            raw_src = str(clip.get("src", "")).strip()
+            src_norm = _norm_path(raw_src, root) if raw_src else ""
+            referenced.add(src_norm)
+            item = by_out.get(src_norm)
             if item is None:
                 continue
             full = root / item["output"]
@@ -174,13 +239,15 @@ def apply_to_ir(doc: dict, ir: dict, root: Path) -> tuple[dict, list[str], list[
             if not any(u.get("track") == ti and u.get("clipIndex") == ci for u in item["usedIn"]):
                 item["usedIn"].append({"track": ti, "clipIndex": ci,
                                        "startMs": clip.get("startMs"), "durationMs": clip.get("durationMs")})
-    missing = [it["id"] for it in doc["items"]
-               if it["output"] not in {str(c.get("src", "")).replace("\\", "/")
-                                       for t in ir.get("tracks", []) for c in t.get("clips", [])}]
-    if missing:
-        issues.append(f"清单里有 {len(missing)} 个卡片没挂进 IR:{','.join(missing[:5])}——"
-                      f"请先在 IR overlay 轨引用其产物路径")
-    return ir, issues, changes
+    missing = [it for it in items if _norm_path(it["output"], root) not in referenced]
+    for it in missing:
+        if strict:
+            issues.append(f"{it['id']}:清单里有卡片没挂进 IR({it['output']})——"
+                          f"请先在 IR overlay 轨引用其产物路径")
+        else:
+            skipped.append({"id": it["id"], "output": it["output"],
+                            "note": "未被当前 IR 引用,已跳过(--strict 可改为硬失败)"})
+    return ir, issues, changes, skipped
 
 
 def stale_stages(changes: list[dict]) -> list[str]:
@@ -200,11 +267,13 @@ def main() -> int:
     ap.add_argument("--export", action="store_true")
     ap.add_argument("--apply", dest="apply_ir", default="")
     ap.add_argument("--only", default="", help="只处理指定卡片 id(逗号分隔)")
+    ap.add_argument("--strict", action="store_true",
+                    help="apply 时未被 IR 引用的卡片按硬失败处理(默认跳过+告警)")
     ap.add_argument("--force", action="store_true", help="忽略 source hash,全部重导")
     a = ap.parse_args()
 
     root = Path(a.root).resolve()
-    cfg = load_config() if (Path(__file__).resolve().parents[2] / "config.json").is_file() else {}
+    cfg = _load_artboard_config()
     artboard_dir = Path(cfg.get("artboard_dir") or "")
 
     if a.scan:
@@ -228,14 +297,14 @@ def main() -> int:
             return emit(False, "NO_ARTBOARD",
                         f"artboard 技能目录不存在:{artboard_dir};请在 config.artboard_dir 配置", exit_code=3)
         todo = [it for it in doc["items"] if (not only or it["id"] in only)
-                and (a.force or hash_source(root / it["project"]) != it.get("sourceHash"))]
+                and (a.force or hash_source(_src_dir(root, it)) != it.get("sourceHash"))]
         if not todo:
             return emit(True, "EXPORT_SKIP", "所有卡片源码未变,无需重导", {"exported": 0})
         okd, failed = [], []
         for it in todo:
             ok, info = export_item(it, root, artboard_dir)
             if ok:
-                it["sourceHash"] = hash_source(root / it["project"])
+                it["sourceHash"] = hash_source(_src_dir(root, it))
                 okd.append(it["id"])
             else:
                 failed.append({"id": it["id"], "error": info})
@@ -251,7 +320,7 @@ def main() -> int:
         if not ir_path.is_file():
             return emit(False, "NO_IR", f"IR 不存在:{ir_path}", exit_code=2)
         ir = json.loads(ir_path.read_text(encoding="utf-8"))
-        ir, issues, changes = apply_to_ir(doc, ir, root)
+        ir, issues, changes, skipped = apply_to_ir(doc, ir, root, strict=a.strict, only=only)
         if issues:
             return emit(False, "APPLY_ISSUES",
                         f"{len(issues)} 个问题,已停止(不带着坏输入往下跑)",
@@ -259,9 +328,12 @@ def main() -> int:
         ir_path.write_text(json.dumps(ir, ensure_ascii=False, indent=1), encoding="utf-8")
         save_manifest(doc, mpath)
         st = stale_stages(changes)
-        return emit(True, "APPLY_OK",
-                    f"回填 {len(changes)} 个卡片;下游需重跑:{','.join(st)}",
-                    {"changes": changes, "staleStages": st, "ir": str(ir_path)})
+        msg = f"回填 {len(changes)} 个卡片;下游需重跑:{','.join(st)}"
+        if skipped:
+            msg += f";跳过 {len(skipped)} 个未引用卡片:{','.join(s['id'] for s in skipped[:5])}"
+        return emit(True, "APPLY_OK", msg,
+                    {"changes": changes, "skipped": skipped, "staleStages": st,
+                     "ir": str(ir_path)})
 
     return emit(False, "NO_ACTION", "需要 --export 或 --apply <ir>", exit_code=2)
 

@@ -47,6 +47,44 @@ DEFAULT_IDIOMS = (
     "画蛇添足", "守株待兔", "刻舟求剑", "塞翁失马", "青出于蓝", "水到渠成",
 )
 
+_SPACE = " \u3000"
+# 词内强惩罚:两阶段 DP 降级后仍切在词内的代价(必须压过一切语义加分)
+WORD_CUT_PENALTY = -3.0
+
+# 高频词表:仅当 jieba 不可用时的兜底切词(最长匹配,2–4 字)。
+# 覆盖口播叙事常用词;新发现的切词案例应优先补进这里(rules/subtitles.md §4.2)。
+COMMON_WORDS = frozenset("""
+这个 这些 这样 那个 那些 那样 我们 你们 他们 她们 自己 大家 什么 怎么 为什么
+因为 所以 但是 而且 或者 虽然 如果 那么 于是 然而 并且 只要 只有 无论 不管
+非常 特别 尤其 真的 其实 就是 只是 还是 还有 也是 都是 不会 可以 应该 必须
+可能 也许 大概 大约 稍微 略微 几乎 差点 一直 仍然 依然 突然 忽然 渐渐 慢慢
+已经 曾经 正在 刚刚 马上 立刻 立即 赶紧 赶快 终于 最后 最终 首先 其次 另外
+此外 例如 比如 准备 开始 结束 完成 实现 解决 处理 使用 通过 经过 关于 由于
+根据 按照 遵守 违规 违法 店铺 商家 平台 规则 规定 要求 内容 信息 数据 文件
+文档 视频 音频 字幕 配音 录音 录制 拍摄 剪辑 导出 输出 输入 上传 下载 制作
+生成 创建 删除 修改 更新 检查 测试 验证 确认 选择 设置 调整 优化 提升 增加
+减少 保存 成功 失败 错误 问题 原因 结果 效果 影响 情况 状态 过程 方法 方式
+方案 步骤 流程 系统 工具 功能 性能 质量 水平 标准 类型 种类 类别 版本 便宜
+昂贵 好用 难用 简单 复杂 方便 快速 重要 主要 次要 普通 特殊 常见 罕见 普遍
+少数 多数 部分 全部 整个 所有 一些 一点 一同 一起 努力 认真 仔细 用心 用力
+尽力 尽量 全力 大力 遭殃 连带 损失 赔偿 处罚 罚款 封号 限流 曝光 流量 推荐
+关注 粉丝 点赞 收藏 评论 转发 播放 观看 收看 打开 关闭 启动 停止 暂停 继续
+恢复 时间 日期 今天 昨天 明天 上午 下午 晚上 早上 中午 现在 之后 以后 以前
+当时 目前 当前 后来 最近 近期 长期 短期 暂时 永久 经常 偶尔 有时 总是 从来
+软件 硬件 电脑 手机 平板 相机 麦克 摄像 灯光 背景 场景 画面 镜头 特写 全景
+近景 远景 特效 转场 动画 贴纸 文字 字体 颜色 大小 位置 方向 速度 强度 亮度
+音量 音质 音效 节奏 感觉 感受 体验 经验 知道 了解 明白 理解 觉得 认为 以为
+相信 怀疑 猜测 猜想 判断 分析 思考 考虑 研究 探索 发现 发明 创造 设计 规划
+安排 计划 组织 管理 协调 沟通 交流 聊天 说话 讲话 讲解 说明 解释 介绍 分享
+教学 学习 复习 练习 模仿 跟读 阅读 书写 记录 记住 忘记 熟悉 陌生 喜欢 讨厌
+希望 想要 需要 追求 拥有 失去 得到 获得 提供 给予 帮助 支持 反对 同意 拒绝
+接受 回应 回复 回答 提问 询问 请教 打听 通知 告诉 提醒 警告 建议 意见 看法
+观点 态度 立场 里面 外面 上面 下面 前面 后面 左边 右边 中间 旁边 附近 到处
+毕竟 反正 干脆 压根 根本 完全 彻底 干净 整齐 清晰 明显 显然
+当然 确实 果然 居然 竟然 哪里 哪个 哪些 什么样 没什么 一样 不一样
+一家 其中 当中 内部 外部 局部 整体 单独 独立 共同 彼此
+""".split())
+
 # 每卡字数(2026-09 起:竖屏从 16 下调到 10–12,依据见 rules/subtitles.md §4.4)
 # 3x4 = 小红书竖屏正文:屏宽介于 9:16 与 16:9 之间,平台预设取 15(见 templates/platforms.json)
 MAX_CHARS = {"9x16": 12, "3x4": 15, "16x9": 22}
@@ -67,7 +105,7 @@ REGRESSION = (
     {"text": "这个方案便宜而且好用所以我们决定立刻采用它", "terms": (),
      "must_not_split": ("而且", "所以")},
     {"text": "他非常努力地准备但是没有成功最后还是失败了", "terms": (),
-     "must_not_split": ("但是",)},
+     "must_not_split": ("非常", "但是", "最后", "失败")},
 )
 
 
@@ -91,7 +129,9 @@ def forbidden_positions(text: str, terms=(), idioms=DEFAULT_IDIOMS) -> set[int]:
         if a.isdigit() and b in "%‰°":
             forb.add(i)                      # 数字 + 百分号/度数
         if b in TRAIL_PUNCT:
-            forb.add(i)                      # 标点前不切(标点挂上一卡尾部,防「?关于…」式领头卡)
+            forb.add(i)                      # 标点前不切(标点挂上一卡尾,防「?关于…」式领头卡)
+        if b in _SPACE:
+            forb.add(i)                      # 空格前不切:空格挂上一卡尾(校对稿的天然词组分隔)
     for t in list(terms) + list(idioms):
         if not t:
             continue
@@ -107,12 +147,14 @@ def forbidden_positions(text: str, terms=(), idioms=DEFAULT_IDIOMS) -> set[int]:
 
 
 def candidate_positions(text: str, gaps: dict[int, float] | None = None) -> set[int]:
-    """候选边界:标点处 + 字级停顿 ≥200ms 处 + 连词前。"""
+    """候选边界:标点处 + 空格后 + 字级停顿 ≥200ms 处 + 连词前。"""
     gaps = gaps or {}
     cand: set[int] = set()
     for i in range(1, len(text)):
         if text[i - 1] in TRAIL_PUNCT:
             cand.add(i)                      # 标点后切(标点跟上一卡)
+        elif text[i - 1] in _SPACE:
+            cand.add(i)                      # 空格后切 = 词组边界(「被连带处理 最终…」)
         if text[i] in CONJ_HEAD:
             cand.add(i)
         if gaps.get(i, 0.0) >= 200.0:
@@ -120,22 +162,134 @@ def candidate_positions(text: str, gaps: dict[int, float] | None = None) -> set[
     return cand
 
 
+# ---------------------------------------------------------------- 词边界(v0.8.1,ADR-0020)
+
+_jieba_mod = None
+_jieba_checked = False
+
+
+def _try_jieba():
+    """延迟加载 jieba(可选依赖);失败只降级,绝不抛错——脚本鲁棒性铁律。
+
+    initialize() 会往 stdout 打「Building prefix dict…」日志,污染 rs_* 的
+    --json 契约——必须在重定向的 stdout 里初始化,并把日志级别压到 ERROR。
+    """
+    global _jieba_mod, _jieba_checked
+    if not _jieba_checked:
+        _jieba_checked = True
+        try:
+            import contextlib
+            import io
+            import logging
+            import jieba
+            jieba.setLogLevel(logging.ERROR)
+            with contextlib.redirect_stdout(io.StringIO()):
+                jieba.initialize()
+            _jieba_mod = jieba
+        except Exception:
+            _jieba_mod = None
+    return _jieba_mod
+
+
+def jieba_available() -> bool:
+    """jieba 是否可用(rs_doctor 自检用)。首次调用会触发词典加载。"""
+    return _try_jieba() is not None
+
+
+def _non_space_runs(s: int, e: int, text: str) -> list[tuple[int, int]]:
+    """跨度内的非空白连续段——词永远不得横跨空格(空格 = 词组边界)。"""
+    runs: list[tuple[int, int]] = []
+    cur: int | None = None
+    for i in range(s, e):
+        if text[i] in _SPACE:
+            if cur is not None:
+                runs.append((cur, i))
+                cur = None
+        elif cur is None:
+            cur = i
+    if cur is not None:
+        runs.append((cur, e))
+    return runs
+
+
+def _lexicon_spans(text: str, lexicon: frozenset[str]) -> list[tuple[int, int]]:
+    """内置词表最长匹配兜底:ASCII 连续段整体成词,中文 4→3→2 字贪心。"""
+    spans: list[tuple[int, int]] = []
+    i, n = 0, len(text)
+    while i < n:
+        ch = text[i]
+        if ch in _SPACE:
+            i += 1
+            continue
+        if ch.isascii() and (ch.isalnum() or ch in ASCII_TOKEN):
+            j = i + 1
+            while j < n and text[j].isascii() and (text[j].isalnum() or text[j] in ASCII_TOKEN):
+                j += 1
+            spans.append((i, j))
+            i = j
+            continue
+        for L in (4, 3, 2):
+            if i + L <= n and text[i:i + L] in lexicon:
+                spans.append((i, i + L))
+                i += L
+                break
+        else:
+            i += 1
+    return spans
+
+
+def word_spans(text: str, terms=(), idioms=DEFAULT_IDIOMS) -> list[tuple[int, int]]:
+    """词跨度列表 [(start, end));jieba 优先,降级内置高频词表(ADR-0020)。
+
+    词不得横跨空格;terms/idioms 总是显式并入(专名/行业词即便 jieba 在场也可能被切碎)。
+    """
+    if not text:
+        return []
+    spans: set[tuple[int, int]] = set()
+    jb = _try_jieba()
+    if jb is not None:
+        try:
+            for _w, s, e in jb.tokenize(text):
+                if e - s >= 2:
+                    spans.update(r for r in _non_space_runs(s, e, text) if r[1] - r[0] >= 2)
+        except Exception:
+            jb = None
+    if jb is None:
+        lexicon = COMMON_WORDS | {t for t in terms if t} | set(idioms)
+        spans.update(_lexicon_spans(text, lexicon))
+    for t in list(terms) + list(idioms):
+        if not t:
+            continue
+        start = 0
+        while True:
+            k = text.find(t, start)
+            if k < 0:
+                break
+            spans.update(r for r in _non_space_runs(k, k + len(t), text) if r[1] - r[0] >= 2)
+            start = k + 1
+    return sorted(spans)
+
+
 # ---------------------------------------------------------------- 打分
 
 def cut_score(text: str, pos: int, gap_ms: float = 0.0, max_chars: int = 12,
-              preferred: bool = True) -> float:
+              preferred: bool = True, in_word: bool = False) -> float:
     """单个切点的分数(越大越好),对应 rules/subtitles.md §4.3。"""
     left, right = text[:pos], text[pos:]
     s = 2.0 * PUNCT_LEVEL.get(left[-1] if left else "", 0.0)
     s += 1.5 * min(max(gap_ms, 0.0) / 500.0, 1.0)
     if left and left[-1] not in TAIL_FUNC:
         s += 0.5                                     # 不以虚词结尾
+    if left and left[-1] in _SPACE:
+        s += 0.3                                     # 空格收尾 = 词组边界
     if left and left[-1] in NO_TAIL:
         s += NO_TAIL_PENALTY                         # 连词/引导字不得收尾(防切词)
     if right and right[0] in CONJ_HEAD:
         s += 0.5                                     # 连词起首 = 从句边界(BBC:clause boundary)
     if not preferred:
         s -= 0.5                                     # 非候选边界需付出代价
+    if in_word:
+        s += WORD_CUT_PENALTY                        # 切在词内(仅两阶段降级路径可达)
     return s
 
 
@@ -153,13 +307,15 @@ def _imbalance(left_len: int, right_len: int, max_chars: int) -> float:
 
 def plan_score(text: str, cuts: list[int], max_chars: int,
                gaps: dict[int, float] | None = None,
-               preferred: set[int] | None = None) -> float:
+               preferred: set[int] | None = None,
+               in_word: set[int] | None = None) -> float:
     gaps = gaps or {}
     preferred = preferred if preferred is not None else set()
+    in_word = in_word if in_word is not None else set()
     score = 0.0
     prev = 0
     for c in cuts:
-        score += cut_score(text, c, gaps.get(c, 0.0), max_chars, c in preferred)
+        score += cut_score(text, c, gaps.get(c, 0.0), max_chars, c in preferred, c in in_word)
         score += CUT_COST
         score += _card_penalty(c - prev, max_chars)
         prev = c
@@ -168,8 +324,10 @@ def plan_score(text: str, cuts: list[int], max_chars: int,
 
 
 def _dp(text: str, max_chars: int, min_chars: int, forb: set[int],
-        gaps: dict[int, float], preferred: set[int], top: int) -> list[list[int]]:
+        gaps: dict[int, float], preferred: set[int], top: int,
+        in_word: set[int] | None = None) -> list[list[int]]:
     """返回 top-N 个切点序列(按分排序)。DP 状态 = 位置 → 前 N 优方案。"""
+    in_word = in_word if in_word is not None else set()
     n = len(text)
     allowed = [i for i in range(1, n) if i not in forb]
     positions = sorted({0, n} | set(allowed))
@@ -192,7 +350,8 @@ def _dp(text: str, max_chars: int, min_chars: int, forb: set[int],
                 if e == n:
                     add += _card_penalty(L, max_chars)
                 else:
-                    add += cut_score(text, e, gaps.get(e, 0.0), max_chars, e in preferred)
+                    add += cut_score(text, e, gaps.get(e, 0.0), max_chars,
+                                     e in preferred, e in in_word)
                     add += CUT_COST
                     add += _card_penalty(L, max_chars)
                 bucket = states.setdefault(e, [])
@@ -317,7 +476,8 @@ def segment(text: str, max_chars: int = 12, *, min_chars: int = MIN_CHARS,
     """约束最优卡切分。返回 {plans, ambiguous, cards, violations, degraded}。"""
     text = (text or "").strip()
     if not text:
-        return {"plans": [], "ambiguous": False, "cards": [], "violations": [], "degraded": False}
+        return {"plans": [], "ambiguous": False, "cards": [], "violations": [],
+                "degraded": False, "wordFallback": False}
     gaps = gaps or {}
     if len(text) <= max_chars:
         cards = cards_from_cuts(text, [])
@@ -325,11 +485,19 @@ def segment(text: str, max_chars: int = 12, *, min_chars: int = MIN_CHARS,
         return {"plans": [{"score": 0.0, "cuts": [], "cards": chosen}],
                 "ambiguous": False, "cards": chosen,
                 "violations": check_constraints(chosen, max_chars, cps_max, dur_range),
-                "degraded": False}
+                "degraded": False, "wordFallback": False}
 
     forb = forbidden_positions(text, terms, idioms)
     preferred = candidate_positions(text, gaps)
-    raw_plans = _dp(text, max_chars, min_chars, forb, gaps, preferred, max(top, 1))
+    # 词边界两阶段(ADR-0020):①词内位置强禁切;②无可行解才降级为词内强惩罚并留痕。
+    in_word = {i for a, b in word_spans(text, terms=terms, idioms=idioms)
+               for i in range(a + 1, b)}
+    word_fallback = False
+    raw_plans = _dp(text, max_chars, min_chars, forb | in_word, gaps, preferred, max(top, 1))
+    if raw_plans == [[]] and in_word:
+        word_fallback = True
+        raw_plans = _dp(text, max_chars, min_chars, forb, gaps, preferred,
+                        max(top, 1), in_word)
 
     plans = []
     for cuts in raw_plans:
@@ -338,7 +506,8 @@ def segment(text: str, max_chars: int = 12, *, min_chars: int = MIN_CHARS,
         viol = check_constraints(cards, max_chars, cps_max, dur_range) if char_times else \
             [v for v in check_constraints(cards, max_chars, cps_max, dur_range) if "CPS" not in v
              and "时长" not in v and "重叠" not in v]
-        plans.append({"score": round(plan_score(text, cuts, max_chars, gaps, preferred), 3),
+        plans.append({"score": round(plan_score(text, cuts, max_chars, gaps, preferred,
+                                                in_word if word_fallback else set()), 3),
                       "cuts": cuts, "cards": cards, "violations": viol})
 
     legal = [p for p in plans if not p["violations"]] or plans
@@ -347,7 +516,8 @@ def segment(text: str, max_chars: int = 12, *, min_chars: int = MIN_CHARS,
     ambiguous = (len(legal) > 1 and
                  abs(legal[0]["score"] - legal[1]["score"]) / max(1e-6, abs(legal[0]["score"])) < 0.05)
     return {"plans": legal[:top], "ambiguous": ambiguous, "cards": top_plan["cards"],
-            "violations": top_plan["violations"], "degraded": bool(top_plan["violations"])}
+            "violations": top_plan["violations"], "degraded": bool(top_plan["violations"]),
+            "wordFallback": word_fallback}
 
 
 def _finalize(cards: list[dict], index_map, char_times, max_chars, cps_max, dur_range) -> list[dict]:

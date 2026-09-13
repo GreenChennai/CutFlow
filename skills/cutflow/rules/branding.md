@@ -42,14 +42,19 @@
 | `anchor` | 说明 |
 |---|---|
 | `topLeft` / `topRight` | 常规角标位置 |
-| `bottomLeft` / `bottomRight` | 避免与字幕带冲突时使用 |
+| `bottomLeft` / `bottomRight` | 底部角标;**自动抬升到字幕带上缘**,`lifted=true` 留痕 |
+| `topCenter` / `bottomCenter` | 顶/底部居中(v0.10 新增,ADR-0025) |
 | `watermark` | 全屏半透明水印(低 alpha,居中或平铺) |
 
 **硬约束**:
 
-- **默认避开字幕带**(9:16 底部 25%,ADR-0009);
+- **真实尺寸**(v0.10):`rs_brand.py --analyze <logo.png>` 读像素宽高 + alpha
+  **内容包围盒**(透明 padding 不算)——缩放与宽高比一律按内容 bbox,不再假定方形;
+- `scale` 为**占画幅宽度比例**(默认 0.12),高度上限 8% 画高,超限按高等比缩宽;
+- **默认避开字幕带**(9:16 底部 25%,ADR-0009):bottom 系锚点自动抬升并留痕;
 - 不压**顶部 12%** 安全区外的关键信息;
-- `scale` 为**占画幅宽度比例**,不写死像素——同一份配置在 9:16 / 16:9 下都成立;
+- 变体轨产 `overlay={x,y,w,h,opacity}` 绝对像素落点,`rs_render` step_compose 消费
+  (v0.10 前 rs_render 不认此字段,Logo 会贴满画布——已修);
 - 字幕卡与 Logo 时间窗重叠时,**字幕优先**(Logo 降 alpha 或临时移位)。
 
 新增 `03_assets/branding/logos/`,每个 Logo 一个条目。片头/片尾板也归 S5(用 artboard 生成)。
@@ -70,6 +75,9 @@ seg_*/base ─► composed ─► mixed ─► subtitled ──┬─► + logo(
 ## 5. 用法
 
 ```powershell
+# 先看真实尺寸(alpha 内容包围盒;排版决策依据)
+python skills/cutflow/scripts/rs_brand.py --analyze 03_assets/branding/logos/a.png
+
 python skills/cutflow/scripts/rs_brand.py --expand --logos brandA,brandB --ratios 9x16,16x9 `
     --out 05_ir/variants.json
 

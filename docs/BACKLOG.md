@@ -5,6 +5,27 @@
 
 ## 待办
 
+### v0.8.2(2026-09-13,来源 BUGREPORT-20260913-纯口播复测 B1–B10)
+
+- [x] **B1–B10 批修**:见 `docs/BUGFIX-20260913-B1-B10.md`;音频内容闸见 ADR-0021;回归 `tests/test_v9.py`
+- [ ] **I1 DP 断句语义单元惩罚**:否定词跨卡(「不|属于」)、复合词跨卡(「经营|主体」「运营|效率」「店群|企业」)罚分;「的」字头卡降权(「的市场版图」「的客流量差异」)—— 影响质量不影响正确性
+- [ ] **I2 --terms 即断词保护表**:brief 术语表强制喂给 `rs_subtitle`;歧义候选里显式展示 terms 命中
+- [ ] **I3 rs_cut 尾部黑场检测器**:源尾黑帧目前只靠 L1 目测
+
+### v0.8.1(2026-09-13,来源 v2 重跑实测反馈 + 分词主诉)
+
+- [x] **W1 分词彻底修复(ADR-0020)**:`word_spans`(jieba 优先 + 内置词表兜底)+ 词内强禁切 + 空格强候选 + 两阶段 DP(降级留痕);REGRESSION 增两字词用例;`rs_doctor` jieba 检查;`fetch_deps subtitle`
+- [x] **W2 Agent 复核修正闭环**:卡片 `charSpan` + `cards.json` + `rs_subtitle --override`(span→wordline 重建时间,audit 留痕);契约 `rules/subtitles.md` §10
+- [x] **B1 rs_render step_mix 音频调度**:先 `atrim` 后 `adelay`(旧链序把 startMs>0 的段裁错,音轨缩到 13.9s);lavfi 实测恢复 ≈6s
+- [x] **B2 rs_artboard 三连**:`project` 统一 `/src` 口径 + hash 四处一致(旧版永远误报"已变化");apply 未引用卡片默认跳过+告警(`--strict`/`--only`);挂点匹配改归一化绝对路径
+- [x] **B3 junction config 错位**:仓库根优先 + `skills/config.json` 兜底只补缺;新增 `skills/config.example.json`
+- [x] **B5 rs_sync 伪重叠**:snap 后碰撞消解 + 重叠容差 1 帧(`--frame-ms`),3ms 级帧取整伪影放行
+- [ ] **B4 ebur128**:经用户对比确认为 ffmpeg 内置滤镜且输出正常 —— **关闭,不改**
+- [ ] **W3 词表持续扩充**(继承原 P2 条目):新发现的切词案例 → 补 `COMMON_WORDS` + `REGRESSION` 双保险;jieba 覆盖不到的领域词也可走 brief terms
+- [ ] **W4 Agent 复核实跑验证**:在真实工程上跑一遍「cards.json → Agent 审 → override 回灌」闭环(本次只落了机制与单测)
+- [ ] **W5 事件层去重(code-review 两次复核共认)**:`events_from_wordline` 与 `events_from_override` 的「必并→延长→间距→校验→meta」管线几乎逐行重复;字级锚计算(+RELEASE_MS/anchorStart/End)三处重复;main() 的 karaoke 降级三连;可抽共享管线函数
+- [ ] **W6 rs_sync 容差按 fps 自适应**:当前默认 34ms ≈ 1 帧@30fps,60fps 素材需手动 `--frame-ms 17`;可从 IR/成片读 fps 自动定容差
+
 ### v7 落地进度(2026-09-12,来源 `docs/OPTIMIZATION-v7.md`)
 
 **v0.7.0 字幕与粗剪修复(已完成,测试 118 → 137 全绿)**

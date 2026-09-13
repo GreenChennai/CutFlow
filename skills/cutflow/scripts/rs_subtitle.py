@@ -195,18 +195,17 @@ def _to_cards(events: list[dict]) -> list[dict]:
     return out
 
 
-def events_from_wordline(wl: dict, max_chars: int, *, terms=(), top: int = 3,
-                         mode: str = "dp", karaoke: bool = False,
-                         cps_max: float | None = None) -> tuple[list[dict], dict]:
-    """Wordline → 字幕事件。卡时间 = 首字/末字时间戳聚合(align.md §4)。
+def _dp_events(wl: dict, max_chars: int, *, terms=(), top: int = 3,
+               mode: str = "dp") -> tuple[list[dict], list[dict], list[str], int]:
+    """逐句 DP 切分 → 原始事件(未必并/未延长/未间距),附候选与降级留痕。
 
-    `wl.charTimingEstimated`(无字级时间戳)时,卡内位置是**估算**的:仍按 max_chars
-    出卡以保证可读性,但在 `degradeReasons` 里显式标注"卡内位置为估算",并由
-    `meta["charTimingEstimated"]` 告知上游 —— 真正的字级时间由 `rs_dub align`(#10)补齐。
+    events_from_wordline 与 override 的 partial 模式共用(B7:部分替换需要
+    DP 分组做基底)。
     """
     events: list[dict] = []
     candidates: list[dict] = []
     seg_degrade: list[str] = []      # 单句 DP 失败 → 退回长度算法,但必须留痕
+    word_fb_count = 0                # 词内全禁无可行解、走了词内强惩罚的句数(留痕)
     for text, idxmap, gaps in _sentence_slices(wl):
         if all(ch in _PUNCT_ONLY or not ch.strip() for ch in text):
             continue          # 纯标点句跳过:DP 对它产卡缺 startMs(会以 0.0s 污染排序)
@@ -224,6 +223,7 @@ def events_from_wordline(wl: dict, max_chars: int, *, terms=(), top: int = 3,
                 plan = {"cards": [{"i": i, "text": c, "startMs": None, "endMs": None}
                                   for i, c in enumerate(textopt.card_split_length(text, max_chars))],
                         "violations": [], "ambiguous": False, "plans": []}
+        word_fb_count += 1 if plan.get("wordFallback") else 0
         candidates.append({"sentence": text, "ambiguous": plan.get("ambiguous", False),
                            "plans": [{"score": p["score"], "cards": [c["text"] for c in p["cards"]]}
                                      for p in plan.get("plans", [])]})
@@ -238,7 +238,24 @@ def events_from_wordline(wl: dict, max_chars: int, *, terms=(), top: int = 3,
                 # 字级锚点:后沿/起点调整只能在释放余量内做(见 _enforce_gaps / _extend_short)
                 ev["anchorStart"] = c.get("anchorStartMs", c["startMs"] + RELEASE_MS) / 1000.0
                 ev["anchorEnd"] = c.get("anchorEndMs", c["endMs"] - RELEASE_MS) / 1000.0
+            if c.get("charSpan"):
+                # Agent 复核定位用:卡 ↔ wordline 内容字全局索引(ADR-0020)
+                ev["charSpan"] = list(c["charSpan"])
             events.append(ev)
+    return events, candidates, seg_degrade, word_fb_count
+
+
+def events_from_wordline(wl: dict, max_chars: int, *, terms=(), top: int = 3,
+                         mode: str = "dp", karaoke: bool = False,
+                         cps_max: float | None = None) -> tuple[list[dict], dict]:
+    """Wordline → 字幕事件。卡时间 = 首字/末字时间戳聚合(align.md §4)。
+
+    `wl.charTimingEstimated`(无字级时间戳)时,卡内位置是**估算**的:仍按 max_chars
+    出卡以保证可读性,但在 `degradeReasons` 里显式标注"卡内位置为估算",并由
+    `meta["charTimingEstimated"]` 告知上游 —— 真正的字级时间由 `rs_dub align`(#10)补齐。
+    """
+    events, candidates, seg_degrade, word_fb_count = _dp_events(
+        wl, max_chars, terms=terms, top=top, mode=mode)
 
     events.sort(key=lambda e: e["start"])
     kar_attached = 0
@@ -259,13 +276,193 @@ def events_from_wordline(wl: dict, max_chars: int, *, terms=(), top: int = 3,
     estimated = bool(wl.get("charTimingEstimated"))
     if estimated and not any("估算" in r for r in reasons):
         reasons.append("卡内位置为估算(无字级时间戳),建议 rs_dub align 补字级")
+    if word_fb_count:
+        reasons.append(f"{word_fb_count} 句词内全禁无可行解,按词内强惩罚切分(ADR-0020 留痕)")
     meta = {"degraded": bool(wl.get("degraded")) or any(e.get("degraded") for e in events),
             "degradeReasons": reasons,
             "charTimingEstimated": estimated,
             "violations": violations, "candidates": candidates,
             "mergedShort": merged_short, "extendedShort": extended,
             "karaokeAttached": kar_attached,
+            "wordFallbackSentences": word_fb_count,
             "ambiguous": sum(1 for c in candidates if c["ambiguous"])}
+    return events, meta
+
+
+def _content_index(chars: list[dict]) -> tuple[str, list[int]]:
+    """内容字串 S + 每个内容字位置 → raw chars 下标(B7 文本锚定用)。"""
+    s, idx = [], []
+    for i, c in enumerate(chars):
+        ch = c["ch"]
+        if ch.strip() and ch not in segmentation.PUNCT_WS:
+            s.append(ch)
+            idx.append(i)
+    return "".join(s), idx
+
+
+def _normalize_card_text(t: str) -> str:
+    """卡文本去标点/空白 → 内容字(B7:按内容定位,绝不做算术偏移)。"""
+    return "".join(ch for ch in t if ch.strip() and ch not in segmentation.PUNCT_WS)
+
+
+def _resolve_override_requests(ov: dict, chars: list[dict], s: str, idx: list[int]
+                               ) -> list[dict]:
+    """override 卡 → 内容字区间请求(递增、不重叠)。
+
+    三种定位(B7,BUGREPORT-20260913):
+      {"span": [a, b]}                旧契约:raw chars 内容字全局索引;
+      {"text": "……"}                  新:去标点后在 S 上**顺序锚定**;
+      {"textPrefix": "…", "textSuffix": "…"}  新:前缀定位起点、后缀定位终点(中间吞并)。
+    按"内容字数"做算术偏移必然切错位(raw 索引含标点/空格条目),一律走锚定。
+    """
+    import bisect
+    requests: list[dict] = []
+    cursor = 0
+    for it in (ov.get("cards") or []):
+        note = it.get("note") if isinstance(it, dict) else None
+        if not isinstance(it, dict):
+            raise ValueError(f"override cards 元素应为对象:{it!r}")
+        if "span" in it:
+            try:
+                a, b = int(it["span"][0]), int(it["span"][1])
+            except (KeyError, IndexError, TypeError, ValueError) as exc:
+                raise ValueError(f"override span 非法:{it!r}") from exc
+            if not (0 <= a < b <= len(chars)):
+                raise ValueError(f"override span 越界:[{a},{b}),chars 总数 {len(chars)}")
+            ca, cb = bisect.bisect_left(idx, a), bisect.bisect_left(idx, b)
+        elif "text" in it:
+            t = _normalize_card_text(str(it["text"]))
+            if not t:
+                raise ValueError(f"override text 归一化后为空:{it!r}")
+            pos = s.find(t, cursor)
+            if pos < 0:
+                raise ValueError(f"override text 无法在 wordline 内容串中锚定(必须按原文顺序):"
+                                 f"「{t[:14]}…」(游标 {cursor}/{len(s)})")
+            ca, cb = pos, pos + len(t)
+            cursor = cb
+        elif "textPrefix" in it:
+            pre = _normalize_card_text(str(it.get("textPrefix") or ""))
+            suf = _normalize_card_text(str(it.get("textSuffix") or ""))
+            if not pre or not suf:
+                raise ValueError(f"override textPrefix/textSuffix 均不能为空:{it!r}")
+            pos = s.find(pre, cursor)
+            if pos < 0:
+                raise ValueError(f"override textPrefix 无法锚定:「{pre[:14]}…」(游标 {cursor})")
+            end = s.find(suf, pos + len(pre))
+            if end < 0:
+                raise ValueError(f"override textSuffix 无法在前缀之后锚定:「{suf[:14]}…」")
+            ca, cb = pos, end + len(suf)
+            cursor = cb
+        else:
+            raise ValueError(f"override 卡缺定位字段(需要 span / text / textPrefix+textSuffix):{it!r}")
+        requests.append({"content": [ca, cb], "note": note})
+    for r1, r2 in zip(requests, requests[1:]):
+        if r2["content"][0] < r1["content"][1]:
+            raise ValueError(f"override 区间重叠/乱序:{r1['content']} 与 {r2['content']}"
+                             f"(契约见 rules/subtitles.md §10.3,不做静默重排)")
+    return requests
+
+
+def _event_from_content_range(ca: int, cb: int, chars: list[dict], idx: list[int]) -> dict | None:
+    """内容字区间 [ca, cb) → 字幕事件(时间唯一真相源 = wordline 字级锚)。
+
+    卡尾标点至多带一个(防「。，」连挂);纯标点/空 span 返回 None。
+    """
+    if cb <= ca:
+        return None
+    first = idx[ca]
+    last = idx[cb - 1]
+    if last + 1 < len(chars):
+        nxt = chars[last + 1]["ch"]
+        if not nxt.strip() or nxt in segmentation.PUNCT_WS:
+            last += 1          # 卡尾标点至多带一个
+    cleaned = textopt._clean_card("".join(c["ch"] for c in chars[first:last + 1]))
+    if not cleaned:
+        return None
+    return {"start": max(0.0, (chars[first]["startMs"] - RELEASE_MS) / 1000.0),
+            "end": (chars[last]["endMs"] + RELEASE_MS) / 1000.0,
+            "text": cleaned,
+            "anchorStart": chars[first]["startMs"] / 1000.0,
+            "anchorEnd": chars[last]["endMs"] / 1000.0,
+            "charSpan": [first, last + 1]}
+
+
+def events_from_override(wl: dict, override: dict, max_chars: int, *,
+                         karaoke: bool = False,
+                         cps_max: float | None = None) -> tuple[list[dict], dict]:
+    """Agent 复核修正(ADR-0020 / B7 扩展):按 override 从 wordline 重建卡片。
+
+    时间唯一真相源仍是 wordline:起点 = 首字 startMs − 20ms、终点 = 末字 endMs + 20ms,
+    重建后照常走必并/延长/间距/帧对齐与硬约束校验。
+
+    覆盖模式:
+      **full** —— override 区间覆盖全部内容字(旧行为):整表重建,不用 DP;
+      **partial** —— 只覆盖一部分:以 DP 分组为基底,被 override 区间压住的 DP 卡
+      被替换,其余沿用 DP 结果。微调一张卡不再需要重给全部 span(B7)。
+    """
+    import bisect
+    chars = wl.get("chars") or []
+    if not chars:
+        raise ValueError("wordline 没有 chars,无法按 override 重建")
+    s, idx = _content_index(chars)
+    requests = _resolve_override_requests(override, chars, s, idx)
+    if not requests:
+        raise ValueError("override 没有有效卡片")
+
+    covered = 0
+    for ca, cb in (r["content"] for r in requests):
+        covered += cb - ca
+    full_mode = covered >= len(s)
+
+    if full_mode:
+        events = []
+        for r in requests:
+            ev = _event_from_content_range(r["content"][0], r["content"][1], chars, idx)
+            if ev:
+                events.append(ev)
+        override_mode = "full"
+    else:
+        base, _cand, _deg, _wfb = _dp_events(wl, max_chars)
+        if any("charSpan" not in e for e in base):
+            raise ValueError("partial override 需要 DP 事件携带 charSpan(降级 wordline 不支持,"
+                             "请改用全量 span 覆盖)")
+        kept: list[tuple[int, dict]] = []      # (content 起点, 事件)
+        for e in base:
+            ra, rb = e["charSpan"]
+            j0, j1 = bisect.bisect_left(idx, ra), bisect.bisect_left(idx, rb)
+            if any(not (j1 <= ca or cb <= j0) for ca, cb in
+                   (r["content"] for r in requests)):
+                continue                        # 被 override 压住的 DP 卡 → 替换
+            kept.append((j0, e))
+        replaced: list[tuple[int, dict]] = []
+        for r in requests:
+            ev = _event_from_content_range(r["content"][0], r["content"][1], chars, idx)
+            if ev:
+                replaced.append((r["content"][0], ev))
+        events = [e for _, e in sorted(kept + replaced, key=lambda t: t[0])]
+        override_mode = "partial"
+
+    events.sort(key=lambda e: e["start"])
+    kar_attached = _apply_karaoke_chars(events, wl) if karaoke else 0
+    events, merged = _merge_short(events, max_chars)
+    extended = _extend_short(events)
+    _enforce_gaps(events)
+    final_cards = _to_cards(events)
+    violations = segmentation.check_constraints(
+        final_cards, max_chars, cps_max or segmentation.cps_max_for(max_chars))
+    audit = [{"span": list(e["charSpan"]), "text": e["text"],
+              "startMs": int(round(e["start"] * 1000)), "endMs": int(round(e["end"] * 1000)),
+              "chars": len(e["text"].replace(" ", ""))}
+             for e in events if "charSpan" in e]
+    meta = {"degraded": bool(wl.get("degraded")),
+            "degradeReasons": list(wl.get("degradeReasons") or []),
+            "charTimingEstimated": bool(wl.get("charTimingEstimated")),
+            "violations": violations, "candidates": [],
+            "mergedShort": merged, "extendedShort": extended,
+            "karaokeAttached": kar_attached, "wordFallbackSentences": 0,
+            "ambiguous": 0,
+            "overrideApplied": True, "overrideCards": len(requests),
+            "overrideMode": override_mode, "audit": audit}
     return events, meta
 
 
@@ -300,6 +497,10 @@ def _merge_short(events: list[dict], max_chars: int,
                 prev["text"] = text
                 if "anchorEnd" in e:
                     prev["anchorEnd"] = e["anchorEnd"]      # 合并后占的是后一卡的时间
+                if "charSpan" in e:
+                    prev["charSpan"] = [min(prev["charSpan"][0], e["charSpan"][0]),
+                                        max(prev["charSpan"][1], e["charSpan"][1])] \
+                        if "charSpan" in prev else list(e["charSpan"])
                 if e.get("chars"):
                     # 卡拉OK:合并文本必须同步合并逐字时间,否则 _kar_text 丢字
                     prev["chars"] = (prev.get("chars") or []) + e["chars"]
@@ -320,6 +521,10 @@ def _merge_short(events: list[dict], max_chars: int,
             nxt["start"] = e["start"]
             if "anchorStart" in e:
                 nxt["anchorStart"] = e["anchorStart"]      # 起点取短卡(对齐精度)
+            if "charSpan" in e:
+                nxt["charSpan"] = [min(e["charSpan"][0], nxt["charSpan"][0]),
+                                   max(e["charSpan"][1], nxt["charSpan"][1])] \
+                    if "charSpan" in nxt else list(e["charSpan"])
             if e.get("chars"):
                 nxt["chars"] = (e.get("chars") or []) + (nxt.get("chars") or [])
             out.pop(i)
@@ -380,8 +585,22 @@ def _enforce_gaps(events: list[dict], fps: float = 30.0,
     return tight
 
 
+def _finalize_events(events: list[dict], fps: float = 30.0) -> None:
+    """B5 落盘兜底:正时长、单调、无重叠(就在释放余量/防御语义内,绝不动锚点)。"""
+    events.sort(key=lambda e: e["start"])
+    frame = 1.0 / fps if fps and fps > 0 else 1 / 30.0
+    for e in events:
+        if e["end"] <= e["start"]:
+            e["end"] = e["start"] + frame
+    _enforce_gaps(events, fps)
+
+
 def snap_events_to_frames(events: list[dict], fps: float = 30.0) -> int:
     """把字幕时间量化到帧:起点向下取整、终点向上取整(渲染只认帧)。
+
+    v0.8.1:snap 之后追加**碰撞消解**——起点 floor / 终点 ceil 会让相邻卡产生
+    ≤1 帧的伪重叠(用户实测 3ms 级)。锚点有余量时消解之;余量耗尽则保留伪重叠
+    (切割点吸附伪影,不可见),由 rs_sync 的 1 帧容差放行。
 
     返回被调整的事件数。fps ≤ 0 时不处理。
     """
@@ -399,6 +618,15 @@ def snap_events_to_frames(events: list[dict], fps: float = 30.0) -> int:
         if abs(s - e["start"]) > 1e-9 or abs(t - e["end"]) > 1e-9:
             e["start"], e["end"] = s, t
             n += 1
+    # 碰撞消解:① 后卡起点推迟(最多到其 anchorStart);② 前卡终点收早(最多到其 anchorEnd);
+    # 两者都会破坏对齐精度时,保持伪重叠——不可见,rs_sync 以 1 帧容差放行。
+    for a, b in zip(events, events[1:]):
+        if b["start"] >= a["end"] - 1e-9:
+            continue
+        if "anchorStart" in b and b["anchorStart"] >= a["end"] - 1e-9:
+            b["start"] = a["end"]
+        elif "anchorEnd" in a and a["anchorEnd"] <= b["start"] + 1e-9:
+            a["end"] = b["start"]
     return n
 
 
@@ -569,6 +797,10 @@ def main() -> int:
                     help="逐字卡拉OK字幕(\\kf 染色;需 pkg 后端字级时间戳的 wordline)")
     ap.add_argument("--allow-degraded", dest="allow_degraded", action="store_true",
                     help="卡拉OK 但 wordline 降级时,降级为普通字幕而不是报错")
+    ap.add_argument("--override", default=None,
+                    help="Agent 复核修正文件(subtitles_override.json):按 span / text / "
+                         "textPrefix+textSuffix 从 wordline 重建卡片;支持部分替换(未提及卡沿用 DP),"
+                         "仅支持 --from-wordline")
     ap.add_argument("--fps", type=float, default=30.0, help="帧率(字幕时间量化到帧)")
     ap.add_argument("--no-snap", dest="no_snap", action="store_true",
                     help="不做帧对齐,保留亚帧精度")
@@ -627,7 +859,28 @@ def main() -> int:
                             why + ";用 pkg 后端重建 wordline,或加 --allow-degraded 降级为普通字幕",
                             exit_code=2)
 
-    if a.no_optimize:
+    if a.override:
+        # Agent 复核修正(ADR-0020):时间真相源仍是 wordline,只动文本分组
+        if not a.from_wordline:
+            return emit(False, "OVERRIDE_NEEDS_WORDLINE",
+                        "--override 仅支持 --from-wordline(需要字级时间真相源)", exit_code=2)
+        try:
+            ov = json.loads(Path(a.override).read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            return emit(False, "BAD_OVERRIDE_FILE", f"读取 override 失败:{exc}", exit_code=2)
+        if not isinstance(ov, dict) or not isinstance(ov.get("cards"), list):
+            return emit(False, "BAD_OVERRIDE_FILE",
+                        'override 结构应为 {"cards":[{"span":[a,b] | "text":"…" | '
+                        '"textPrefix":"…","textSuffix":"…","note":"..."}]}', exit_code=2)
+        try:
+            events, meta = events_from_override(wl, ov, max_chars, karaoke=karaoke,
+                                                cps_max=preset.get("cpsMax"))
+        except ValueError as exc:
+            return emit(False, "BAD_OVERRIDE", str(exc), exit_code=2)
+        if karaoke and not meta.get("karaokeAttached"):
+            karaoke = False
+            kar_note = "卡拉OK 降级:字级时间未覆盖任何字幕卡"
+    elif a.no_optimize:
         events = build_events([{"start_s": c["startMs"] / 1000, "end_s": c["endMs"] / 1000,
                                 "text": c["ch"]} for c in wl.get("chars", [])],
                               max_chars, optimize=False)
@@ -647,6 +900,14 @@ def main() -> int:
         meta["degradeReasons"] = list(meta.get("degradeReasons") or []) + [kar_note]
     if not a.no_snap:
         meta["snapped"] = snap_events_to_frames(events, a.fps)
+        # B3(BUGREPORT-20260913):snap 的 start floor / end ceil 会把相邻卡推回
+        # 30–40ms 重叠(rs_sync 容差 1 帧 → 判 FAIL)。锚点释放余量内再收一次间距;
+        # 余量耗尽仍重叠的留给 rs_sync 帧容差(对齐精度优先,Hard Rule 20)。
+        meta["postSnapGaps"] = _enforce_gaps(events, a.fps)
+    # B5(BUGREPORT-20260913)落盘防御:cards.json 与 ass 由**同一份 events** 写出,
+    # 时间必须单调、正时长、无重叠;任何上游调整(必并/延长/间距/帧对齐)后在此兜底,
+    # 不得把倒挂/漂移的时间写进审计件。
+    _finalize_events(events, a.fps or 30.0)
 
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -657,7 +918,19 @@ def main() -> int:
         (out / "segments_candidates.json").write_text(
             json.dumps(meta["candidates"], ensure_ascii=False, indent=1), encoding="utf-8")
 
+    # Agent 复核输入:卡 ↔ charSpan(wordline 内容字全局索引);改 span 后用 --override 回灌
+    cards_json = [{"i": i, "text": e["text"], "charSpan": e.get("charSpan"),
+                   "startMs": int(round(e["start"] * 1000)), "endMs": int(round(e["end"] * 1000))}
+                  for i, e in enumerate(events)]
+    (out / "cards.json").write_text(
+        json.dumps({"maxChars": max_chars, "ratio": ratio,
+                    "finalTimes": True,   # B5:时间 = 最终 ass 同源快照(必并/延长/间距/帧对齐之后)
+                    "cards": cards_json},
+                   ensure_ascii=False, indent=1), encoding="utf-8")
+
     msg = f"{len(events)} 条字幕事件(卡切分 {a.segment},每卡 ≤{max_chars} 字)"
+    if meta.get("overrideApplied"):
+        msg += f";override 重建 {meta['overrideCards']} 卡"
     if meta["ambiguous"]:
         msg += f";{meta['ambiguous']} 句切分歧义(见 segments_candidates.json)"
     if meta["violations"]:
@@ -667,8 +940,10 @@ def main() -> int:
 
     return emit(True, "SUBTITLE_OK", msg,
                 {"srt": str(out / "master.srt"), "ass": str(out / "subtitles.ass"),
+                 "cards": str(out / "cards.json"),
                  "style": style, "ratio": ratio, "platform": a.platform,
                  "canvas": canvas, "count": len(events),
+                 "overrideApplied": bool(meta.get("overrideApplied")),
                  "maxChars": max_chars, "ambiguous": meta["ambiguous"],
                  "violations": meta["violations"][:20], "degraded": meta["degraded"],
                  "charTimingEstimated": bool(meta.get("charTimingEstimated")),

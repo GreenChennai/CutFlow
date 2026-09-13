@@ -139,6 +139,12 @@
           "type": "string"
         }
       }
+    },
+    "joinCrossfadeMs": {
+      "type": "number",
+      "minimum": 0,
+      "default": 120,
+      "description": "0<durMs<1帧 的转场提升为该时长的交叉溶解(ADR-0023);0=禁用提升(回退硬切)"
     }
   },
   "$defs": {
@@ -196,11 +202,11 @@
             },
             "similarity": {
               "type": "number",
-              "default": 0.12
+              "default": 0.15
             },
             "blend": {
               "type": "number",
-              "default": 0.08
+              "default": 0.12
             },
             "despill": {
               "type": "boolean",
@@ -211,6 +217,41 @@
               "minimum": 0,
               "maximum": 0.5,
               "description": "抠像前先裁掉顶部比例(素材顶部非绿幕区,如白墙/天花板)"
+            },
+            "edgeBlur": {
+              "type": "number",
+              "default": 0.6,
+              "description": "(兼容旧字段)alpha 边缘羽化 sigma;v0.10 起建议用 edgeFeather"
+            },
+            "edgeShrink": {
+              "type": "number",
+              "default": 1.2,
+              "description": "alpha 边缘腐蚀收缩量(gblur sigma,px);消锯齿/黑边的核心参数;0 关闭"
+            },
+            "edgeShrinkT": {
+              "type": "number",
+              "default": 0.55,
+              "description": "腐蚀硬化阈值(0-1);越大收得越多,过大伤发丝"
+            },
+            "edgeFeather": {
+              "type": "number",
+              "default": 0.6,
+              "description": "腐蚀后的细羽化 sigma;找回平滑边缘过渡;0 关闭"
+            },
+            "killRects": {
+              "type": "array",
+              "items": {
+                "type": "array",
+                "items": { "type": "number" },
+                "minItems": 4,
+                "maxItems": 4
+              },
+              "description": "键不掉的绿幕投影清除区 [[x0,y0,x1,y1]…](归一化,裁剪后前景坐标);配合 killRectMode"
+            },
+            "killRectMode": {
+              "enum": ["green", "all"],
+              "default": "green",
+              "description": "green=框内只清绿色主导像素(保护入区人体,默认);all=硬矩形全清(v0.9 旧行为,矩形边界会穿帮)"
             }
           }
         },
@@ -277,7 +318,7 @@
         },
         "transition": {
           "type": "object",
-          "description": "与前一片段的转场(xfade)。注意:转场会吞掉重叠时长,使后续时间轴整体前移;为音画对齐,当前约定:使用转场时,同工程内的 audio/text 轨 startMs 由 Agent 按转场消耗重新计算",
+          "description": "与前一片段的转场(xfade)。v0.10(ADR-0023):渲染器用尾帧扩展保证转场零时间漂移,audio/text 轨 startMs 无需手工补偿;0<durMs<1帧 时自动提升为 joinCrossfadeMs 交叉溶解;type=cut/none 表示显式硬切",
           "properties": {
             "type": {
               "enum": [
@@ -285,7 +326,9 @@
                 "wipeleft",
                 "wipeup",
                 "slideleft",
-                "circleopen"
+                "circleopen",
+                "cut",
+                "none"
               ]
             },
             "durMs": {
@@ -293,6 +336,23 @@
               "default": 500
             }
           }
+        },
+        "overlay": {
+          "type": "object",
+          "description": "绝对像素落点(rs_brand 变体轨产出);存在时优先于 scale/position",
+          "properties": {
+            "x": { "type": "integer", "minimum": 0 },
+            "y": { "type": "integer", "minimum": 0 },
+            "w": { "type": "integer", "exclusiveMinimum": 0 },
+            "h": { "type": "integer", "exclusiveMinimum": 0 },
+            "opacity": { "type": "number", "minimum": 0, "maximum": 1, "default": 1 }
+          }
+        },
+        "opacity": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "overlay 层整体不透明度(scale/position 路径也生效)"
         },
         "fade": {
           "type": "object",

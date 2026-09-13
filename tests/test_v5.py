@@ -111,11 +111,15 @@ def test_verify_l0_passes_on_clean_project(tmp_path):
     assert res["level"] == "L0"
 
 
-def test_verify_l0_catches_broken_subtitles(tmp_path):
+def test_verify_l0_missing_subtitles_is_midstate_not_fail(tmp_path):
+    """B9(BUGREPORT-20260913)修订:阶段式运行(--only S2 等)后字幕尚未生成
+    是**正常中间态**,L0 标 skipped(未涉及)而不是 ✗ —— 全量误报会淹没真故障。
+    有 ass 且内容违规仍 FAIL(见 test_v9::test_l0_missing_subtitles_is_skipped)。"""
     root = _mk_project(tmp_path, with_ass=False)
     res = rs_verify.collect_l0(root)
-    assert res["pass"] is False
-    assert any("字幕" in x for x in res["failed"])
+    assert any(c["name"].startswith("字幕合规") and c.get("skipped")
+               for c in res["checks"]), res["checks"]
+    assert "字幕合规(字数/CPS/时长/不重叠)" not in res["failed"]
 
 
 def test_verify_l1_is_review_manifest_not_autojudgement():
@@ -276,7 +280,7 @@ def test_artboard_apply_rejects_size_mismatch(tmp_path):
     ir = {"canvas": {"width": 1080, "height": 1920},
           "tracks": [{"kind": "video", "clips": [
               {"src": "03_assets/artboard/c1/export/c1.png", "startMs": 0, "durationMs": 2000}]}]}
-    _, issues, _ = rs_artboard.apply_to_ir(doc, ir, root)
+    _, issues, _, _ = rs_artboard.apply_to_ir(doc, ir, root)
     assert any("尺寸" in i for i in issues), issues
 
 

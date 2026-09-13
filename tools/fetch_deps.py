@@ -306,6 +306,20 @@ def _opt_value(args: list[str], flag: str) -> str:
     return ""
 
 
+def install_subtitle_lexicon() -> int:
+    """字幕词边界分词(ADR-0020,可选):把 jieba 装进**当前**解释器(非 ASR venv)。
+
+    不装也能出片——segmentation 会降级内置高频词表;装了冷门词不再被切。
+    """
+    print("[字幕词边界] 安装 jieba 到当前 Python …")
+    p = subprocess.run([sys.executable, "-m", "pip", "install", "-q", "jieba"])
+    if p.returncode == 0:
+        print("jieba 安装完成(词边界硬约束优先 jieba)")
+        return 0
+    print("jieba 安装失败(字幕将降级内置高频词表,不影响出片)")
+    return 1
+
+
 def main() -> int:
     if len(sys.argv) <= 1:
         status()
@@ -314,8 +328,10 @@ def main() -> int:
     rest = sys.argv[2:]
     if mod == "asr":
         return install_asr(rest)
+    if mod == "subtitle":
+        return install_subtitle_lexicon()
     if mod not in MODULES:
-        print(f"未知模块:{mod}(可选 ocr / vqa / asr)")
+        print(f"未知模块:{mod}(可选 ocr / vqa / asr / subtitle)")
         return 2
     return install(mod)
 

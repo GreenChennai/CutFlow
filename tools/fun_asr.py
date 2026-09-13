@@ -496,6 +496,35 @@ def transcribe_server(wav: Path, model: str) -> tuple[list[dict], dict]:
 
 # ---------------------------------------------------------------- CLI
 
+def any_backend_ready() -> bool:
+    """任一后端就绪即 True(v0.10 修 NameError:ensure_backend 引用了本函数但从未定义,
+    导致每次转写必然崩溃,上游只能报"ASR 无输出/未启动"——用户反馈#3 的真凶)。"""
+    return any(fn()[0] for fn in BACKENDS.values())
+
+
+def ensure_backend() -> bool:
+    """自举(T3):全后端未就绪 → 自动跑 fetch_deps asr --pkg --seed-models(离线)。"""
+    if any_backend_ready():
+        return True
+    fetch = REPO / "tools" / "fetch_deps.py"
+    print("[ensure] ASR 未部署,自动拉起部署(离线 pkg 后端,首次数分钟)…", file=sys.stderr)
+    if not fetch.is_file():
+        print(f"[ensure] 缺 {fetch}", file=sys.stderr)
+        return False
+    cmd = [sys.executable, str(fetch), "asr", "--pkg",
+           "--seed-models", str(models_dir())]
+    p = subprocess.run(cmd, cwd=str(REPO))
+    if p.returncode != 0:
+        print(f"[ensure] 部署失败(exit {p.returncode})", file=sys.stderr)
+        return False
+    maybe_reexec()  # venv 可能刚装好,重新入 venv
+    if not any_backend_ready():
+        print("[ensure] 部署后仍无可用后端", file=sys.stderr)
+        return False
+    print("[ensure] ASR 就绪", file=sys.stderr)
+    return True
+
+
 def probe() -> int:
     report = {}
     for name, fn in BACKENDS.items():
@@ -528,12 +557,26 @@ def main() -> int:
     ap.add_argument("--out", default="")
     ap.add_argument("--keep-wav", action="store_true")
     ap.add_argument("--probe", action="store_true")
+    ap.add_argument("--ensure", action="store_true",
+                    help="只做自举:后端未就绪时自动部署后退出")
+    ap.add_argument("--no-ensure", action="store_true",
+                    help="禁用转写前自动自举")
     ap.add_argument("--json", action="store_true",
                     help="兼容其他 rs_*.py 的约定;stdout 本来就始终是 JSON 协议")
     a = ap.parse_args()
 
-    if a.probe or not a.media:
+    if a.ensure:
+        ok = ensure_backend()
+        return emit(ok, "ENSURE_OK" if ok else "ENSURE_FAIL",
+                    "ASR 后端就绪" if ok else "ASR 自举失败(见 stderr)", exit_code=0 if ok else EXIT_DEP)
+    if a.probe:
         return probe()
+    if not a.media:
+        return probe()
+    if not a.no_ensure and not ensure_backend():
+        return emit(False, "NO_BACKEND",
+                    "ASR 后端未就绪且自动部署失败(关掉 --no-ensure 可重试)",
+                    exit_code=EXIT_DEP)
 
     src = Path(a.media)
     if not src.is_file():

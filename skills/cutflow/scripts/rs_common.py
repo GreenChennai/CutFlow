@@ -103,7 +103,8 @@ def ffprobe_bin(cfg: dict | None = None) -> str:
 
 def run(cmd: list[str], timeout: int = 3600, quiet: bool = True) -> subprocess.CompletedProcess:
     return subprocess.run(cmd, capture_output=True, timeout=timeout,
-                          text=False if quiet is False else True)
+                          text=True if quiet is False else True,
+                          encoding="utf-8", errors="replace")
 
 
 def ffprobe_json(media: str | Path, cfg: dict | None = None) -> dict:

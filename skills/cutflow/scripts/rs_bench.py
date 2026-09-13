@@ -11,7 +11,31 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from rs_common import die, emit, ffmpeg_bin, load_config, media_duration_s, run  # noqa: E402
+from rs_common import die, emit, ffmpeg_bin, ffprobe_json, load_config, media_duration_s, run  # noqa: E402
+
+
+def video_stream_duration(video: Path, cfg: dict) -> float:
+    """视频流时长(B6,BUGREPORT-20260913):容器 duration 常被音频垫尾撑长,
+    按它布点会让尾部采样零帧 → xstack 空输出假成功。流 duration 缺失时退
+    nb_frames/帧率,再退容器时长。"""
+    info = ffprobe_json(video, cfg)
+    vs = next((s for s in info.get("streams", []) if s["codec_type"] == "video"), None)
+    if vs is None:
+        die(4, "BENCH_NO_VIDEO", f"没有视频流:{video}")
+    try:
+        d = float(vs.get("duration") or 0)
+        if d > 0:
+            return d
+    except (TypeError, ValueError):
+        pass
+    try:
+        num, den = str(vs.get("r_frame_rate") or "0/1").split("/")
+        nf = float(vs.get("nb_frames") or 0)
+        if nf > 0 and float(num) > 0:
+            return nf * float(den) / float(num)
+    except (ValueError, ZeroDivisionError):
+        pass
+    return media_duration_s(video, cfg)
 
 
 def sample_points(duration: float, ir: dict | None, seed: int = 7) -> list[float]:
@@ -37,7 +61,7 @@ def main() -> int:
     if not video.is_file():
         return emit(False, "NO_MEDIA", f"成片不存在:{video}", exit_code=2)
     cfg = load_config()
-    dur = media_duration_s(video, cfg)
+    dur = video_stream_duration(video, cfg)
     ir = json.loads(Path(a.ir).read_text(encoding="utf-8")) if a.ir else None
     pts = sample_points(dur, ir)
     out = Path(a.out)
@@ -55,6 +79,11 @@ def main() -> int:
     p = run(cmd, timeout=600)
     if p.returncode != 0:
         die(4, "BENCH_FAIL", f"抽帧失败:{(p.stderr or '')[-400:]}")
+    # B6:rc=0 不代表成功 —— 尾部点无帧时 xstack 可能空输出假成功,必须验产物
+    if not out.is_file() or out.stat().st_size == 0:
+        die(4, "BENCH_EMPTY",
+            f"抽帧空输出(视频流 {dur:.2f}s,采样点 {[round(t, 2) for t in pts]});"
+            "疑似采样点越界或流异常,拒绝假成功(BUGREPORT B6)")
     return emit(True, "BENCH_OK", f"{n} 个采样点已拼图", {"grid": str(out), "duration_s": round(dur, 2),
                                                        "points": [round(t, 2) for t in pts]})
 

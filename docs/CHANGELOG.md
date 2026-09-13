@@ -1,5 +1,63 @@
 # Changelog
 
+## v0.10.1 (2026-09-14) — 整片验收批修(店群工程实测,4 个真 Bug)
+
+整片重渲验收中暴露、均已修复并补像素级/占位符回归:
+
+- **geq 字节域腐蚀(致命,ADR-0022 修订)**:`_chroma_fg_chain` 旧式 `clip((alpha-t)/(1-t),0,1)` 把 geq 的 0-255 原始 alpha 当 [0,1] 算 → 恒输出 1 → **人物整帧透明,全片无人**(音轨正常,极具欺骗性)。修复:换算到字节域 `clip((alpha−t×255)/((1−t)×255)×255,0,255)`;新增实机回归 `test_chroma_chain_preserves_opaque_subject`(真跑 ffmpeg 断言像素 alpha)。
+- **S1 `{first_material}` 选中 manifest(致命)**:Windows Path 排序大小写不敏感,`manifest.json` 排到素材前 → S1 把 manifest 喂给 ffmpeg,凡 CJK/大写命名的素材新工程必崩。修复:`pick_asr_media()` 按音视频扩展名过滤(manifest/图片不再可能入选)。
+- **S9 对账用了源空间 wordline(假失败)**:`wordline.json` 恒为源空间,S9 拿它对账成片时长必差一个粗剪裁剪量(-28.1s)。修复:S9 改用 `{final_wordline}`(优先 `wordline.final.json`,与 rs_verify 同一约定)。
+- **`rs_sync --video` 契约漂移**:文档/S9 spec 传 `--video`,argparse 只认位置参数 → S9 必崩。修复:两种都收,`--video` 优先。
+- **Logo 透明 padding 稀释视觉尺寸(ADR-0025 补,e2e 实测 12%→3.7%)**:`variant_ir` 现在把带 padding 的 Logo 预裁剪到内容包围盒(`crop_to_content`,按 bbox 缓存派生文件),可见 Logo 精确等于 `scale` 承诺;e2e 差分实测落点 ±1px、宽度 12.0%。
+- 测试 236 → **242 全绿**;`{final_video}` 改按 mtime 取最新(防变体字典序误选)。
+
+## v0.10 (2026-09-14) — 边缘精修 · 零漂移交叉溶解 · 内置 ASR 收尾 · Logo 真实尺寸(ADR-0022/0023/0024/0025)
+
+- **边缘精修(ADR-0022,反馈#1)**:`_chroma_fg_chain()` 重写 —— alpha 腐蚀收缩(大 sigma 模糊+偏高频阈值硬化)→ 细羽化,治发丝锯齿与黑边;`killRects` 默认 `killRectMode=green`(框内只清 `lt(cb,116)*lt(cr,116)` 绿幕主导像素,不再连人体一起抹,店群工程"左下角闪烁黑影"根因);`CHROMA_DEFAULTS`(similarity .15/blend .12)三处统一真相源;overlay 层同链;`CACHE_VER` v2→v3。
+- **零漂移交叉溶解(ADR-0023,反馈#2)**:`0<durMs<1帧` 的转场自动提升为 `joinCrossfadeMs`(默认 120ms,doc/config 可覆,0 禁用)交叉溶解;**尾帧扩展法**——段 i 多渲 `tails[i]` 尾帧,xfade `offset` 恒等于后段名义起点,成片时长与字幕时间零漂移,末尾 `-t` 裁齐;段边界帧量化;仅"源间隙放不下尾帧"才整链回退 concat。
+- **内置 FunASR 收尾(ADR-0024,反馈#3)**:修 `ensure_backend()` 调用未定义 `any_backend_ready()` 的必崩 NameError("ASR 未启动"真凶);`rs_doctor` 删已废弃 HTTP server 探测改本地 `--probe`;`rules/asr.md` 写死"未就绪=自动部署,禁止让用户手装/启动服务"。
+- **Logo 真实尺寸(ADR-0025,反馈#4)**:`probe_logo()` 像素宽高+alpha 内容包围盒(修 rgba 子串匹配 bug);`logo_rect()` 按真实宽高比缩放、高上限 8% 画高、anchor 扩 6 位含 topCenter/bottomCenter、bottom 系自动避开字幕带(`lifted` 留痕);`variant_ir` 产 `overlay={x,y,w,h,opacity}` 绝对落点,`rs_render.step_compose` 消费(修"产而不消致 Logo 贴满画布"潜伏致命);`--analyze` 子命令;`check_safe_area` 补 x/四边。
+- 测试 214 → **236 全绿**(新增 `tests/test_v10.py` 22 用例);ADR-0022/0023/0024/0025 落盘;tmp 实验残留清理。
+
+## v0.8.2 (2026-09-13) — 纯口播复测 B 系列批修(BUGREPORT-20260913 B1–B10 / ADR-0021)
+
+- **#B1 `rs_render step_mix` 消费 `sourceInMs`**(致命):多段人声每段从源 0s 取 → 片头反复、音画错位;改为输入侧 `-ss` 寻址,`sourceInMs` 纳入 mix 缓存键。voice_full 绕过法不再必需。
+- **#B2 转场字段统一 `durMs`**(致命):`rs_ir build` 改写 `durMs`(旧 `ms` 静默按 500ms 吞时长);validate 拦截旧字段;`step_concat` 对 **tdur<1 帧**的转场整链弃用走无损 concat(防 xfade 坍缩);渲染后新增视频流时长 vs IR 预期的音画对齐断言(>1.5 帧告警)。
+- **#B3 `rs_subtitle` snap 后重跑 `_enforce_gaps`**:floor/ceil 推回的 30–40ms 卡片重叠在锚点余量内消掉(rs_sync 1 帧容差不再被逼 FAIL)。
+- **#B4 `rs_cleanup` keep 规则重写**(ADR-0007 回归):`final_*.mp4`/`subtitles.ass`/`master.srt`/`metadata.*`/`*report*.md`/`cards.json` 等交付物默认必留,只删探针件与非交付物。
+- **#B5 cards.json 最终时间快照**:`finalTimes` 标注 + 落盘兜底 `_finalize_events`(防倒挂/漂移);回归断言 cards.json == ass 逐毫秒一致。
+- **#B6 `rs_bench` 假成功修复**:按**视频流时长**布点(音频垫尾不再撑长采样区间);产物存在且非空才报 OK,否则 `BENCH_EMPTY`。
+- **#B7 override 三种定位 + 部分替换**:`text` / `textPrefix+textSuffix` 文本锚定(去标点顺序定位,杜绝按内容字数算术偏移切错位);覆盖不足时以 DP 分组为基底部分替换;卡尾标点至多带一个。契约:`rules/subtitles.md` §10.3。
+- **#B8 rebuild 起点陷阱**:`rs_ir build` 检测手注痕迹(chroma/background/manualEdit)拒绝覆盖(`IR_MANUAL_EDITS`,`--force` 显式确认);`05_ir/rebuild.py` 模板写明"手改 IR → 跑 `06_output/rebuild.py`"。
+- **#B9 L0 中间态不误报**:阶段式运行后字幕缺失 → skipped(未涉及),不再 ✗。
+- **#B10 S9 成片音频内容闸(ADR-0021)**:`rs_sync --video 成片 --audio-content` —— 音轨 ASR 与 wordline 对账(片头句=1 次 / 相似度 ≥0.90 / 无重复段),结果缓存;B1 级"时长正常但内容损坏"从此有机械闸。
+- 测试 195 → **214 全绿**;新增 `tests/test_v9.py`(19 用例);修复记录:`docs/BUGFIX-20260913-B1-B10.md`。
+
+## v0.8.1 (2026-09-13) — 词边界切分 · Agent 复核 override · v2 重跑 bug 批修（ADR-0020）
+
+**R1 分词彻底修复(#W1,ADR-0020)**
+
+- `segmentation` 新增**词边界层**:`word_spans()`(jieba 优先,失败降级内置高频词表 COMMON_WORDS + terms/idioms 并入);词内位置**强禁切**;校对稿**空格前禁切/后强候选**(词组边界)。
+- **两阶段 DP**:词内全禁 → 无可行解才降级词内强惩罚(−3.0)重跑,`wordFallback`/`wordFallbackSentences` 如实留痕,不静默切词。
+- `REGRESSION` 增两字词用例(非常/但是/最后/失败 不跨卡);门禁 §8 增「两字词不跨卡 = 0」。
+- jieba 初始化日志会污染 `--json` 契约 → 重定向 stdout 静默初始化;`rs_doctor` 增 jieba 非致命检查;`fetch_deps.py subtitle` 安装(可选)。
+
+**R2 Agent 复核修正闭环(#W2)**
+
+- `rs_subtitle` 卡片输出补 **`charSpan`**(wordline 内容字全局索引),新落盘 **`cards.json`**;新增 **`--override`**:按 Agent 修正文件的 span 从 wordline 字级锚重建卡片,重跑必并/延长/间距/帧对齐/硬约束,`meta.audit` 逐卡留痕;span 非法显式 `BAD_OVERRIDE` 报错。契约见 `rules/subtitles.md` §10。
+
+**R3 v2 重跑 bug 批修**
+
+- **#B1 `rs_render step_mix` 音频调度**:旧链 `adelay` 在前、`atrim` 在后,startMs>0 的段被裁错(实测音轨缩到 13.9s)→ 抽出 `_voice_chain()`,**先裁后延**;lavfi 双正弦实测混音时长 ≈6s。
+- **#B2 `rs_artboard` 三连**:①`scan` 的 `project` 统一写 `<卡片>/src`,hash 口径四处(scan/changed/export/apply)一致(旧版 scan 按 src、changed/export 按卡片目录 → 永远误报"已变化");旧清单兼容(`_src_dir` 归一);②`apply` 未引用卡片**默认跳过+告警**(`skipped`),`--strict` 恢复硬失败、`--only` 只校验子集(多变体不必拆 manifest);③clip src ↔ output 匹配改为**归一化绝对路径**(相对/绝对/反斜杠一视同仁)。
+- **#B3 junction config 错位**:`rs_artboard` config 查找改**仓库根优先、`skills/config.json` 兜底只补缺**;新增 `skills/config.example.json`(`skills/config.json` 已被 .gitignore 的 `config.json` 规则覆盖)。
+- **#B5 `rs_sync` 伪重叠**:`snap_events_to_frames` 后追加热碰消解(锚点有余量时推迟后卡起点/收早前卡终点);`summarize` 重叠判定容差放宽到 **1 帧**(`--frame-ms` 可调,默认 34ms),3ms 级帧取整伪影放行、真实重叠照常 FAIL,报告如实计数。
+
+**质量与验证**
+
+- 测试 170 → **195 全绿**;新增 `tests/test_v8.py`(词边界/override/step_mix 链序+实测/artboard 口径/rs_sync 容差,25 用例)。
+- ebur128 项:经用户对比确认为 ffmpeg 内置滤镜且输出正常,**跳过不改**。
+
 ## v0.8.0 (2026-09-12) — 鲁棒性 · S0 摄取 · 配音对齐 · 动画卡重叠（OPTIMIZATION-v7 #7/#9/#10/#12）
 
 **R1 消灭静默降级(#7)**

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -33,13 +34,25 @@ def probe_tts(url: str) -> tuple[bool, str]:
         return False, f"不可达({type(exc).__name__})——先启动引擎: <engine_dir>\\api_v2.py -a 127.0.0.1 -p 9885"
 
 
-def probe_asr(url: str) -> tuple[bool, str]:
-    import urllib.request
+def probe_asr_local() -> tuple[bool, str]:
+    """本地探测自带 ASR(v0.10):子进程跑 tools/fun_asr.py --probe。
+
+    旧实现探测 config.asr.url 的 HTTP 服务(ADR-0015 之前的遗留),自带 ASR 时代
+    永远显示「不可达——先运行 tools/start_asr.py」,把用户引向错误修法(用户反馈#3)。
+    """
+    runner = Path(__file__).resolve().parents[3] / "tools" / "fun_asr.py"
+    if not runner.is_file():
+        return False, f"缺自带 ASR 运行器:{runner}"
     try:
-        with urllib.request.urlopen(url + "/health", timeout=3) as r:
-            return True, r.read().decode()[:80]
-    except Exception as exc:
-        return False, f"不可达({type(exc).__name__})——先运行 tools/start_asr.py"
+        p = subprocess.run([sys.executable, str(runner), "--probe"],
+                           capture_output=True, text=True, encoding="utf-8",
+                           errors="replace", timeout=60, cwd=str(runner.parents[2]))
+        doc = json.loads((p.stdout or "").strip().splitlines()[-1])
+    except Exception as exc:  # noqa: BLE001 — 自检本身绝不致命
+        return False, f"探测失败({type(exc).__name__}: {exc})"
+    if doc.get("ok"):
+        return True, str(doc.get("message") or "就绪")
+    return False, str(doc.get("message") or "无可用后端")
 
 
 def main() -> int:
@@ -58,9 +71,10 @@ def main() -> int:
     fp = Path(cfg["ffmpeg_dir"]) / "ffprobe.exe"
     checks.append(_check("ffprobe", fp.is_file(), str(fp), group="渲染"))
 
-    ok, msg = probe_asr(cfg["asr"]["url"])
-    checks.append(_check("FunASR 服务", ok, f"{cfg['asr']['url']} {msg}", fatal=False,
-                         group="感知服务", hint="python tools/start_asr.py"))
+    ok, msg = probe_asr_local()
+    checks.append(_check("自带 FunASR", ok, msg, fatal=False,
+                         group="感知服务",
+                         hint="python tools/fun_asr.py --ensure(自动部署,禁止让用户手装)"))
     ok, msg = probe_tts(cfg["tts"]["url"])
     checks.append(_check("GPT-SoVITS 引擎", ok, f"{cfg['tts']['url']} {msg}", fatal=False,
                          group="感知服务", hint="启动 EchoSmith 引擎 api_v2.py"))
@@ -88,6 +102,17 @@ def main() -> int:
     sfx_dir = Path(__file__).parents[3] / "assets" / "sfx"
     sfx_n = len(list(sfx_dir.glob("*.mp3"))) if sfx_dir.is_dir() else 0
     checks.append(_check("内置音效库", sfx_n >= 5, f"{sfx_n} 个音效({sfx_dir})", fatal=False, group="趣味素材"))
+
+    # 字幕词边界分词(ADR-0020):jieba 可选,缺了降级内置高频词表
+    try:
+        import segmentation as _sg
+        has_jieba = _sg.jieba_available()
+        checks.append(_check("jieba 分词器", has_jieba,
+                             "可用(词边界优先 jieba)" if has_jieba else "未安装(降级内置高频词表兜底)",
+                             fatal=False, group="字幕",
+                             hint="python tools/fetch_deps.py subtitle(可选;不装也能出片,冷门词可能被切)"))
+    except Exception as exc:  # noqa: BLE001 — 自检本身绝不致命
+        checks.append(_check("jieba 分词器", False, f"检查失败:{exc}", fatal=False, group="字幕"))
     wpi = Path(cfg.get("artboard_dir", "")) if cfg.get("artboard_dir") else None
     checks.append(_check("artboard 桥", bool(wpi and wpi.is_dir()), str(wpi or "(未配置 artboard_dir)"),
                          fatal=False, group="趣味素材"))

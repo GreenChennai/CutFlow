@@ -4,9 +4,10 @@
   python rs_cleanup.py <工程目录>            # 列出将删除/保留的清单(dry-run)
   python rs_cleanup.py <工程目录> --apply    # 真删
 规则:
-  必删: 06_output/_build、dev-*、*_probe*、99_试算、*.tmp、_asr_16k.wav
-  必留: brief、文案、转写(校对稿)、成片/封面/字幕(06_output 顶层中文产物)、
-        配音 manifest、project.md、05_ir/project*.json
+  必删: 06_output/_build、dev-*、*_probe*、99_试算、*.tmp、_asr_16k.wav、preview_*/draft_*
+  必留(06_output 顶层,BUGREPORT B4 修订):final_*.mp4、subtitles.ass、master.srt、
+        metadata.*、*report*.md、cards.json、deliverables、中文命名产物、bench_*.png;
+        只删 `_`-前缀探针件与非交付物 —— 旧版会把成片/字幕/报告全列进删除名单。
 """
 from __future__ import annotations
 
@@ -19,8 +20,30 @@ sys.path.insert(0, str(Path(__file__).parent))
 from rs_common import emit  # noqa: E402
 
 DELETE_PATTERNS = ["06_output/_build", "99_试算"]
-DELETE_GLOBS = ["dev-*", "*_probe*", "*.log", "*.tmp", "**/_asr_16k.wav", "**/*.tmp", "v_b_*.png", "check_*.png"]
+DELETE_GLOBS = ["dev-*", "*_probe*", "*.log", "*.tmp", "**/_asr_16k.wav", "**/*.tmp",
+                "v_b_*.png", "check_*.png"]
 KEEP_PREFIX = ("成片", "封面", "字幕", "配音稿", "master.srt")
+OUT_KEEP_EXACT = {"subtitles.ass", "master.srt", "cards.json", "sync_rows.json",
+                  "segments_candidates.json", "deliverables.md"}
+
+
+def _out_keep(name: str) -> bool:
+    """06_output 顶层文件的保留判定(B4):默认必留交付物,只删探针/中间件。"""
+    if name.startswith(("_", "dev-", "preview_", "draft_")):
+        return False
+    if name.endswith((".tmp", ".log")):
+        return False
+    if name.startswith(KEEP_PREFIX) or name.startswith("字幕_"):
+        return True
+    if name.startswith("final_") and name.endswith(".mp4"):
+        return True
+    if name in OUT_KEEP_EXACT or name.startswith("metadata."):
+        return True
+    if "report" in name.lower() and name.lower().endswith((".md", ".json")):
+        return True
+    if name.startswith("bench") and name.endswith(".png"):
+        return True
+    return False
 
 
 def classify(root: Path) -> tuple[list[Path], list[Path]]:
@@ -39,12 +62,16 @@ def classify(root: Path) -> tuple[list[Path], list[Path]]:
         for p in out.iterdir():
             if p.resolve() in delete_set:
                 continue
-            if p.name.startswith(KEEP_PREFIX) or p.name.startswith("字幕_"):
+            if p.is_dir():
+                # sub_*/ 是字幕 ASS(重渲依赖),保留
+                if not p.name.startswith("sub_"):
+                    delete.append(p)
+                else:
+                    keep.append(p)
+            elif _out_keep(p.name):
                 keep.append(p)
-            elif p.is_file():
-                delete.append(p)  # 06_output 顶层只保留中文命名产物
-            elif p.is_dir() and not p.name.startswith("sub_"):
-                delete.append(p)  # sub_*/ 是字幕 ASS(重渲依赖),保留
+            else:
+                delete.append(p)   # 06_output 顶层非交付物
     return delete, keep
 
 

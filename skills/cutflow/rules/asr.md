@@ -123,6 +123,16 @@ python skills/cutflow/scripts/rs_align.py build --media 01_materials/a.mp4 --out
 
 ## 7. 纪律
 
+- **ASR 未就绪 = 自动部署,禁止让用户手装**:转写前 `fun_asr.py` 自带自举
+  (`--ensure` 逻辑,默认开启;`--no-ensure` 关闭)——venv/依赖/模型缺失时自动跑
+  `fetch_deps asr --pkg --seed-models` 后重入 venv,进度走 stderr。报错信息里
+  **只准给自动部署指引**,不准出现"请先启动 ASR 服务"这类旧 server 时代话术;
+- **rs_doctor 的 FunASR 检查是本地 probe**(v0.10 起):子进程跑 `fun_asr.py --probe`,
+  不再探测 config.asr.url 的 HTTP 服务(那是 ADR-0015 之前的遗留,永远"不可达",
+  会把诊断引向错误方向);
+- **pkg 后端首次运行会从 ModelScope 下载 torch 权重(~1GB,一次性)**:本地
+  `models/funasr/` 播种的通常是 ONNX 导出,torch 引擎读不了,fun_asr 会回落短名
+  下载;新环境建议先跑一次 `fun_asr.py <素材> --backend pkg` 预暖,之后全程离线;
 - **不要把 onnx 后端的产出当字级对齐结果用** —— 看 `data.degraded` 与 `capabilities.charTimestamps`;
 - **不要在缺 VAD 模型时静默退化为整段均分** —— 直接报错让人装模型;
 - `tools/asr_vendor/` 是第三方代码(MIT),改算法前先看 `NOTICE.md`;升级用 `fetch_deps.py asr --update-vendor <目录>`。

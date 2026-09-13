@@ -560,7 +560,7 @@ def test_seg_cmd_has_output_t_clamp(tmp_path, monkeypatch):
     # 输入侧应有 2 个 -t(视频 + gradient 背景),输出侧 1 个
     assert cmd.count("-t") == 3
     idx_out = max(i for i, x in enumerate(cmd) if x == "-t")
-    assert cmd[idx_out + 1] == "4.260"          # = take_s(durationMs/speed/1000)
+    assert cmd[idx_out + 1] == "4.267"          # = take_s(v0.10 帧量化:round(4.26s×30)=128帧 → 4.2667s)
     # 输出侧 -t 必须位于 filter_complex/map 之后、输出文件之前
     assert idx_out > cmd.index("-filter_complex")
     assert idx_out > cmd.index("-map")

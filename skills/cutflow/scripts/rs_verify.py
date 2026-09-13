@@ -191,8 +191,10 @@ def check_cutlist(root: Path) -> dict:
 def check_subtitles(root: Path) -> dict:
     ass = root / "06_output" / "subtitles.ass"
     if not ass.is_file():
-        return {"name": "字幕合规(字数/CPS/时长/不重叠)", "ok": False,
-                "detail": "缺 06_output/subtitles.ass"}
+        # B9(BUGREPORT-20260913):阶段式运行(--only S2 等)时字幕尚未生成是
+        # **正常中间态**,标"未涉及"而不是 ✗ —— 全量 L0 的误报会淹没真故障。
+        return {"name": "字幕合规(字数/CPS/时长/不重叠)", "ok": True,
+                "skipped": "尚未生成字幕(S7 未跑,中间态不算失败)"}
     events = rs_sync.parse_ass(ass)
     if not events:
         return {"name": "字幕合规(字数/CPS/时长/不重叠)", "ok": False, "detail": "ASS 无 Dialogue 事件"}

@@ -31,7 +31,8 @@ from rs_common import (RATIOS, die, emit, ffmpeg_bin, ffprobe_json, load_config,
 RATIO = dict(RATIOS)             # 画幅唯一真相源在 rs_common(新增画幅只改那里)
 LOUDNORM_BUS = "loudnorm=I=-14:TP=-1.0:LRA=11"
 LOUDNORM_VOICE = "loudnorm=I=-16:TP=-1.5:LRA=11"
-CACHE_VER = "v2"                 # 渲染语义变更时 +1,防旧缓存幽灵命中
+CACHE_VER = "v3"                 # 渲染语义变更时 +1,防旧缓存幽灵命中(v0.10:帧量化+尾帧扩展+边缘精修)
+CHROMA_DEFAULTS = {"similarity": 0.15, "blend": 0.12}   # 基轨/overlay/schema 三处统一(唯一真相源)
 SEG_CACHE_KEEP = 400             # segcache 最大保留文件数(超出按 mtime 淘汰)
 BG_TYPES = {"color", "image", "video", "gradient"}
 
@@ -106,7 +107,7 @@ def seg_key(clip: dict, doc: dict, cw: int, ch: int, fp: str) -> str:
         "fps": doc["fps"], "canvas": [cw, ch], "media": fp,
         "clip": {k: clip.get(k) for k in
                  ("src", "durationMs", "sourceInMs", "speed", "loop", "volume",
-                  "reframe", "motion", "chroma", "background")},
+                  "reframe", "motion", "chroma", "background", "tailMs")},
     }
     return hashlib.sha1(json.dumps(payload, sort_keys=True, ensure_ascii=False)
                         .encode("utf-8")).hexdigest()
@@ -198,6 +199,52 @@ def _crop_pct_chain(c: dict) -> list[str]:
     return chain
 
 
+def _chroma_fg_chain(c: dict) -> list[str]:
+    """抠像后处理(v0.10,ADR-0022):alpha 腐蚀收缩 → 细羽化 → killRect(green-only)。
+
+    v0.9 只有 edgeBlur 羽化:colorkey 的 alpha 近二值,边缘锯齿与暗色残边(黑边)
+    原样保留 —— 用户实测发丝锯齿+黑边。腐蚀 = alpha 大 sigma 模糊后用偏高频阈值
+    重新硬化(收缩量 ≈ sigma×系数),再小 sigma 羽化找回平滑过渡。
+    killRect 默认 `killRectMode=green`:框内**只清绿色主导像素**(despill 后仍
+    cb/cr 双低),入区人体(中性色)不受影响 —— 硬矩形连人一起抹、矩形边界随
+    人物动作进出穿帮,是店群工程"左下角闪烁黑影"的根因。`all` 保留 v0.9 硬清。
+
+    ⚠ geq 域约定(v0.10.1 实测修复):geq 的 alpha/cb/cr(X,Y) 返回**原始 0-255
+    字节值**,表达式结果也按字节写入 —— 不是归一化 [0,1]。旧式
+    `clip((alpha-t)/(1-t),0,1)` 把 255 当 1.0 算 → 恒输出 1 → 人物整帧透明
+    (店群工程实测全片无人物)。阈值 t∈[0,1] 是参数域,必须换算进字节域再比较。
+    """
+    chain = []
+    shrink = float(c.get("edgeShrink", 1.2) or 0)
+    t = min(max(float(c.get("edgeShrinkT", 0.55)), 0.0), 1.0)
+    feather = float(c.get("edgeFeather", c.get("edgeBlur", 0.6)) or 0)
+    core = "alpha(X,Y)"
+    if shrink > 0:
+        # 字节域腐蚀:t*255 以下归 0,以上线性爬升回 255(半透明过渡带宽度 = (1-t)*255)
+        tn, rn = t * 255.0, (1.0 - t) * 255.0
+        core = f"clip((alpha(X,Y)-{tn:.1f})/{rn:.1f}*255,0,255)"
+    conds = []
+    mode = c.get("killRectMode", "green")
+    for r in c.get("killRects") or []:
+        x0, y0, x1, y1 = (float(v) for v in r)
+        box = (f"(between(X,W*{x0:.4f},W*{x1:.4f})"
+               f"*between(Y,H*{y0:.4f},H*{y1:.4f}))")
+        if mode == "green":
+            # despill 后残留绿仍呈 cb/cr 双低(pure green cb≈44/cr≈21,半中和 ≈86/75);
+            # 中性灰/人体 cb≈cr≈128,不会被误清。116 取两者分界。
+            conds.append(f"{box}*lt(cb(X,Y),116)*lt(cr(X,Y),116)")
+        else:
+            conds.append(box)
+    if conds:
+        core = "if(" + "+".join(conds) + f",0,{core})"
+    if shrink > 0 or conds:
+        pre = "format=yuva444p" + (f",gblur=sigma={shrink:.2f}:planes=8" if shrink > 0 else "")
+        chain.append(f"{pre},geq=lum='p(X,Y)':cb='p(X,Y)':cr='p(X,Y)':a='{core}'")
+    if feather > 0:
+        chain.append(f"gblur=sigma={feather:.2f}:planes=8")
+    return chain
+
+
 # ---------------- 步骤 2:逐段提取(带 seg 缓存 + 基轨绿幕) ----------------
 
 def step_segment(doc: dict, ratio: str, build: Path, base_dir: Path, cfg: dict,
@@ -206,12 +253,22 @@ def step_segment(doc: dict, ratio: str, build: Path, base_dir: Path, cfg: dict,
     cw, ch = RATIO[ratio]
     fps = doc["fps"]
     base_clips = [t for t in doc["tracks"] if t["kind"] == "video"][0]["clips"]
+    # v0.10(ADR-0023):转场计划在 segment 步就要用 —— 段 i 渲染时多取 tails[i] 尾帧,
+    # 供 step_concat 的 xfade/acrossfade 重叠消费,时间模型才零漂移。
+    eff_tr, forced_off, tr_reasons = _resolve_transitions(base_clips, fps, doc, cfg)
+    tails = [eff_tr[i + 1] if i + 1 < len(base_clips) else 0.0
+             for i in range(len(base_clips))]
+    if forced_off:
+        warnings.append("segment:部分衔接点源间隙放不下转场尾帧,已整体弃用转场走无损 concat")
+    for r in tr_reasons:
+        warnings.append(f"segment:{r}")
     cache_dir = build / "segcache"
     seg_files: list[Path] = []
     seg_keys: list[str] = []
     reports: list[dict] = []
 
     for i, clip in enumerate(base_clips):
+        clip = {**clip, "tailMs": round(tails[i] * 1000)}   # 入键:尾帧变化必须换缓存键
         pr = probe_clip(clip, base_dir, cfg)
         src = Path(pr["path"])
         fp = media_fingerprint(src)
@@ -231,7 +288,11 @@ def step_segment(doc: dict, ratio: str, build: Path, base_dir: Path, cfg: dict,
         speed = clip.get("speed", 1.0)
         out_ms = clip["durationMs"]
         anchor = clip.get("reframe", {}).get("anchorY", 0.5)
-        take_s = out_ms / 1000.0 / speed
+        # v0.10 帧量化:段边界吸附帧网格。±半帧的取整偏差原本散落在拼接边界上,
+        # 是"每段首尾差一帧"类闪烁的隐形来源;量化后段长恒为整数帧。
+        q_in_ms = round(clip.get("sourceInMs", 0) * fps / 1000.0) / fps * 1000.0
+        q_out_ms = max(1, round(out_ms / 1000.0 * fps)) / fps * 1000.0
+        take_s = (q_out_ms + tails[i] * 1000.0) / 1000.0 / speed
 
         chroma = clip.get("chroma")
         bg = clip.get("background") if chroma else None
@@ -246,7 +307,7 @@ def step_segment(doc: dict, ratio: str, build: Path, base_dir: Path, cfg: dict,
                   f"pad={cw}:{ch}:(ow-iw)/2:(oh-ih)/2:color=black"]
         else:
             loop = ["-stream_loop", "-1"] if clip.get("loop") else []
-            cmd += loop + ["-ss", f"{clip.get('sourceInMs', 0)/1000:.3f}", "-t", f"{take_s:.3f}",
+            cmd += loop + ["-ss", f"{q_in_ms / 1000:.3f}", "-t", f"{take_s:.3f}",
                            "-i", pr["path"]]
             vf = [cover_crop(pr.get("width") or cw, pr.get("height") or ch, cw, ch, anchor)]
 
@@ -254,15 +315,17 @@ def step_segment(doc: dict, ratio: str, build: Path, base_dir: Path, cfg: dict,
         fparts: list[str] = []
         if bg:
             # 前景:裁边 → 抠像 → 去绿边 → 覆盖画布
-            fg = [x for x in _crop_pct_chain(chroma) if x]
+            fg = ["setpts=PTS-STARTPTS"] + [x for x in _crop_pct_chain(chroma) if x]
             # dev-jj2815 实测(ffmpeg 2026-07-30 git master 回归):chromakey 输出的
             # alpha 全坏(人物区域≈0,YAVG 2.07/255;alphaextract 实测),叠任何背景
             # 都是"幽灵人物";-vf 单输入 + JPG 因丢弃 alpha 而看不出来。
             # colorkey(RGB 距离键控)alpha 正常(人物 255/背景 0),改用之。
             fg.append(f"colorkey={chroma_hex(chroma, src, cfg)}:"
-                      f"{chroma.get('similarity', 0.24)}:{chroma.get('blend', 0.12)}")
+                      f"{chroma.get('similarity', CHROMA_DEFAULTS['similarity'])}:"
+                      f"{chroma.get('blend', CHROMA_DEFAULTS['blend'])}")
             if chroma.get("despill", True):
                 fg.append("despill=type=green")
+            fg += _chroma_fg_chain(chroma)
             fg.append(cover_crop(pr.get("width") or cw, pr.get("height") or ch, cw, ch, anchor))
             fparts.append(f"[0:v]{','.join(fg)}[fg]")
             # 背景:四种来源统一覆盖画布
@@ -291,7 +354,8 @@ def step_segment(doc: dict, ratio: str, build: Path, base_dir: Path, cfg: dict,
             fparts.append(f"[1:v]{bchain},fps={fps},setsar=1[bg]")
             fparts.append("[bg][fg]overlay=0:0:shortest=1[m]")
             warnings.append(f"seg[{i}]:基轨绿幕已应用(color={chroma.get('color', 'auto')},"
-                            f"相似度 {chroma.get('similarity', 0.24)};效果需 L1 目测确认)")
+                            f"相似度 {chroma.get('similarity', CHROMA_DEFAULTS['similarity'])};"
+                            "edgeShrink 腐蚀+羽化+green-only killRect;效果需 L1 目测确认)")
             vf_tail = [f"fps={fps}", "setsar=1"]
         else:
             vf_tail = [f"fps={fps}", "setsar=1"]
@@ -317,7 +381,7 @@ def step_segment(doc: dict, ratio: str, build: Path, base_dir: Path, cfg: dict,
             cmd += ["-vf", ",".join(vf + vf_tail)]
 
         if has_audio:
-            af = (f"atrim=0:{out_ms/1000:.3f},asetpts=PTS-STARTPTS,"
+            af = (f"atrim=0:{take_s:.3f},asetpts=PTS-STARTPTS,"
                   f"volume={clip.get('volume', 1.0)},"
                   f"afade=t=in:st=0:d=0.008,"
                   f"afade=t=out:st={max(0.0, out_ms/1000 - 0.008):.3f}:d=0.008,"
@@ -345,10 +409,57 @@ def step_segment(doc: dict, ratio: str, build: Path, base_dir: Path, cfg: dict,
 
 # ---------------- 步骤 3:拼接(无转场=无损 concat;有转场=xfade 链) ----------------
 
+def _resolve_transitions(base_clips: list[dict], fps: float, doc: dict,
+                         cfg: dict | None) -> tuple[list[float], bool, list[str]]:
+    """各相邻段的有效转场时长(s)、是否整体弃用、弃用原因列表。
+
+    v0.10(ADR-0023):B2 的"tdur<1帧 → 整链弃用"让跳切全部退回硬切,用户实测
+    读感为"人物瞬间闪烁消失再显示"。现在 0<tdur<1帧 的转场**提升为交叉溶解**
+    (joinCrossfadeMs,默认 120ms;doc 级 `joinCrossfadeMs` 或 config.render 可覆),
+    配合 step_segment 的尾帧扩展,xfade offset 恒等于后段名义起点 → 时间零漂移。
+    整链弃用只留给"源间隙放不下尾帧"的 join(无法重叠就硬切,宁缺勿错)。
+    `transition.type` 为 cut/none 仍表示显式硬切。
+    """
+    frame_s = 1.0 / fps if fps and fps > 0 else 1 / 30.0
+    cfg_ms = ((cfg or {}).get("render") or {}).get("joinCrossfadeMs", 120)
+    promote_s = float(doc.get("joinCrossfadeMs", cfg_ms)) / 1000.0
+    eff = [0.0] * len(base_clips)
+    reasons: list[str] = []
+    forced_off = False
+    for i in range(1, len(base_clips)):
+        tr = base_clips[i].get("transition")
+        if not tr:
+            continue
+        if str(tr.get("type", "fade")).lower() in ("cut", "none"):
+            continue
+        cap = min(base_clips[i - 1]["durationMs"] / 2000.0,
+                  base_clips[i]["durationMs"] / 2000.0)
+        tdur = min(tr.get("durMs", 500) / 1000.0, cap)
+        if tdur < frame_s:
+            tdur = min(promote_s, cap)
+        # 尾帧扩展余量:本段源出点与下一段源入点之间的被剪间隙
+        prev, nxt = base_clips[i - 1], base_clips[i]
+        gap_ms = nxt.get("sourceInMs", 0) - (prev.get("sourceInMs", 0) + prev["durationMs"])
+        if gap_ms < tdur * 1000.0:
+            reasons.append(f"join{i}:源间隙 {gap_ms:.0f}ms 放不下转场 {tdur * 1000:.0f}ms")
+            forced_off = True
+            continue
+        eff[i] = tdur
+    if forced_off and any(eff):
+        eff = [0.0] * len(base_clips)   # xfade 链必须整链一致:一处放不下 → 全部走 concat
+    return eff, forced_off, reasons
+
+
 def step_concat(doc: dict, seg_files: list[Path], build: Path, cfg: dict,
                 warnings: list[str]) -> Path:
     base_clips = [t for t in doc["tracks"] if t["kind"] == "video"][0]["clips"]
-    has_transition = any(c.get("transition") for c in base_clips[1:])
+    fps = doc.get("fps", 30)
+    eff_tr, forced_off, tr_reasons = _resolve_transitions(base_clips, fps, doc, cfg)
+    tails = [eff_tr[i + 1] if i + 1 < len(base_clips) else 0.0
+             for i in range(len(base_clips))]
+    has_transition = any(t > 0 for t in eff_tr)
+    for r in tr_reasons:
+        warnings.append(f"concat:{r}")
     base = build / "base.mp4"
 
     if not has_transition:
@@ -360,32 +471,35 @@ def step_concat(doc: dict, seg_files: list[Path], build: Path, cfg: dict,
             die(4, "CONCAT_FAIL", f"拼接失败:{(p.stderr or '')[-300:]}")
         return base
 
-    # xfade 链:相邻段重叠 transition 时长;段分辨率/帧率已由 segment 步统一
+    # xfade 链(v0.10,ADR-0023):每段已在 segment 步多渲染 tails[i] 尾帧。
+    # offset 恒等于后段名义起点 sum(qdurs[:i]) → 成片时长与字幕时间零漂移;
+    # 末尾按名义总长裁齐(尾帧只进重叠,不外溢)。
     n = len(seg_files)
-    durs = [c["durationMs"] / 1000.0 for c in base_clips[:n]]
+    qdurs = [max(1, round(c["durationMs"] / 1000.0 * fps)) / fps for c in base_clips[:n]]
     cmd = [ffmpeg_bin(cfg), "-v", "error", "-y"]
     for f in seg_files:
         cmd += ["-i", str(f)]
     parts, last, lasta = [], "0:v", "0:a"
-    cum = durs[0]
+    cum = qdurs[0] + tails[0]
     all_have_audio = all(_seg_has_audio(f, cfg) for f in seg_files)
     if not all_have_audio:
         warnings.append("concat:部分段无音轨,转场仅作用于画面,输出将无音频")
     for i in range(1, n):
-        tr = base_clips[i].get("transition") or {"type": "fade", "durMs": 500}
-        tdur = min(tr.get("durMs", 500) / 1000.0, durs[i - 1] / 2, durs[i] / 2)
+        tr = base_clips[i].get("transition") or {"type": "fade"}
+        tdur = eff_tr[i]
         offset = cum - tdur
-        parts.append(f"[{last}][{i}:v]xfade=transition={tr['type']}:"
+        parts.append(f"[{last}][{i}:v]xfade=transition={tr.get('type', 'fade')}:"
                      f"duration={tdur:.3f}:offset={offset:.3f}[vx{i}]")
         if all_have_audio:
-            parts.append(f"[{lasta}][{i}:a]acrossfade=d={tdur:.3f}[ax{i}]")
+            parts.append(f"[{lasta}][{i}:a]acrossfade=d={tdur:.3f}:curve1=tri:curve2=tri[ax{i}]")
             lasta = f"ax{i}"
         last = f"vx{i}"
-        cum = offset + durs[i]
+        cum = offset + qdurs[i] + tails[i]
+    total_s = sum(qdurs)
     cmd += ["-filter_complex", ";".join(parts), "-map", f"[{last}]"]
     cmd += ["-map", f"[{lasta}]", "-c:a", "aac", "-b:a", "192k"] if all_have_audio else ["-an"]
     cmd += ["-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
-            "-r", str(doc["fps"]), str(base)]
+            "-r", str(fps), "-t", f"{total_s:.3f}", str(base)]
     p = run(cmd, timeout=3600)
     if p.returncode != 0:
         die(4, "CONCAT_XFADE_FAIL", f"转场拼接失败:{(p.stderr or '')[-500:]}")
@@ -447,18 +561,35 @@ def step_compose(doc: dict, ratio: str, base: Path, build: Path, base_dir: Path,
                     chain.append(f"crop=iw:ih*{1-pct:.4f}:0:ih*{pct:.4f}")
                 hexc = chroma_hex(c, Path(pr["path"]), cfg)
                 # 同上:chromakey alpha 坏 → colorkey(见 step_segment 内注释)
-                chain.append(f"colorkey={hexc}:{c.get('similarity', 0.12)}:{c.get('blend', 0.08)}")
+                chain.append(f"colorkey={hexc}:{c.get('similarity', CHROMA_DEFAULTS['similarity'])}:"
+                             f"{c.get('blend', CHROMA_DEFAULTS['blend'])}")
                 if c.get("despill", True):
                     chain.append("despill=type=green")
+                chain += _chroma_fg_chain(c)      # v0.10:overlay 层同样吃边缘精修
                 warnings.append(f"compose[{idx}]:chroma 已应用({hexc},效果需自评确认)")
-            w, x, y = _overlay_exprs(clip, cw, ch, start_s)
+            # v0.10(ADR-0025):支持 clip.overlay={x,y,w,h,opacity} 绝对像素定位
+            # (rs_brand 变体轨的产出;v0.9 该字段无人消费,Logo 会以 scale 默认值贴满画布)。
+            # scale/position(相对画幅)仍是通用路径,overlay 存在时优先。
+            ov = clip.get("overlay") or {}
+            if ov.get("w"):
+                w = int(ov["w"])
+                x, y = f"{int(ov.get('x', 0))}", f"{int(ov.get('y', 0))}"
+                scale_expr = (f"scale={w}:{int(ov['h'])}" if ov.get("h")
+                              else f"scale={w}:-2")
+            else:
+                w, x, y = _overlay_exprs(clip, cw, ch, start_s)
+                scale_expr = f"scale={w}:-2"
             motion = clip.get("motion", {})
             if motion.get("in") == "fadeIn":
                 chain.append(f"fade=t=in:st=0:d={motion.get('inMs', 400)/1000:.3f}:alpha=1")
             if motion.get("out") == "fadeOut":
                 d = motion.get("outMs", 400) / 1000
                 chain.append(f"fade=t=out:st={max(0.0, dur_s - d):.3f}:d={d:.3f}:alpha=1")
-            chain += [f"scale={w}:-2", "format=yuva420p",
+            chain.append(scale_expr)
+            opacity = float(ov.get("opacity", clip.get("opacity", 1.0)) or 1.0)
+            if opacity < 1.0:
+                chain.append(f"format=rgba,colorchannelmixer=aa={opacity:.3f}")
+            chain += ["format=yuva420p",
                       f"setpts=PTS-STARTPTS+{start_s:.3f}/TB"]
             parts.append(f"[{idx}:v]{','.join(chain)}[ov{idx}]")
             parts.append(f"[{last}][ov{idx}]overlay=x='{x}':y='{y}':"
@@ -478,6 +609,23 @@ def step_compose(doc: dict, ratio: str, base: Path, build: Path, base_dir: Path,
 
 # ---------------- 步骤 5:混音 ----------------
 
+def _voice_chain(clip: dict) -> list[str]:
+    """单个人声 clip 的音频滤镜链(v0.8.1 修 Bug:先裁后延)。
+
+    旧实现 `adelay` 在前、`atrim=0:dur` 在后:atrim 裁的是**延迟后**流的前 dur 毫秒
+    —— startMs>0 的段会被裁掉 startMs 毫秒内容,甚至整段只剩静音(实测音轨缩到 13.9s)。
+    正确顺序:**先 atrim 取本段时长,再 adelay 推到时间轴位置**。
+    """
+    chain = ["aresample=48000", "aformat=channel_layouts=stereo"]
+    if clip.get("role") == "voice":
+        chain.append(LOUDNORM_VOICE)
+    chain.append(f"volume={clip.get('volume', 1.0)}")
+    if clip.get("durationMs"):
+        chain.append(f"atrim=0:{clip['durationMs']/1000:.3f}")
+    chain.append(f"adelay={int(clip['startMs'])}|{int(clip['startMs'])}")
+    return chain
+
+
 def step_mix(doc: dict, src: Path, build: Path, base_dir: Path, cfg: dict) -> Path:
     audio_tracks = [t for t in doc["tracks"] if t["kind"] == "audio"]
     bgm = doc.get("bgm", {})
@@ -491,14 +639,15 @@ def step_mix(doc: dict, src: Path, build: Path, base_dir: Path, cfg: dict) -> Pa
     for t in audio_tracks:
         for clip in t["clips"]:
             sp = clip_path(clip, base_dir)
-            cmd += ["-i", str(sp)]
-            chain = ["aresample=48000", "aformat=channel_layouts=stereo"]
-            if clip.get("role") == "voice":
-                chain.append(LOUDNORM_VOICE)
-            chain.append(f"volume={clip.get('volume', 1.0)}")
-            chain.append(f"adelay={int(clip['startMs'])}|{int(clip['startMs'])}")
-            if clip.get("durationMs"):
-                chain.append(f"atrim=0:{clip['durationMs']/1000:.3f}")
+            # B1(BUGREPORT-20260913):人声 clip 的 sourceInMs 必须在**输入侧寻址**,
+            # 否则 _voice_chain 的 atrim=0:dur 永远从源文件 0s 取 —— 粗剪后的多段
+            # 人声(每段 sourceInMs>0)每段都重播片头,amix 叠加后音画全错。
+            # 旧绕过法(按 keep 预抽 voice_full.wav 单 clip)仍有效,但不再必需。
+            if clip.get("sourceInMs"):
+                cmd += ["-ss", f"{clip['sourceInMs'] / 1000:.3f}", "-i", str(sp)]
+            else:
+                cmd += ["-i", str(sp)]
+            chain = _voice_chain(clip)
             parts.append(f"[{idx}:a]{','.join(chain)}[a{idx}]")
             mixes.append(f"[a{idx}]")
             idx += 1
@@ -592,12 +741,14 @@ def render(doc: dict, project_path: Path, ratio: str, profile: str, *,
     warnings: list[str] = []
     skipped: list[str] = []
 
-    # 转场会吞时长 → 音频/字幕若存在将整体漂移;提前警告(语义见 schema transition 描述)
+    # v0.10(ADR-0023):尾帧扩展法下转场**不再吞时长**(offset=后段名义起点),
+    # 音频/字幕时间轴零漂移,旧"预扣转场消耗"警告作废。仅当提升被禁用且存在
+    # 亚帧转场时提示回退硬切。
     base_clips = [t for t in doc["tracks"] if t["kind"] == "video"][0]["clips"]
-    has_tr = any(c.get("transition") for c in base_clips[1:])
-    if has_tr and (any(t.get("clips") for t in doc["tracks"] if t["kind"] == "audio") or doc.get("subtitle", {}).get("ass")):
-        warnings.append("时间轴提示:转场将吞掉重叠时长(每处 -durMs),音频/字幕的 startMs 若按转场前时间轴排布会漂移;"
-                        "建议 Agent 在 IR 中预扣转场消耗(see schema)")
+    eff_warn, off_warn, reasons_warn = _resolve_transitions(base_clips, doc.get("fps", 30), doc, cfg)
+    if off_warn:
+        warnings.append("时间轴提示:部分衔接点源间隙放不下转场尾帧,已回退无损 concat(硬切):"
+                        + ";".join(reasons_warn))
 
     segs, seg_reports, seg_keys = step_segment(doc, ratio, build, base_dir, cfg, warnings,
                                                use_cache=use_cache, dry_run=dry_run)
@@ -618,7 +769,8 @@ def render(doc: dict, project_path: Path, ratio: str, profile: str, *,
             fp = media_fingerprint(cp) if cp.is_file() else "missing"
             overlay_def.append([str(cp), fp, {k: c.get(k) for k in
                                               ("startMs", "durationMs", "sourceInMs", "scale",
-                                               "position", "motion", "chroma")}])
+                                               "position", "motion", "chroma",
+                                               "overlay", "opacity")}])
     k_compose = step_key("compose", k_concat, {"overlays": overlay_def})
     composed = build / "composed.mp4"
     if [t for t in doc["tracks"] if t["kind"] == "video"][1:]:
@@ -634,7 +786,8 @@ def render(doc: dict, project_path: Path, ratio: str, profile: str, *,
         for c in t["clips"]:
             cp = clip_path(c, base_dir)
             audio_def.append([str(cp), media_fingerprint(cp) if cp.is_file() else "missing",
-                              {k: c.get(k) for k in ("startMs", "durationMs", "volume", "role")}])
+                              {k: c.get(k) for k in ("startMs", "durationMs", "sourceInMs",
+                                                     "volume", "role")}])
     bgm_def = doc.get("bgm") or {}
     k_mix = step_key("mix", k_compose, {"audio": audio_def, "bgm": bgm_def})
     mixed = build / "mixed.mkv"
@@ -681,6 +834,22 @@ def render(doc: dict, project_path: Path, ratio: str, profile: str, *,
         skipped.append("encode")
     else:
         step_encode(subtitled, out, profile, cfg, doc["fps"])
+
+    # B2 回归断言:成片视频流时长 vs IR 名义总长差 ≤1.5 帧。
+    # v0.10 尾帧扩展法下转场不吞时长,名义总长即预期;字段名错/漂移仍会在此暴露。
+    try:
+        info_v = ffprobe_json(out, cfg)
+        vs = next((s for s in info_v.get("streams", []) if s["codec_type"] == "video"), None)
+        vdur = float((vs or {}).get("duration") or 0)
+        if vdur > 0:
+            expected_ms = sum(c["durationMs"] for c in base_clips)
+            drift_ms = abs(vdur * 1000 - expected_ms)
+            if drift_ms > 1500.0 / doc.get("fps", 30):     # 1.5 帧容差
+                warnings.append(
+                    f"音画对齐断言:成片视频流 {vdur:.2f}s vs IR 预期 {expected_ms/1000:.2f}s"
+                    f"(差 {drift_ms:.0f}ms > 1.5 帧)——转场吞时或漂移,排查后再交付(BUGREPORT B2)")
+    except Exception as exc:  # noqa: BLE001 — 断言失败不阻塞产出,但必须留痕
+        warnings.append(f"音画对齐断言探测失败:{exc}")
 
     if use_cache:
         keys_path.write_text(json.dumps(

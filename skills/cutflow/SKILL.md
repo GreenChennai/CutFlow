@@ -85,7 +85,7 @@ S0 素材 ─► S1 转写+字级对齐 ─► S2 粗剪 ─► S3 基础合成 
 | **S6** | 音效 | `rs_sfx` | `mixed/` | ≤2 个 / 15s |
 | **S7** | 字幕 | `rs_subtitle` | `06_output/subtitles.ass` | 回归集全绿、CPS ≤9 |
 | **S8** | **烧录导出** | `rs_render` | `06_output/final_*.mp4` | 用**现有 ass**,不重新生成字幕 |
-| **S9** | 自评与对齐断言 | `rs_sync` + `rs_verify` | `sync_report.md` | 偏移中位数 ≤40ms |
+| **S9** | 自评与对齐断言 | `rs_sync` + `rs_verify` | `sync_report.md` | 偏移中位数 ≤40ms;**成片音频内容闸**(片头句=1/相似度/无重复段) |
 | **S10** | 封面与文案 | 抽帧 + `rs_meta` | `cover.png`、`metadata.json` | 平台字数合规 |
 | **S11** | 交付 | `rs_cleanup [--apply]` | 变体成片 + `deliverables.md` | 清单齐全 |
 
@@ -114,6 +114,7 @@ S0 素材 ─► S1 转写+字级对齐 ─► S2 粗剪 ─► S3 基础合成 
 19. **必并线 = 单卡时长下限(0.83s)**,两线之间不留死区(不并又延不满 → L0 硬失败);预算放不下时向下一卡吞并,起点取短卡(对齐精度不动)。
 20. **卡时间的调整只能在「释放余量」内**:起点 ≤ 首字 `startMs`、终点 ≥ 末字 `endMs` 且延长 ≤ +0.30s;余量耗尽仍不足 2 帧就保留字级精确时间(对齐精度 > 卡间距)。`rs_sync` 同时校验起点与**终点**偏移。
 21. **画幅/平台只查表**:比例→宽高的唯一真相源是 `rs_common.RATIOS`,平台参数在 `templates/platforms.json`;禁止写死 `1080x1920` 字符串比较,CPS 上限按当前比例取(`segmentation.cps_max_for`)。
+22. **转场字段唯一 `durMs`**(`ms` 是幽灵字段,validate 直接报错;v0.10 起 0<durMs<1帧 自动提升为 `joinCrossfadeMs` 交叉溶解——尾帧扩展法保证零时间漂移,ADR-0023;仅源间隙放不下时才整链弃用走 concat)。多段人声的 `sourceInMs` 由 rs_render 输入寻址消费——不要再手工预抽 voice_full(绕过法仍有效但不必需)。**S9 自带成片音频内容闸**(ADR-0021):交付前对成片音轨跑 ASR 对账,报告"跳过"也要核对原因。ASR 未就绪一律自动部署(`fun_asr.py --ensure`),禁止让用户手装或启动服务。
 
 ---
 
@@ -138,7 +139,7 @@ S0 素材 ─► S1 转写+字级对齐 ─► S2 粗剪 ─► S3 基础合成 
 | 音效落点 | `rs_sfx.py 05_ir/project.json --auto --wordline 05_ir/wordline.json` |
 | 字幕 | `rs_subtitle.py --from-wordline 05_ir/wordline.json --platform douyin --out 06_output`（`--platform` 取预设；显式 `--style/--ratio/--max-chars` 优先） |
 | **artboard 闭环** | `rs_artboard.py 03_assets/artboard/manifest.json --export\|--apply` |
-| 对齐自检 | `rs_sync.py --wordline ... --ass 06_output/subtitles.ass --out 06_output` |
+| 对齐自检 | `rs_sync.py --wordline ... --ass 06_output/subtitles.ass --out 06_output --video 成片.mp4 --audio-content` |
 | 抽帧目测 | `rs_bench.py <成片> --ir 05_ir/project.json --out 06_output/bench.png` |
 | 文案 | `rs_meta.py --wordline ... --brief 00_brief/brief.md --platform douyin,bili` |
 | 剪映草稿 | `rs_jy_draft.py 05_ir/project.json --name <名>` |
@@ -156,7 +157,7 @@ S0 素材 ─► S1 转写+字级对齐 ─► S2 粗剪 ─► S3 基础合成 
 | 你改了什么 | 运行哪个 |
 |---|---|
 | 字幕 `06_output/subtitles.ass` | `python 06_output/rebuild.py` |
-| IR / Wordline `05_ir/` | `python 05_ir/rebuild.py` |
+| IR / Wordline `05_ir/` | `python 05_ir/rebuild.py`;⚠ **手改过 `05_ir/project.json`**(手注 chroma/背景/单 clip 音频)→ 改跑 `python 06_output/rebuild.py`(S8 只用现有 ass,不碰 IR) |
 | 粗剪决策 `04_cut/cutlist*.json` | `python 04_cut/rebuild.py` |
 | artboard 卡片 `03_assets/artboard/` | `python 03_assets/artboard/rebuild.py` |
 | 拿不准 | `python rebuild.py`(全量) |

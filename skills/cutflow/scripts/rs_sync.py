@@ -1,27 +1,33 @@
 """S8 三对齐自检:字幕 ↔ Wordline ↔ 成片(rules/align.md §6、rules/subtitles.md §8)。
 
 用法:
-  rs_sync.py --wordline 05_ir/wordline.json --ass 06_output/subtitles.ass --out 06_output [--video 成片.mp4]
+  rs_sync.py --wordline 05_ir/wordline.json --ass 06_output/subtitles.ass --out 06_output
+             [--video 成片.mp4] [--audio-content]
 
 检查项与通过线:
   字幕 ↔ 音频/Wordline 偏移   中位数 ≤40ms,95 分位 ≤80ms
   卡片 ↔ 卡片 时间重叠        0
   单卡时长 [0.83s, 7s]、CPS ≤9
   成片总时长 vs Wordline        ±0.5s(给了 --video 时用 ffprobe 实测)
+  成片音频内容(B10 闸)        片头句=1 次 / 归一相似度 ≥0.90 / 无重复段
+                                (--audio-content;ASR 不可用时跳过,跑出问题即硬失败)
 
 把「人工对轴」变成「阈值告警 + 一键修正」:失败项给出建议平移量。
 """
 from __future__ import annotations
 
 import argparse
+import difflib
+import hashlib
 import json
 import re
 import statistics
 import sys
+import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from rs_common import emit, p95  # noqa: E402
+from rs_common import emit, ffmpeg_bin, p95, run  # noqa: E402
 
 MEDIAN_MAX, P95_MAX = 40, 80          # ms(起点偏移)
 END_MEDIAN_MAX, END_P95_MAX = 60, 120  # ms(终点偏移;允许可读性延长,故放宽)
@@ -99,8 +105,16 @@ def check_offsets(events: list[dict], wl: dict) -> list[dict]:
     return rows
 
 
-def summarize(rows: list[dict], events: list[dict], legacy_end: bool = False) -> dict:
-    """`legacy_end=True`:跳过终点门禁(只告警)—— 给"终点本来就偏"的历史工程过渡用。"""
+OVERLAP_TOL_MS = 34.0                 # 帧取整伪重叠容差 = 1 帧 @30fps(v0.8.1,--frame-ms 可调)
+
+
+def summarize(rows: list[dict], events: list[dict], legacy_end: bool = False,
+              overlap_tol_ms: float = OVERLAP_TOL_MS) -> dict:
+    """`legacy_end=True`:跳过终点门禁(只告警)—— 给"终点本来就偏"的历史工程过渡用。
+
+    `overlap_tol_ms`:卡片时间重叠的判定容差。snap_events_to_frames 的 floor/ceil
+    会产生 ≤1 帧的"切割点吸附伪影"(不可见);真实重叠(≥1 帧)仍照常 FAIL。
+    """
     offs = [abs(r["offsetMs"]) for r in rows if r.get("matched")]
     unmatched = [r for r in rows if not r.get("matched")]
     median = statistics.median(offs) if offs else 0.0
@@ -119,8 +133,9 @@ def summarize(rows: list[dict], events: list[dict], legacy_end: bool = False) ->
                 for r in rows if r.get("matched") and r.get("endOffsetMs", 0) > END_MAX_RELEASE_MS]
 
     overlaps, bad_dur, short_dur, bad_cps = 0, [], [], []
+    tol_s = overlap_tol_ms / 1000.0
     for a, b in zip(events, events[1:]):
-        if b["start"] < a["end"] - 1e-3:
+        if b["start"] < a["end"] - tol_s:
             overlaps += 1
     for r in rows:
         if not r.get("matched"):
@@ -136,6 +151,7 @@ def summarize(rows: list[dict], events: list[dict], legacy_end: bool = False) ->
                 bad_cps.append(f"{r['event']} {cps:.1f}")
     return {"chars": len(offs), "medianMs": round(median, 1), "p95Ms": round(p95_ms, 1),
             "biasMs": round(bias, 1), "unmatched": unmatched, "overlaps": overlaps,
+            "overlapTolMs": round(float(overlap_tol_ms), 1),
             "medianEndMs": round(median_end, 1), "p95EndMs": round(p95_end, 1),
             "biasEndMs": round(bias_end, 1),
             "earlyEnd": early_end, "overLongEnd": over_end,
@@ -147,6 +163,123 @@ def summarize(rows: list[dict], events: list[dict], legacy_end: bool = False) ->
                                              and not early_end and not over_end))
                          and not overlaps
                          and not unmatched and not bad_dur and not bad_cps)}
+
+
+# ---------------------------------------------------------------- B10:成片音频内容闸
+
+AUDIO_SIM_MIN = 0.90                   # 归一相似度通过线(实测正常 ≈0.98,AAC 噪声留余量)
+AUDIO_REPEAT_NGRAM = 12                # 重复段检测的 n-gram 长度
+AUDIO_REPEAT_MAX = 3                   # 同一 n-gram 出现 ≥3 次 → 判重复段
+
+
+def _norm_hard(s: str) -> str:
+    """内容归一:去标点/空白,只留字(音频内容对账口径,兼容全/半角标点)。"""
+    return "".join(ch for ch in s.lower() if ch.strip() and ch not in STRIP
+                   and ch not in "，。、；：！？…·—–-")
+
+
+def find_fun_asr() -> Path | None:
+    """定位自带 ASR 入口(仓库布局 tools/fun_asr.py;安装态退 cwd)。"""
+    here = Path(__file__).resolve()
+    for cand in (here.parents[3] / "tools" / "fun_asr.py",
+                 here.parents[1] / "tools" / "fun_asr.py",
+                 Path.cwd() / "tools" / "fun_asr.py"):
+        if cand.is_file():
+            return cand
+    return None
+
+
+def check_audio_content(video: Path, wl: dict, cfg: dict | None = None,
+                        sim_min: float = AUDIO_SIM_MIN) -> dict:
+    """B10 闸(BUGREPORT-20260913):成片音轨内容对账。
+
+    之前所有闸只对账 ass↔wordline 与时长,B1 级"音轨内容重叠损坏"全绿通过。
+    此闸对成片音轨跑一次自带 ASR,与 wordline 文本 diff:
+      ① 片头句出现次数 = 1(≥2 即 B1 式"每段重播片头"特征);
+      ② 归一相似度 ≥ sim_min;
+      ③ 无 ≥3 次重复的长片段。
+    工具缺失/ASR 失败 → skipped(不硬失败);跑出来且有 problem → 硬失败。
+    """
+    tool = find_fun_asr()
+    if tool is None:
+        return {"skipped": "找不到 tools/fun_asr.py(音频内容闸需要自带 ASR)"}
+    cfg = cfg or {}
+    with tempfile.TemporaryDirectory(prefix="cutflow_audiochk_") as td:
+        wav = Path(td) / "check_16k.wav"
+        try:
+            ff = ffmpeg_bin(cfg)
+        except SystemExit:
+            ff = "ffmpeg"
+        p = run([ff, "-y", "-v", "error", "-i", str(video),
+                 "-vn", "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", str(wav)],
+                timeout=600)
+        if p.returncode != 0:
+            return {"skipped": f"音轨提取失败:{(p.stderr or '')[-120]}"}
+        r = run([sys.executable, str(tool), str(wav), "--json"], timeout=7200)
+    try:
+        doc = json.loads((r.stdout or "").strip().splitlines()[-1])
+    except (json.JSONDecodeError, IndexError):
+        return {"skipped": f"ASR 无有效输出:{((r.stderr or '') + (r.stdout or ''))[-120]}"}
+    if not doc.get("ok"):
+        return {"skipped": f"ASR 失败:{str(doc.get('message', ''))[:120]}"}
+    segs = (doc.get("data") or {}).get("segments") or []
+    asr_text = _norm_hard("".join(s.get("text", "") for s in segs))
+    chars = wl.get("chars") or []
+    ref_text = _norm_hard("".join(c["ch"] for c in chars))
+    if not asr_text or not ref_text:
+        return {"skipped": "ASR 或 wordline 文本归一后为空,无法对账"}
+
+    sim = difflib.SequenceMatcher(None, ref_text, asr_text).ratio()
+
+    # ① 片头句重复检测
+    sents = wl.get("sentences") or []
+    if sents:
+        a, b = (sents[0].get("span") or [0, 0])[:2]
+        head = _norm_hard("".join(c["ch"] for c in chars[max(0, a):min(len(chars), b)]))
+    else:
+        head = ref_text[:12]
+    head_count = asr_text.count(head) if len(head) >= 4 else 1
+
+    # ③ 长片段重复检测(n-gram 计数)
+    grams: dict[str, int] = {}
+    for i in range(len(asr_text) - AUDIO_REPEAT_NGRAM + 1):
+        g = asr_text[i:i + AUDIO_REPEAT_NGRAM]
+        grams[g] = grams.get(g, 0) + 1
+    dup = sorted((g, c) for g, c in grams.items() if c >= AUDIO_REPEAT_MAX)
+
+    problems: list[str] = []
+    if head_count >= 2:
+        problems.append(f"片头句出现 {head_count} 次(应为 1;B1 式『每段重播片头』特征)")
+    if sim < sim_min:
+        problems.append(f"归一相似度 {sim:.3f} < {sim_min}(音轨内容与 wordline 不符)")
+    if dup:
+        problems.append(f"{len(dup)} 个 {AUDIO_REPEAT_NGRAM} 字片段出现 ≥{AUDIO_REPEAT_MAX} 次")
+    return {"pass": not problems, "similarity": round(sim, 4), "simMin": sim_min,
+            "headCount": head_count, "headText": head[:14],
+            "repeatHits": [g for g, _ in dup[:3]], "asrChars": len(asr_text),
+            "refChars": len(ref_text), "problems": problems}
+
+
+def _audio_check_cached(video: Path, wl_path: Path, outdir: Path, wl: dict,
+                        sim_min: float) -> dict:
+    """结果缓存:键 = 成片 hash + wordline hash(两者都没变就不重跑 ASR)。"""
+    cache = outdir / "audio_check.json"
+
+    def _h(p: Path) -> str:
+        return hashlib.sha1(p.read_bytes()).hexdigest()[:16]
+
+    key = {"video": _h(video), "wordline": _h(wl_path)}
+    if cache.is_file():
+        try:
+            old = json.loads(cache.read_text(encoding="utf-8"))
+            if old.get("key") == key:
+                return old.get("result") or {"skipped": "缓存损坏"}
+        except (json.JSONDecodeError, OSError):
+            pass
+    result = check_audio_content(video, wl, sim_min=sim_min)
+    cache.write_text(json.dumps({"key": key, "result": result}, ensure_ascii=False, indent=1),
+                     encoding="utf-8")
+    return result
 
 
 def check_card_overlap(events: list[dict], ir: dict | None,
@@ -217,6 +350,19 @@ def write_report(res: dict, path: Path, video_check: dict | None) -> None:
                   f"- ffprobe 实测 {video_check['actual']:.2f}s / Wordline 推算 "
                   f"{video_check['expected']:.2f}s(差 {video_check['diff']:+.2f}s)",
                   f"- 判定:{'✓' if video_check['pass'] else '✗'} (±0.5s)", ""]
+    ac = res.get("audioCheck")
+    if ac:
+        lines += ["## 成片音频内容闸(B10)", ""]
+        if ac.get("skipped"):
+            lines += [f"- 跳过:{ac['skipped']}", ""]
+        else:
+            lines += [f"- 归一相似度 {ac.get('similarity')} (≥{ac.get('simMin')})"
+                      f" / 片头句出现 {ac.get('headCount')} 次 / ASR {ac.get('asrChars')} 字"
+                      f" vs 校对稿 {ac.get('refChars')} 字",
+                      f"- 判定:{'✓' if ac.get('pass') else '✗'}"]
+            for pr in ac.get("problems") or []:
+                lines.append(f"- 问题:{pr}")
+            lines.append("")
     if res.get("earlyEnd"):
         lines += ["## 字幕早退明细(字幕在末字说完前消失 → 会切掉语音)", ""] + \
                  [f"- {x}" for x in res["earlyEnd"][:20]] + [""]
@@ -242,7 +388,10 @@ def write_report(res: dict, path: Path, video_check: dict | None) -> None:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("video", nargs="?")
+    # --video 是文档契约(SKILL.md 速查 / ADR-0021 / rs_run S9 spec)。
+    # 位置参数保留给旧命令行;两个都给时 --video 优先。(v0.10 修:S9 因只认位置参数必崩)
+    ap.add_argument("video_pos", nargs="?", help=argparse.SUPPRESS)
+    ap.add_argument("--video", dest="video", default=None)
     ap.add_argument("--wordline", required=True)
     ap.add_argument("--ass", required=True)
     ap.add_argument("--out", default="06_output")
@@ -252,7 +401,18 @@ def main() -> int:
                     help="把「字幕被动画卡压住」也算未通过(默认只告警)")
     ap.add_argument("--legacy-end", dest="legacy_end", action="store_true",
                     help="跳过终点门禁(只告警):给终点本来就偏的历史工程过渡用")
+    ap.add_argument("--frame-ms", dest="frame_ms", type=float, default=OVERLAP_TOL_MS,
+                    help="卡片时间重叠判定容差 ms(默认 34 ≈ 1 帧 @30fps;60fps 素材请给 17;"
+                         "帧取整伪影放行,真实重叠仍 FAIL)")
+    ap.add_argument("--audio-content", dest="audio_content", action="store_true",
+                    help="B10 音频内容闸:对成片音轨跑自带 ASR 与 wordline 对账"
+                         "(片头句=1 次 / 相似度 / 无重复段;需 --video,结果缓存)")
+    ap.add_argument("--audio-sim-min", dest="audio_sim_min", type=float, default=AUDIO_SIM_MIN,
+                    help="音频内容闸相似度通过线(默认 0.90)")
+    ap.add_argument("--no-audio-cache", dest="no_audio_cache", action="store_true",
+                    help="忽略 audio_check.json 缓存,强制重跑 ASR 对账")
     a = ap.parse_args()
+    a.video = a.video or a.video_pos
 
     wl = json.loads(Path(a.wordline).read_text(encoding="utf-8"))
     ass = Path(a.ass)
@@ -263,7 +423,7 @@ def main() -> int:
         return emit(False, "NO_EVENTS", "ASS 中没有 Dialogue 事件", exit_code=2)
 
     rows = check_offsets(events, wl)
-    res = summarize(rows, events, legacy_end=a.legacy_end)
+    res = summarize(rows, events, legacy_end=a.legacy_end, overlap_tol_ms=a.frame_ms)
     res["cardOverlaps"] = []
     if a.ir:
         try:
@@ -288,6 +448,26 @@ def main() -> int:
 
     outdir = Path(a.out)
     outdir.mkdir(parents=True, exist_ok=True)
+
+    # B10 音频内容闸:成片音轨 ASR 与 wordline 对账(有 problem → 硬失败)
+    audio_check = None
+    if a.audio_content:
+        if not a.video:
+            return emit(False, "BAD_INPUT", "--audio-content 需要 --video(成片路径)", exit_code=2)
+        video_path = Path(a.video)
+        if video_path.is_file():
+            if a.no_audio_cache:
+                audio_check = check_audio_content(video_path, wl, sim_min=a.audio_sim_min)
+            else:
+                audio_check = _audio_check_cached(video_path, Path(a.wordline), outdir,
+                                                  wl, a.audio_sim_min)
+            res["audioCheck"] = audio_check
+            if not audio_check.get("skipped") and not audio_check.get("pass"):
+                res["pass"] = False
+        else:
+            audio_check = {"skipped": f"成片不存在:{video_path}"}
+            res["audioCheck"] = audio_check
+
     write_report(res, outdir / "sync_report.md", video_check)
     (outdir / "sync_rows.json").write_text(json.dumps({"rows": rows, "summary": res,
                                                       "video": video_check},

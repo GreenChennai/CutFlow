@@ -140,7 +140,7 @@ rs_cut.py --apply 04_cut/cutlist.final.json --render
 
 ### 剪后衔接(必须保留)
 
-每一刀都会在静止机位上产生 jump cut,并因 room tone 被切掉而显得突兀。`rs_render` 已有**段间 8ms afade**——**明确保留,并写入 S8 校验**;需要更自然的场合用交替 punch-in / b-roll 覆盖。
+每一刀都会在静止机位上产生 jump cut,并因 room tone 被切掉而显得突兀。v0.10 起 rs_ir 写的 8ms 亚帧转场会被 rs_render **自动提升为 120ms 交叉溶解**(joinCrossfadeMs,ADR-0023,尾帧扩展保证零漂移)——溶解只该表达"时间/话题切换",同段内跳切的掩饰应优先 punch-in/B-roll(见 docs/ITERATION-GUIDE-v0.11.md §5)。
 
 ## 9. 门禁与验收
 
