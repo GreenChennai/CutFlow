@@ -7,7 +7,13 @@
 - **R3 punch-in**(opt-in):渲染端 clip `punchIn.factor`(1.0-2.0,anchorY 纵向偏置);`rs_ir --punch-in-auto` 启发式:真剪辑点(移除 ≥1.2s)后 1.4x,密度成片时间轴 15s/≤3 处(Hitchcock:紧构图只给重点)。
 - **R4 粗剪智能化**:词表外置 `templates/fillers.json`(brief 阶段补口癖,缺省回退内建);margin 不对称(前 150/后 300ms);防碎切 smooth(间隙 <100ms 并刀、<120ms 碎刀放弃——宁可漏删);新 `hesitate` 检测器(0.3-1.2s 无字段能量谷 → review,需 `--media`)。
 - **R5 文本化**:每刀带 `text` 前后 1.2s 上下文;`cut_report.md` 尾部产出**删改稿**(~~remove~~/**review**/keep 分行)——机器粗剪、人读稿精修(对齐 Descript/Premiere TBE 心智)。
-- schema:transition.reason / clip.punchIn;docs:ADR-0026、rules/roughcut、rules/compose、rules/verify L0 表、SKILL.md。测试 239 → **249 全绿**(新增 test_v11.py 10 用例)。
+- schema:transition.reason / clip.punchIn;docs:ADR-0026、rules/roughcut、rules/compose、rules/verify L0 表、SKILL.md。测试 239 → **250 全绿**(新增 test_v11.py 11 用例)。
+
+### v0.11 实机全管线跑批修(dev 工程 S0→S9 实测)
+
+- **xfade 链截断(致命)**:段文件尾帧被编码取整吃掉 1-2 帧,按名义长度递推 offset 会在链上累积缺口——该 ffmpeg 构建在 offset+dur 贴齐/越过 input1 长度时 xfade **整段坍缩**(实测:视频 44.7s/音频 145s)。修复:concat 用**实测段长**递推,offset 保持名义值(零漂移不变),duration 按 `cum - offset - 1帧安全边际` 夹紧;回归 `test_concat_no_truncation_with_short_tails`。
+- **matte 探针路径**:`metadata=print:file=` 的绝对路径冒号在 filtergraph 单/双转义均解析失败 → 改相对文件名 + `run(cwd=segcache)`(`rs_common.run` 增 cwd 参数)。
+- **rs_verify 短卡误报**:规范明文 <0.83s 是软告警(subtitles.md §8),L0 却硬失败 → 短卡归 `softWarnings`,硬失败仅保留 >7s/字数/CPS/重叠。
 
 ## v0.10.1 (2026-09-14) — 整片验收批修(店群工程实测,4 个真 Bug)
 

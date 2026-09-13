@@ -90,8 +90,12 @@ def test_step_segment_uses_tails_and_quantization():
 
 
 def test_concat_trims_to_nominal_total():
+    """v0.11:offset 保持名义起点(零漂移锚),但时长按实测段长夹紧并留安全边际
+    (xfade 贴边会整段坍缩,店群/dev 工程实测),末尾仍按名义总长 -t 裁齐。"""
     src = inspect.getsource(rs_render.step_concat)
-    assert "total_s" in src and "offset = cum - tdur" in src
+    assert "total_s" in src and "nominal_cum" in src
+    assert "offset = nominal_cum" in src and "_video_stream_len" in src
+    assert "cum - offset - frame" in src          # 安全边际
 
 
 # ---------------------------------------------------------------- ADR-0022 边缘精修

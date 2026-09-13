@@ -209,10 +209,15 @@ def check_subtitles(root: Path) -> dict:
                       "cps": round(len(txt) / (dur_ms / 1000.0), 2) if dur_ms else 0.0})
     viol = segmentation.check_constraints(cards, max_chars, segmentation.cps_max_for(max_chars))
     over = [v for v in viol if "时长" in v and ">" in v]
-    return {"name": "字幕合规(字数/CPS/时长/不重叠)", "ok": not viol,
-            "detail": "; ".join(viol[:5]), "eventCount": len(events),
+    # v0.11 实测修正:rules/subtitles.md §8 —— >7s 是硬失败,<0.83s 是**软告警**
+    # ("残余项可由 sync_report.md 解释":必并余量耗尽时保留字级精确时间属预期)。
+    # 旧实现把短卡也当 L0 硬失败,与规范自相矛盾。
+    soft = [v for v in viol if "时长" in v and "<" in v]
+    hard = [v for v in viol if v not in soft]
+    return {"name": "字幕合规(字数/CPS/时长/不重叠)", "ok": not hard,
+            "detail": "; ".join((hard or soft)[:5]), "eventCount": len(events),
             "ratio": _ratio_of(root), "maxChars": max_chars,
-            "violations": viol, "hardDuration": over}
+            "violations": viol, "hardDuration": over, "softWarnings": soft}
 
 
 def check_alignment(root: Path) -> dict:

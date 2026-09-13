@@ -211,12 +211,12 @@ def matte_fg_ratio(seg: Path, dur_s: float, cfg: dict) -> float | None:
 def matte_probe_args(key: str, cache_dir: Path) -> tuple[str, list[str]]:
     """段命令的第二输出:抽 [fg](alpha 消费点之前)2 帧统计 alpha,写 cache_dir 下文件。
 
-    返回 (文件名, 追加到命令尾部的参数)。路径按 ffmpeg filter 规则转义
-    (Windows 盘符冒号),与 esc_sub 同一手法;继续走 run() 保持可 monkeypatch。
+    返回 (文件名, 追加到命令尾部的参数)。文件用**相对名**,配合 run(cwd=cache_dir)
+    —— metadata=print:file= 的路径冒号在 filtergraph 里转义不可靠(单/双转义均
+    解析失败,v0.11 实测),相对名是唯一稳解;继续走 run() 保持可 monkeypatch。
     """
     name = f"matte_{key[:16]}.txt"
-    escaped = (cache_dir / name).as_posix().replace(":", "\\:")
-    return name, ["-map", "[fgprobe]", "-frames:v", "2", "-f", "null", "-"], escaped
+    return name, ["-map", "[fgprobe]", "-frames:v", "2", "-f", "null", "-"]
 
 
 def _crop_pct_chain(c: dict) -> list[str]:
@@ -415,15 +415,15 @@ def step_segment(doc: dict, ratio: str, build: Path, base_dir: Path, cfg: dict,
                               f"crop={cw}:{ch}:(iw-ow)/2:(ih-oh)*{anchor:.3f}")
         vf_tail.append("format=yuv420p")
 
-        probe_name, probe_args, probe_file = "", [], ""
+        probe_name, probe_args = "", []
         if bg:
             fparts[-1] = fparts[-1].replace("[m]", "[m0]")
             fparts.append(f"[m0]{','.join(vf_tail)}[vout]")
             # v0.11 R1 matte 探针:第二输出抽 [fgs](split 自 alpha 平面,overlay 消费
             # 之前)2 帧,统计写 cache_dir/matte_<key>.txt —— 编码前的真 alpha。
-            probe_name, probe_args, probe_file = matte_probe_args(key, cache_dir)
+            probe_name, probe_args = matte_probe_args(key, cache_dir)
             fparts.append(f"[fgs]alphaextract,signalstats,"
-                          f"metadata=print:file={probe_file}[fgprobe]")
+                          f"metadata=print:file={probe_name}[fgprobe]")
             cmd += ["-filter_complex", ";".join(fparts), "-map", "[vout]", "-map", "0:a?"]
         else:
             cmd += ["-vf", ",".join(vf + vf_tail)]
@@ -447,7 +447,7 @@ def step_segment(doc: dict, ratio: str, build: Path, base_dir: Path, cfg: dict,
                 "-r", str(fps), "-video_track_timescale", "15360", str(tmp)]
         if probe_args:
             cmd += probe_args          # 第二输出(必须跟在主输出之后;选项按输出生效)
-        p = run(cmd, timeout=1800)
+        p = run(cmd, timeout=1800, cwd=str(cache_dir))
         if p.returncode != 0:
             die(4, "SEGMENT_FAIL", f"段 {i} 提取失败:{(p.stderr or '')[-400:]}")
         tmp.replace(cached)
@@ -548,27 +548,50 @@ def step_concat(doc: dict, seg_files: list[Path], build: Path, cfg: dict,
     # xfade 链(v0.10,ADR-0023):每段已在 segment 步多渲染 tails[i] 尾帧。
     # offset 恒等于后段名义起点 sum(qdurs[:i]) → 成片时长与字幕时间零漂移;
     # 末尾按名义总长裁齐(尾帧只进重叠,不外溢)。
+    #
+    # v0.11 实测修复(dev 工程视频 44.7s/音频 145s 截断):段文件的尾帧常被编码
+    # 取整吃掉 1-2 帧,按名义 q+tail 递推会在链上累积缺口——xfade 在 input1 提前
+    # EOF 时把**整条下游截断**。现在每段用实测流长递推:offset 保持名义值(零漂移
+    # 不变),重叠不足时把该 join 的 duration 夹短到实际可用量,截断不可能发生。
     n = len(seg_files)
     qdurs = [max(1, round(c["durationMs"] / 1000.0 * fps)) / fps for c in base_clips[:n]]
+    seg_lens = [_video_stream_len(f, cfg) for f in seg_files]
     cmd = [ffmpeg_bin(cfg), "-v", "error", "-y"]
     for f in seg_files:
         cmd += ["-i", str(f)]
     parts, last, lasta = [], "0:v", "0:a"
-    cum = qdurs[0] + tails[0]
+    frame = 1.0 / fps
+    cum = seg_lens[0]
+    nominal_cum = 0.0                       # 后段名义起点(零漂移锚点)
     all_have_audio = all(_seg_has_audio(f, cfg) for f in seg_files)
     if not all_have_audio:
         warnings.append("concat:部分段无音轨,转场仅作用于画面,输出将无音频")
     for i in range(1, n):
         tr = base_clips[i].get("transition") or {"type": "fade"}
         tdur = eff_tr[i]
-        offset = cum - tdur
+        nominal_cum += qdurs[i - 1]
+        offset = nominal_cum
+        # 重叠可用量 = 实测累计长 - 名义 offset - 1 帧安全边际:
+        # ① 足够 → 名义路径(offset/tdur 都零漂移);
+        # ② 差 1~2 帧(尾帧被编码取整吃掉)→ 缩短本次 dissolve,切点仍零漂移;
+        # ③ 连安全余量都没有 → 贴着实测末尾做 1 帧软切,保链不断(绝不截断下游)。
+        # ⚠ 实测:offset+dur 恰好贴齐/越过 input1 长度时,该 ffmpeg 构建的 xfade
+        # 会整段坍缩(offset 语义失效,输出只剩 input2)——边际 1 帧不可省。
+        avail = cum - offset - frame
+        if avail >= tdur:
+            pass
+        elif avail >= frame:
+            tdur = avail
+        else:
+            offset = max(cum - frame - frame, 0.0)
+            tdur = frame
         parts.append(f"[{last}][{i}:v]xfade=transition={tr.get('type', 'fade')}:"
                      f"duration={tdur:.3f}:offset={offset:.3f}[vx{i}]")
         if all_have_audio:
             parts.append(f"[{lasta}][{i}:a]acrossfade=d={tdur:.3f}:curve1=tri:curve2=tri[ax{i}]")
             lasta = f"ax{i}"
         last = f"vx{i}"
-        cum = offset + qdurs[i] + tails[i]
+        cum = offset + seg_lens[i]
     total_s = sum(qdurs)
     cmd += ["-filter_complex", ";".join(parts), "-map", f"[{last}]"]
     cmd += ["-map", f"[{lasta}]", "-c:a", "aac", "-b:a", "192k"] if all_have_audio else ["-an"]
@@ -583,6 +606,23 @@ def step_concat(doc: dict, seg_files: list[Path], build: Path, cfg: dict,
 def _seg_has_audio(seg: Path, cfg: dict) -> bool:
     info = ffprobe_json(seg, cfg)
     return any(s["codec_type"] == "audio" for s in info.get("streams", []))
+
+
+def _video_stream_len(seg: Path, cfg: dict) -> float:
+    """视频流实际时长(s)。容器时长含音频垫尾不可靠;流缺 duration 时退 nb_frames/fps。"""
+    info = ffprobe_json(seg, cfg)
+    vs = next((s for s in info.get("streams", []) if s.get("codec_type") == "video"), {})
+    d = float(vs.get("duration") or 0.0)
+    if d > 0:
+        return d
+    nf = int(vs.get("nb_frames") or 0)
+    if nf > 0:
+        num, _, den = (vs.get("r_frame_rate") or "30/1").partition("/")
+        try:
+            return nf * den / float(num or 30)
+        except (ZeroDivisionError, ValueError):
+            return nf / 30.0
+    return float(info.get("format", {}).get("duration") or 0.0)
 
 
 # ---------------- 步骤 4:overlay 合成 ----------------

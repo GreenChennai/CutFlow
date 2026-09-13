@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -222,3 +223,45 @@ def test_cutlist_has_text_and_script_marks():
     # 合成字符上切点必落字内 → guard 正确降级 review(wordClipped 永不放松)
     assert "review" in actions and "keep" in actions
     assert sum(len(s["text"]) for s in script) >= 48, "删改稿覆盖几乎全文"
+
+
+# ---------------------------------------------------------------- 实机事故回归:xfade 链截断
+
+@pytest.mark.skipif(not Path(FFMPEG).is_file(), reason="ffmpeg 不可用")
+def test_concat_no_truncation_with_short_tails(tmp_path):
+    """v0.11 实测事故:段尾帧被编码取整吃掉 1-2 帧,xfade 按名义长度递推时
+    input1 提前 EOF → 整条下游被截断(视频 44.7s / 音频 145s)。
+    修复后 concat 用实测段长夹紧 duration:输出不得短于名义总长 0.5s 以上。"""
+    import rs_render
+
+    def seg(name: str, seconds: float) -> str:
+        p = tmp_path / f"{name}.mp4"
+        r = subprocess.run(
+            [FFMPEG, "-y", "-v", "error",
+             "-f", "lavfi", "-i", f"testsrc2=s=80x144:r=30:d={seconds:.3f}",
+             "-f", "lavfi", "-i", f"sine=frequency=440:duration={seconds:.3f}",
+             "-c:v", "libx264", "-preset", "ultrafast", "-c:a", "aac",
+             "-shortest", str(p)], capture_output=True, text=True)
+        if r.returncode != 0:
+            pytest.skip(f"lavfi 不可用:{r.stderr[-120:]}".encode("ascii", "replace").decode())
+        return str(p)
+
+    # 3 段:join1=jumpcut(1帧尾),join2=topic(0.3s 尾,且刻意少渲 2 帧模拟取整亏损)
+    s0 = seg("s0", 2.0 + 1 / 30.0)
+    s1 = seg("s1", 2.0 + 0.3 - 2 / 30.0)          # 尾帧亏损 2 帧
+    s2 = seg("s2", 2.0)
+    doc = {"fps": 30,
+           "tracks": [{"kind": "video", "clips": [
+               {"durationMs": 2000, "sourceInMs": 0},
+               {"durationMs": 2000, "sourceInMs": 3000,
+                "transition": {"type": "fade", "durMs": 8, "reason": "jumpcut"}},
+               {"durationMs": 2000, "sourceInMs": 6000,
+                "transition": {"type": "fade", "durMs": 300, "reason": "topic"}}]}]}
+    out = rs_render.step_concat(doc, [Path(s0), Path(s1), Path(s2)], tmp_path, {}, [])
+    ffprobe = str(Path(FFMPEG).parent / ("ffprobe.exe" if os.name == "nt" else "ffprobe"))
+    info = subprocess.run(
+        [ffprobe, "-v", "error", "-select_streams", "v:0",
+         "-show_entries", "stream=duration", "-of", "csv=p=0", str(out)],
+        capture_output=True, text=True)
+    vdur = float(info.stdout.strip() or 0)
+    assert vdur >= 5.5, f"xfade 链不得截断下游:实测视频流 {vdur:.2f}s(名义 6.0s)"

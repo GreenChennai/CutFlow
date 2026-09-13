@@ -549,7 +549,7 @@ def test_seg_cmd_has_output_t_clamp(tmp_path, monkeypatch):
 
     captured: dict = {}
 
-    def fake_run(cmd, timeout=None):
+    def fake_run(cmd, timeout=None, **kwargs):
         captured["cmd"] = cmd
         mp4s = [Path(x) for x in cmd if str(x).endswith(".mp4")]
         mp4s[-1].write_bytes(b"x")  # 供 tmp.replace(cached);v0.11 起命令尾是 matte 探针的 null 输出

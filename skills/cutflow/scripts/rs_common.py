@@ -101,10 +101,13 @@ def ffprobe_bin(cfg: dict | None = None) -> str:
     return str(p) if p.is_file() else "ffprobe"
 
 
-def run(cmd: list[str], timeout: int = 3600, quiet: bool = True) -> subprocess.CompletedProcess:
+def run(cmd: list[str], timeout: int = 3600, quiet: bool = True,
+        cwd: str | None = None) -> subprocess.CompletedProcess:
+    # cwd:mate 探针等需要相对输出路径的场景(Windows 盘符冒号在 filtergraph
+    # 里无法可靠转义,cwd+相对名是唯一稳解,v0.11 实测)。
     return subprocess.run(cmd, capture_output=True, timeout=timeout,
                           text=True if quiet is False else True,
-                          encoding="utf-8", errors="replace")
+                          encoding="utf-8", errors="replace", cwd=cwd)
 
 
 def ffprobe_json(media: str | Path, cfg: dict | None = None) -> dict:
