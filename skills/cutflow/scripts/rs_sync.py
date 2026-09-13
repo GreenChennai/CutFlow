@@ -39,6 +39,125 @@ LEAD_MS = 20                          # 卡片时间 = 首字 startMs - 20ms(ali
 STRIP = "。，、；：,;:…!?！？ \u3000「」“”\"'()（）"
 _OVERRIDE = re.compile(r"\{[^}]*\}")  # ASS override 标签(如 {\kf28}、{\c&H..&})
 
+# ---- R1 成片体检(ITERATION-GUIDE-v0.11 §8;出处见其 §10 来源索引)----
+QC_BLACK_MIN_S = 0.3                  # 黑帧 ≥0.3s FAIL(片头尾 0.5s 白名单:淡入淡出)
+QC_FREEZE_MIN_S = 2.5                 # 冻结 ≥2.5s FAIL(实拍噪声门 -60dB,真机极少触线)
+QC_SILENCE_MIN_S = 2.0                # 静音 ≥2s WARN(首尾 1s 白名单;垫尾合法)
+QC_LUFS_RANGE = (-15.0, -13.0)        # 集成响度目标 -14 ±1(Spotify/YouTube 对齐值,非强制规范)
+QC_TP_MAX = -0.9                      # True Peak 上限 -1 dBTP(留 0.1 容差)
+QC_EDGE_S = 0.5                       # 片头/片尾白名单宽度
+
+
+def run_qc(video: Path, cfg: dict | None = None) -> dict:
+    """成片体检:黑帧/冻结(一路视频滤镜)+ 静音(音频)+ VFR(ffprobe)+ 响度(测量 pass)。
+
+    全部 ffmpeg/ffprobe 机械可判;任何检测失败不抛异常,而是 skipped 留痕
+    (闸的缺席必须显式,ADR-0021 失败语义)。silence 仅 WARN 不影响 pass。
+    """
+    out: dict = {"pass": True, "checks": {}}
+    checks = out["checks"]
+
+    def _fail(name: str, detail: dict) -> None:
+        checks[name] = {**detail, "pass": False}
+        out["pass"] = False
+
+    def _ok(name: str, detail: dict) -> None:
+        checks[name] = {**detail, "pass": True}
+
+    # -- 黑帧 + 冻结(视频滤镜一趟)+ 静音(音频滤镜同命令)--
+    try:
+        p = run([ffmpeg_bin(cfg), "-v", "info", "-i", str(video),
+                 "-vf", f"blackdetect=d={QC_BLACK_MIN_S}:pix_th=0.10,"
+                        f"freezedetect=n=-60dB:d={QC_FREEZE_MIN_S}",
+                 "-af", f"silencedetect=n=-30dB:d={QC_SILENCE_MIN_S}",
+                 "-f", "null", "-"], timeout=1800)
+        blacks, freezes, silences = [], [], []
+        for line in (p.stderr or "").splitlines():
+            m = re.search(r"black_start:([\d.]+) black_end:([\d.]+) black_duration:([\d.]+)", line)
+            if m:
+                blacks.append((float(m.group(1)), float(m.group(2))))
+            m = re.search(r"freeze_start:([\d.]+)\s*\|\s*freeze_duration:([\d.]+)", line)
+            if m:
+                freezes.append((float(m.group(1)), float(m.group(1)) + float(m.group(2))))
+            m = re.search(r"silence_start:([-\d.]+)", line)
+            if m:
+                silences.append([float(m.group(1)), None])
+                continue
+            m = re.search(r"silence_end:([-\d.]+)\s*\|\s*silence_duration:([\d.]+)", line)
+            if m and silences and silences[-1][1] is None:
+                silences[-1][1] = float(m.group(1))
+        dur = 0.0
+        try:
+            from rs_common import media_duration_s  # noqa: PLC0415
+            dur = media_duration_s(video, cfg)
+        except Exception:  # noqa: BLE001
+            pass
+
+        def _interior(spans, edge: float) -> list:
+            if dur <= 0:
+                return spans
+            return [s for s in spans if s[1] > edge and s[0] < dur - edge]
+
+        bad_black = _interior(blacks, QC_EDGE_S)
+        if bad_black:
+            _fail("black", {"spans": [[round(a, 2), round(b, 2)] for a, b in bad_black],
+                            "rule": f"片内黑帧 ≥{QC_BLACK_MIN_S}s(首尾 {QC_EDGE_S}s 白名单)"})
+        else:
+            _ok("black", {"count": len(blacks)})
+        bad_freeze = _interior(freezes, QC_EDGE_S)
+        if bad_freeze:
+            _fail("freeze", {"spans": [[round(a, 2), round(b, 2)] for a, b in bad_freeze],
+                             "rule": f"冻结 ≥{QC_FREEZE_MIN_S}s"})
+        else:
+            _ok("freeze", {"count": len(freezes)})
+        bad_sil = _interior([tuple(s) if s[1] is not None else (s[0], s[0] + QC_SILENCE_MIN_S)
+                             for s in silences], 1.0)
+        checks["silence"] = {"pass": True, "warn": bool(bad_sil),
+                             "spans": [[round(a, 2), round(b, 2)] for a, b in bad_sil],
+                             "rule": f"片内静音 ≥{QC_SILENCE_MIN_S}s 仅告警(垫尾合法)"}
+    except Exception as exc:  # noqa: BLE001
+        checks["blackfreeze"] = {"skipped": f"检测失败:{exc}"}
+
+    # -- VFR 混帧(jumpcutter Issue #144 的教训:帧率假设错 = 音画漂移)--
+    try:
+        from rs_common import ffprobe_json  # noqa: PLC0415
+        info = ffprobe_json(video, cfg)
+        vs = next((s for s in info.get("streams", []) if s.get("codec_type") == "video"), {})
+
+        def _fps(txt: str) -> float:
+            if not txt or "/" not in txt:
+                return float(txt or 0)
+            a, b = txt.split("/")
+            return float(a) / float(b) if float(b) else 0.0
+
+        r, avg = _fps(vs.get("r_frame_rate", "")), _fps(vs.get("avg_frame_rate", ""))
+        if r > 0 and avg > 0 and abs(r - avg) / r > 0.02:
+            _fail("vfr", {"r_frame_rate": vs.get("r_frame_rate"),
+                          "avg_frame_rate": vs.get("avg_frame_rate"),
+                          "rule": "r_frame_rate ≈ avg_frame_rate(VFR 混帧必查)"})
+        else:
+            _ok("vfr", {"fps": round(avg, 3)})
+    except Exception as exc:  # noqa: BLE001
+        checks["vfr"] = {"skipped": f"探测失败:{exc}"}
+
+    # -- 响度(测量 pass,复用 rs_render.measure_loudness 口径)--
+    try:
+        import rs_render  # noqa: PLC0415 — 复用同一测量实现,避免两处口径漂移
+        d = rs_render.measure_loudness(video, cfg)
+        if d is None:
+            checks["loudness"] = {"skipped": "无有效音轨/测量失败"}
+        else:
+            i_val, tp_val = float(d["input_i"]), float(d["input_tp"])
+            detail = {"input_i": i_val, "input_tp": tp_val,
+                      "rule": f"I ∈ {QC_LUFS_RANGE} LUFS(目标 -14±1)、TP ≤ {QC_TP_MAX} dBTP"}
+            if not (QC_LUFS_RANGE[0] <= i_val <= QC_LUFS_RANGE[1]) or tp_val > QC_TP_MAX:
+                _fail("loudness", detail)
+            else:
+                _ok("loudness", detail)
+    except Exception as exc:  # noqa: BLE001
+        checks["loudness"] = {"skipped": f"测量失败:{exc}"}
+    return out
+
 
 def ass_time(s: str) -> float:
     h, m, sec = s.split(":")
@@ -382,6 +501,27 @@ def write_report(res: dict, path: Path, video_check: dict | None) -> None:
     if res["unmatched"]:
         lines += ["## 未匹配字幕(文本与 Wordline 不一致,可能是校对未重聚合)", ""] + \
                  [f"- {r['event']}" for r in res["unmatched"][:20]] + [""]
+    qc = res.get("qc")
+    if qc:
+        lines += ["## 成片体检(QC,v0.11 R1)", ""]
+        if qc.get("skipped"):
+            lines += [f"- 跳过:{qc['skipped']}", ""]
+        else:
+            name_map = {"black": "黑帧", "freeze": "冻结", "silence": "静音(仅告警)",
+                        "vfr": "VFR 混帧", "loudness": "响度(I/TP)", "blackfreeze": "黑帧/冻结"}
+            for name, label in name_map.items():
+                c = (qc.get("checks") or {}).get(name)
+                if not c:
+                    continue
+                if c.get("skipped"):
+                    lines.append(f"- {label}:跳过({c['skipped']})")
+                elif c.get("pass"):
+                    extra = (f"I={c['input_i']} / TP={c['input_tp']}" if name == "loudness"
+                             else f"检出 {c.get('count', len(c.get('spans', [])))} 处")
+                    lines.append(f"- {label}:✓({extra})")
+                else:
+                    lines.append(f"- {label}:✗ {c.get('rule')} → {c.get('spans')}")
+            lines.append("")
     lines.append(f"**总判定**:**{'通过' if res['pass'] else '未通过'}**")
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
@@ -411,6 +551,8 @@ def main() -> int:
                     help="音频内容闸相似度通过线(默认 0.90)")
     ap.add_argument("--no-audio-cache", dest="no_audio_cache", action="store_true",
                     help="忽略 audio_check.json 缓存,强制重跑 ASR 对账")
+    ap.add_argument("--qc", dest="qc", action="store_true",
+                    help="R1 成片体检:黑帧/冻结/VFR/响度机械闸(需 --video;静音仅告警)")
     a = ap.parse_args()
     a.video = a.video or a.video_pos
 
@@ -467,6 +609,18 @@ def main() -> int:
         else:
             audio_check = {"skipped": f"成片不存在:{video_path}"}
             res["audioCheck"] = audio_check
+
+    # R1 成片体检:黑帧/冻结/VFR/响度(需 --video;任何 FAIL → 总判定失败)
+    if a.qc:
+        if not a.video:
+            return emit(False, "BAD_INPUT", "--qc 需要 --video(成片路径)", exit_code=2)
+        video_path_qc = Path(a.video)
+        if video_path_qc.is_file():
+            res["qc"] = run_qc(video_path_qc)
+            if not res["qc"].get("pass"):
+                res["pass"] = False
+        else:
+            res["qc"] = {"pass": True, "skipped": f"成片不存在:{video_path_qc}"}
 
     write_report(res, outdir / "sync_report.md", video_check)
     (outdir / "sync_rows.json").write_text(json.dumps({"rows": rows, "summary": res,

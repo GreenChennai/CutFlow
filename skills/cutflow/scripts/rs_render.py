@@ -19,7 +19,9 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import shutil
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -31,7 +33,8 @@ from rs_common import (RATIOS, die, emit, ffmpeg_bin, ffprobe_json, load_config,
 RATIO = dict(RATIOS)             # 画幅唯一真相源在 rs_common(新增画幅只改那里)
 LOUDNORM_BUS = "loudnorm=I=-14:TP=-1.0:LRA=11"
 LOUDNORM_VOICE = "loudnorm=I=-16:TP=-1.5:LRA=11"
-CACHE_VER = "v3"                 # 渲染语义变更时 +1,防旧缓存幽灵命中(v0.10:帧量化+尾帧扩展+边缘精修)
+LOUDNESS_TARGET = {"I": -14.0, "TP": -1.0, "LRA": 11.0}   # 硬规则 11;出处 ITERATION-GUIDE §8.2
+CACHE_VER = "v4"                 # 渲染语义变更时 +1,防旧缓存幽灵命中(v0.11:双 pass 响度+matte 探针)
 CHROMA_DEFAULTS = {"similarity": 0.15, "blend": 0.12}   # 基轨/overlay/schema 三处统一(唯一真相源)
 SEG_CACHE_KEEP = 400             # segcache 最大保留文件数(超出按 mtime 淘汰)
 BG_TYPES = {"color", "image", "video", "gradient"}
@@ -107,7 +110,7 @@ def seg_key(clip: dict, doc: dict, cw: int, ch: int, fp: str) -> str:
         "fps": doc["fps"], "canvas": [cw, ch], "media": fp,
         "clip": {k: clip.get(k) for k in
                  ("src", "durationMs", "sourceInMs", "speed", "loop", "volume",
-                  "reframe", "motion", "chroma", "background", "tailMs")},
+                  "reframe", "motion", "chroma", "background", "tailMs", "punchIn")},
     }
     return hashlib.sha1(json.dumps(payload, sort_keys=True, ensure_ascii=False)
                         .encode("utf-8")).hexdigest()
@@ -186,6 +189,34 @@ def chroma_hex(c: dict, src: Path, cfg: dict) -> str:
     if col == "green":
         return "0x00FF00"
     return sample_chroma(src, cfg)  # auto / 未知值 → 自动采样
+
+
+def parse_matte_log(text: str) -> float | None:
+    """从 metadata=print 输出解析 alpha YAVG → 前景占比(≈ 人物面积比,二值 matte)。
+    多帧取均值;无数据返回 None。"""
+    vals = [float(v) / 255.0 for v in re.findall(r"lavfi\.signalstats\.YAVG=([\d.]+)", text or "")]
+    return round(sum(vals) / len(vals), 4) if vals else None
+
+
+def matte_fg_ratio(seg: Path, dur_s: float, cfg: dict) -> float | None:
+    """独立探针:对已合成段抽帧测 alpha 前景占比(仅用于测试/诊断;编码后的 mp4
+    已无 alpha 平面,管线内探针走 step_segment 的第二输出,见 matte_probe_args)。"""
+    p = run([ffmpeg_bin(cfg), "-v", "info", "-ss", f"{max(0.1, dur_s * 0.5):.2f}",
+             "-i", str(seg), "-frames:v", "1",
+             "-vf", "format=yuva444p,alphaextract,signalstats,metadata=print",
+             "-f", "null", "-"], timeout=120)
+    return parse_matte_log(p.stderr) if p.returncode == 0 else None
+
+
+def matte_probe_args(key: str, cache_dir: Path) -> tuple[str, list[str]]:
+    """段命令的第二输出:抽 [fg](alpha 消费点之前)2 帧统计 alpha,写 cache_dir 下文件。
+
+    返回 (文件名, 追加到命令尾部的参数)。路径按 ffmpeg filter 规则转义
+    (Windows 盘符冒号),与 esc_sub 同一手法;继续走 run() 保持可 monkeypatch。
+    """
+    name = f"matte_{key[:16]}.txt"
+    escaped = (cache_dir / name).as_posix().replace(":", "\\:")
+    return name, ["-map", "[fgprobe]", "-frames:v", "2", "-f", "null", "-"], escaped
 
 
 def _crop_pct_chain(c: dict) -> list[str]:
@@ -327,7 +358,10 @@ def step_segment(doc: dict, ratio: str, build: Path, base_dir: Path, cfg: dict,
                 fg.append("despill=type=green")
             fg += _chroma_fg_chain(chroma)
             fg.append(cover_crop(pr.get("width") or cw, pr.get("height") or ch, cw, ch, anchor))
-            fparts.append(f"[0:v]{','.join(fg)}[fg]")
+            # v0.11 R1:显式 yuva444p + split —— alpha 平面从这里分给 overlay(合成)
+            # 与 matte 探针;否则格式协商会被下游 yuv420p 分支拉成无 alpha,探针恒 255。
+            fparts.append(f"[0:v]{','.join(fg)}[fg0]")
+            fparts.append("[fg0]format=yuva444p,split=2[fg][fgs]")
             # 背景:四种来源统一覆盖画布
             btype = bg.get("type")
             if btype == "color":
@@ -371,11 +405,25 @@ def step_segment(doc: dict, ratio: str, build: Path, base_dir: Path, cfg: dict,
         if motion.get("out", "none") != "none":
             d = motion.get("outMs", 400) / 1000
             vf_tail.append(f"fade=t=out:st={max(0.0, out_ms/1000 - d):.3f}:d={d:.3f}")
+        # v0.11 R3 punch-in(ITERATION-GUIDE §5.3):切点处 1.25~1.5x 变焦交替构图,
+        # 是 jump cut 的通行掩饰(Hitchcock 规则:更紧构图只给重点)。anchorY 决定
+        # 纵向裁切偏置(0=贴顶,保护人物头部)。插在最前,fade 作用在变焦后的画面上。
+        punch_f = float((clip.get("punchIn") or {}).get("factor", 0) or 0)
+        if 1.01 < punch_f:
+            punch_f = min(punch_f, 2.0)
+            vf_tail.insert(0, f"scale={round(cw * punch_f / 2) * 2}:{round(ch * punch_f / 2) * 2},"
+                              f"crop={cw}:{ch}:(iw-ow)/2:(ih-oh)*{anchor:.3f}")
         vf_tail.append("format=yuv420p")
 
+        probe_name, probe_args, probe_file = "", [], ""
         if bg:
             fparts[-1] = fparts[-1].replace("[m]", "[m0]")
             fparts.append(f"[m0]{','.join(vf_tail)}[vout]")
+            # v0.11 R1 matte 探针:第二输出抽 [fgs](split 自 alpha 平面,overlay 消费
+            # 之前)2 帧,统计写 cache_dir/matte_<key>.txt —— 编码前的真 alpha。
+            probe_name, probe_args, probe_file = matte_probe_args(key, cache_dir)
+            fparts.append(f"[fgs]alphaextract,signalstats,"
+                          f"metadata=print:file={probe_file}[fgprobe]")
             cmd += ["-filter_complex", ";".join(fparts), "-map", "[vout]", "-map", "0:a?"]
         else:
             cmd += ["-vf", ",".join(vf + vf_tail)]
@@ -397,11 +445,26 @@ def step_segment(doc: dict, ratio: str, build: Path, base_dir: Path, cfg: dict,
         cmd += ["-t", f"{take_s:.3f}",
                 "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
                 "-r", str(fps), "-video_track_timescale", "15360", str(tmp)]
+        if probe_args:
+            cmd += probe_args          # 第二输出(必须跟在主输出之后;选项按输出生效)
         p = run(cmd, timeout=1800)
         if p.returncode != 0:
             die(4, "SEGMENT_FAIL", f"段 {i} 提取失败:{(p.stderr or '')[-400:]}")
         tmp.replace(cached)
         prune_seg_cache(cache_dir)
+        # v0.11 R1 matte 探针(ADR-0022 修订的护栏):色度链改动的语义错误(如 geq
+        # 字节域事故=全片人物透明)字符串测试测不出来;第二输出在 alpha 消费点前
+        # 采样,占比异常直接进 warnings —— 事故从"人看成片"提前到"渲染期"。
+        if bg:
+            pf = cache_dir / probe_name
+            ratio = parse_matte_log(pf.read_text(encoding="utf-8", errors="replace")
+                                    if pf.is_file() else "")
+            reports[-1]["matteFgRatio"] = ratio
+            pf.unlink(missing_ok=True)
+            if ratio is not None and (ratio < 0.01 or ratio > 0.70):
+                warnings.append(
+                    f"seg[{i}]:matte_suspect 前景占比 {ratio:.1%}(正常 10%~60%)——"
+                    "疑似抠像失效/键带过宽,先查 chroma 参数与 L1 目测,不要直接交付")
         print(f"  seg[{i+1}/{len(base_clips)}] {out_ms/1000:.2f}s"
               f"{' 缓存命中' if hit else ''}", file=sys.stderr)
     return seg_files, reports, seg_keys
@@ -419,6 +482,11 @@ def _resolve_transitions(base_clips: list[dict], fps: float, doc: dict,
     配合 step_segment 的尾帧扩展,xfade offset 恒等于后段名义起点 → 时间零漂移。
     整链弃用只留给"源间隙放不下尾帧"的 join(无法重叠就硬切,宁缺勿错)。
     `transition.type` 为 cut/none 仍表示显式硬切。
+
+    v0.11(ADR-0026)三级语法:transition.reason ==
+    - `jumpcut`:同段内跳切 → 1 帧软切(视觉即硬切,仅吃掉姿态/alpha pop 与爆音);
+    - `topic`:真话题/章节切换 → 按 durMs 溶解(默认 300ms);
+    - 无 reason(既有 IR)→ 原行为(亚帧提升 joinCrossfadeMs)。
     """
     frame_s = 1.0 / fps if fps and fps > 0 else 1 / 30.0
     cfg_ms = ((cfg or {}).get("render") or {}).get("joinCrossfadeMs", 120)
@@ -434,9 +502,15 @@ def _resolve_transitions(base_clips: list[dict], fps: float, doc: dict,
             continue
         cap = min(base_clips[i - 1]["durationMs"] / 2000.0,
                   base_clips[i]["durationMs"] / 2000.0)
-        tdur = min(tr.get("durMs", 500) / 1000.0, cap)
-        if tdur < frame_s:
-            tdur = min(promote_s, cap)
+        reason = str(tr.get("reason", "")).lower()
+        if reason == "jumpcut":
+            tdur = min(frame_s, cap)             # 软切:至多 1 帧
+        else:
+            tdur = min(tr.get("durMs", 500) / 1000.0, cap)
+            if tdur < frame_s:
+                tdur = min(promote_s, cap)
+        if tdur <= 0:
+            continue
         # 尾帧扩展余量:本段源出点与下一段源入点之间的被剪间隙
         prev, nxt = base_clips[i - 1], base_clips[i]
         gap_ms = nxt.get("sourceInMs", 0) - (prev.get("sourceInMs", 0) + prev["durationMs"])
@@ -702,11 +776,45 @@ def step_subtitle(doc: dict, src: Path, build: Path, cfg: dict) -> Path:
 
 # ---------------- 步骤 7:总线响度 + 编码 ----------------
 
-def step_encode(src: Path, out: Path, profile: str, cfg: dict, fps: int) -> None:
+def measure_loudness(src: Path, cfg: dict) -> dict | None:
+    """loudnorm 测量 pass(音频-only 解码,秒级)。返回 measured 字典或 None(无音轨/测量失败)。
+
+    v0.11 R1:单 pass loudnorm 动态受输入响度牵动(EBU R128 的 linear 双 pass 才是
+    交付口径,ITERATION-GUIDE §8.2);final 档先测后编,preview/draft 维持单 pass。
+    """
+    p = subprocess.run(
+        [ffmpeg_bin(cfg), "-v", "info", "-i", str(src),
+         "-af", "loudnorm=I=-14:TP=-1.0:LRA=11:print_format=json",
+         "-vn", "-f", "null", "-"], capture_output=True, text=True,
+        encoding="utf-8", errors="replace", timeout=3600)
+    if p.returncode != 0:
+        return None
+    m = re.findall(r'\{[^{}]*"input_i"[^{}]*\}', p.stderr or "")
+    if not m:
+        return None
+    try:
+        d = json.loads(m[-1])
+        if float(d.get("input_i", -70)) <= -69.0:      # 静音地板 = 无有效音轨
+            return None
+        return d
+    except (json.JSONDecodeError, ValueError):
+        return None
+
+
+def step_encode(src: Path, out: Path, profile: str, cfg: dict, fps: int,
+                loudness: dict | None = None) -> None:
     crf = {"final": "19", "preview": "26", "draft": "28"}[profile]
     preset = {"final": "medium", "preview": "veryfast", "draft": "ultrafast"}[profile]
+    if profile == "final" and loudness:
+        # 双 pass(linear=true):用实测值回填,动态不被单 pass 的归一化曲线拉花。
+        af = (f"loudnorm=I=-14:TP=-1.0:LRA=11:"
+              f"measured_I={loudness['input_i']}:measured_TP={loudness['input_tp']}:"
+              f"measured_LRA={loudness['input_lra']}:measured_thresh={loudness['input_thresh']}:"
+              f"offset={loudness.get('target_offset', 0)}:linear=true")
+    else:
+        af = LOUDNORM_BUS
     cmd = [ffmpeg_bin(cfg), "-v", "error", "-y", "-i", str(src),
-           "-af", LOUDNORM_BUS, "-c:v", "libx264", "-preset", preset, "-crf", crf,
+           "-af", af, "-c:v", "libx264", "-preset", preset, "-crf", crf,
            "-pix_fmt", "yuv420p", "-r", str(fps), "-c:a", "aac", "-b:a", "192k",
            "-movflags", "+faststart", str(out)]
     p = run(cmd, timeout=7200)
@@ -819,7 +927,13 @@ def render(doc: dict, project_path: Path, ratio: str, profile: str, *,
     name = f"final_{doc.get('slug', 'out')}_{ratio.replace('x', '')}.mp4" if profile == "final" \
         else f"{profile}_{doc.get('slug', 'out')}_{ratio.replace('x', '')}.mp4"
     out = base_dir / "06_output" / name
-    k_enc = step_key("encode", k_sub, {"profile": profile, "fps": doc["fps"]})
+    # v0.11 R1:final 档双 pass loudnorm —— 先音频-only 测量(秒级),实测值回填编码。
+    # 测量值是 subtitled 的纯函数(已在 k_sub 里),键只需记"是否双 pass"。
+    loud2 = measure_loudness(subtitled, cfg) if profile == "final" else None
+    if profile == "final" and loud2 is None:
+        warnings.append("loudness: 未测得有效音轨,回退单 pass 总线响度")
+    k_enc = step_key("encode", k_sub, {"profile": profile, "fps": doc["fps"],
+                                       "loud2pass": bool(loud2)})
     if dry_run:
         hits = {"concat": prev.get("concat") == k_concat and base.is_file(),
                 "compose": prev.get("compose") == k_compose and (composed.is_file() if composed != base else prev.get("concat") == k_concat and base.is_file()),
@@ -833,7 +947,7 @@ def render(doc: dict, project_path: Path, ratio: str, profile: str, *,
     if use_cache and prev.get("encode") == k_enc and out.is_file():
         skipped.append("encode")
     else:
-        step_encode(subtitled, out, profile, cfg, doc["fps"])
+        step_encode(subtitled, out, profile, cfg, doc["fps"], loudness=loud2)
 
     # B2 回归断言:成片视频流时长 vs IR 名义总长差 ≤1.5 帧。
     # v0.10 尾帧扩展法下转场不吞时长,名义总长即预期;字段名错/漂移仍会在此暴露。

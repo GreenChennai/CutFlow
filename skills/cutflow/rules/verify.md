@@ -24,6 +24,7 @@
 | 字幕合规 | 每卡字数 ≤ 上限、CPS ≤ 9、单卡时长 ≤ 7s、卡间不重叠 |
 | 字幕↔Wordline 对齐 | 偏移中位数 ≤ 40ms,95 分位 ≤ 80ms |
 | 产物存在 | 至少一个成片 |
+| **成片体检 QC**(v0.11,`rs_sync --qc`) | 片内黑帧 ≥0.3s = 0;冻结 ≥2.5s = 0;VFR = 0;响度 I∈[-15,-13] LUFS 且 TP ≤ -0.9;静音 ≥2s 仅告警(首尾白名单) |
 
 ```powershell
 python skills/cutflow/scripts/rs_verify.py <工程根>            # L0

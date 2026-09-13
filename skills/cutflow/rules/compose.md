@@ -60,6 +60,13 @@ python skills/cutflow/scripts/rs_run.py --explain S3  # 为什么 stale
 
 **反模式**:直接重调 `rs_render.py` 会按当前 hash 全量重算——**想省时间就先 `--status` 再 `--from/--only`**。细节见 rules/incremental.md。
 
+## 渲染(v0.11 起)
+
+- **转场三级语法**(ADR-0026):`reason=jumpcut`(源间隙<1s)→ 1 帧软切;`reason=topic`(≥1s)→ 300ms 溶解;无 reason 亚帧仍提升 joinCrossfadeMs(ADR-0023)。
+- **punch-in**(R3,opt-in):IR clip `punchIn.factor`(1.0–2.0,anchorY 偏置纵向裁切);`rs_ir --punch-in-auto` 启发式:真剪辑点(移除 ≥1.2s)后 1.4x,密度 15s/≤3 处。
+- **matte 探针**(R1):绿幕段渲染时第二输出抽 alpha 前景占比,<1% 或 >70% → `matte_suspect` 告警(geq 字节域事故的护栏)。
+- **响度双 pass**(R1):final 档先测量后编码(`loudnorm linear=true`,-14 LUFS/TP -1 dBTP);preview/draft 仍单 pass。
+
 ## 渲染后自检
 
 `rs_doctor` 语义校验 + **`rs_sync.py` 三对齐断言** + `rs_bench.py <成片> --ir <ir> --out 06_output/bench_<ratio>.png` → 目测:

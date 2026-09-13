@@ -88,7 +88,7 @@ def spec() -> list[dict]:
          "scripts": ["rs_sync.py"],
          "cmd": ["rs_sync.py", "--wordline", "{final_wordline}",
                  "--ass", "06_output/subtitles.ass", "--out", "06_output",
-                 "--video", "{final_video}", "--audio-content"]},
+                 "--video", "{final_video}", "--audio-content", "--qc"]},
         {"id": "S10", "name": "封面与文案",
          "inputs": ["05_ir/wordline.json", "00_brief/brief.md"],
          "outputs": ["06_output/metadata.json"], "scripts": ["rs_meta.py"],

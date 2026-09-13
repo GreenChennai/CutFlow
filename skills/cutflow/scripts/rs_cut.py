@@ -57,6 +57,31 @@ FILLERS: dict[str, float] = {
 }
 REPEAT_WORDS = ("我", "你", "他", "她", "我们", "你们", "那个", "这个", "然后", "就是")
 
+# ---- v0.11 R4(ITERATION-GUIDE §4):词表外置 + margin 不对称 + 防碎切 ----
+MARGIN_IN_MS, MARGIN_OUT_MS = 150, 300   # 后留白 > 前留白,给呼吸感(auto-editor --margin 不对称语义)
+SMOOTH_MINCUT_MS = 120    # <120ms 的刀整体放弃:亚音素级剪切人耳难辨,只添错删风险
+SMOOTH_MINCLIP_MS = 100   # 相邻刀之间 <100ms 的保留碎片并入刀内(残段只会是爆音)
+TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
+
+
+def load_lexicon() -> dict:
+    """词表外置:templates/fillers.json 优先,缺省回退内建(永不因缺文件而崩)。
+    口癖因人而异;brief 阶段允许用户补词,报告按词统计命中。"""
+    try:
+        d = json.loads((TEMPLATES_DIR / "fillers.json").read_text(encoding="utf-8"))
+        return {
+            "fillers": {str(k): float(v) for k, v in (d.get("fillers") or {}).items()}
+            or dict(FILLERS),
+            "repeat": tuple(d.get("repeat_words") or REPEAT_WORDS),
+            "self_negative": tuple(d.get("self_negative") or SELF_NEGATIVE),
+        }
+    except (OSError, json.JSONDecodeError, ValueError):
+        return {"fillers": dict(FILLERS), "repeat": REPEAT_WORDS,
+                "self_negative": SELF_NEGATIVE}
+
+
+LEXICON = load_lexicon()
+
 
 # ---------------------------------------------------------------- 工具
 
@@ -168,13 +193,15 @@ def classify(cut: dict) -> dict:
 
 # ---------------------------------------------------------------- 检测器
 
-def detect_silence(wl: dict, min_ms: int = SILENCE_MIN_MS) -> list[dict]:
+def detect_silence(wl: dict, min_ms: int = SILENCE_MIN_MS,
+                   margin_in_ms: int = MARGIN_IN_MS,
+                   margin_out_ms: int = MARGIN_OUT_MS) -> list[dict]:
     chars, cuts = wl.get("chars", []), []
     for g in _gap_windows(chars):
         if g["ms"] < min_ms:
             continue
-        in_ms = g["startMs"] + 150          # 两端各留 150ms(auto-editor --margin 精神)
-        out_ms = g["endMs"] - 150
+        in_ms = g["startMs"] + margin_in_ms   # 后留白 > 前留白(auto-editor --margin 不对称语义)
+        out_ms = g["endMs"] - margin_out_ms
         if out_ms - in_ms < 200:
             continue
         cuts.append({"inMs": in_ms, "outMs": out_ms,
@@ -186,7 +213,7 @@ def detect_silence(wl: dict, min_ms: int = SILENCE_MIN_MS) -> list[dict]:
 def detect_filler(wl: dict) -> list[dict]:
     text, cmap = _text_and_map(wl)
     chars, out = wl.get("chars", []), []
-    for word, conf in FILLERS.items():
+    for word, conf in LEXICON["fillers"].items():
         for a, b in _find_all(text, word):
             in_ms, out_ms = _span_ms(chars, cmap[a], cmap[b - 1] + 1)
             if out_ms - in_ms <= 0 or out_ms - in_ms > 1500:
@@ -206,7 +233,7 @@ def detect_repetition(wl: dict) -> list[dict]:
         while i + 2 * k <= len(text):
             if text[i:i + k] == text[i + k:i + 2 * k] and text[i:i + k].strip():
                 frag = text[i:i + k]
-                if k == 1 and frag not in REPEAT_WORDS:
+                if k == 1 and frag not in LEXICON["repeat"]:
                     i += 1
                     continue
                 a, b = cmap[i], cmap[i + 2 * k - 1] + 1
@@ -392,7 +419,7 @@ def detect_self_negative(wl: dict, max_len_ms: int = 4000) -> list[dict]:
     text, cmap = _text_and_map(wl)
     chars = wl.get("chars", [])
     out = []
-    for phrase in SELF_NEGATIVE:
+    for phrase in LEXICON["self_negative"]:
         for a, b in _find_all(text, phrase):
             in_ms = int(chars[cmap[a]]["startMs"])
             out_ms = int(chars[cmap[b - 1]]["endMs"])
@@ -414,10 +441,58 @@ def detect_off_topic(wl: dict, spans: list[list[int]] | None = None) -> list[dic
     return out
 
 
+def smooth_cuts(cuts: list[dict]) -> list[dict]:
+    """v0.11 R4 防碎切(auto-editor --smooth 精神,ITERATION-GUIDE §4.1):
+    ①相邻刀之间 <SMOOTH_MINCLIP_MS 的保留碎片并入后一刀(残段只会是爆音);
+    ②合并后仍 <SMOOTH_MINCUT_MS 的刀整体放弃(亚音素剪切人耳难辨,只添错删风险;
+    「宁可漏删」——放弃即 keep,永不因平滑而多删)。"""
+    if not cuts:
+        return []
+    ordered = sorted(cuts, key=lambda c: (c["inMs"], c["outMs"]))
+    merged: list[dict] = [dict(ordered[0])]
+    for c in ordered[1:]:
+        last = merged[-1]
+        if c["inMs"] - last["outMs"] < SMOOTH_MINCLIP_MS:
+            last["outMs"] = max(last["outMs"], c["outMs"])
+            if c["conf"] > last["conf"]:
+                last["reason"], last["conf"] = c["reason"], c["conf"]
+            last["note"] = f"{last.get('note', '')}; smooth合并".strip("; ")
+        else:
+            merged.append(dict(c))
+    kept = [c for c in merged if c["outMs"] - c["inMs"] >= SMOOTH_MINCUT_MS]
+    dropped = len(merged) - len(kept)
+    if dropped and kept:
+        kept[0]["note"] = (kept[0].get("note", "") +
+                           f" [smooth:放弃 {dropped} 刀 <{SMOOTH_MINCUT_MS}ms 碎刀]").strip()
+    return kept
+
+
+def detect_hesitate(wl: dict, media: str | None = None,
+                    min_ms: int = 300, max_ms: int = 1200, db: int = -25) -> list[dict]:
+    """亚阈值停顿(hesitate):能量谷 0.3–1.2s、谷内无任何字 —— 拖长音/迟疑。
+    需要 --media(能量探测);只进 review(conf 0.62),守住「宁可漏删」。"""
+    if not media:
+        return []
+    chars = wl.get("chars", [])
+    out = []
+    for g in (_probe_silence(Path(media), db, min_ms) or []):
+        if g["ms"] > max_ms:
+            continue
+        in_ms, out_ms = int(g["startMs"]) + 80, int(g["endMs"]) - 80
+        if out_ms - in_ms < 150:
+            continue
+        if any(c["endMs"] > in_ms and c["startMs"] < out_ms for c in chars):
+            continue          # 谷里有字 = 可能是轻声/ASR 漏字,保守不切
+        out.append({"inMs": in_ms, "outMs": out_ms, "reason": "silence",
+                    "conf": 0.62,
+                    "note": f"hesitate:无字段能量谷 {g['ms']}ms(亚阈值停顿,只进 review)"})
+    return _dedupe(out)
+
+
 DETECTORS = {"silence": detect_silence, "dead_air": detect_dead_air,
              "filler": detect_filler, "repetition": detect_repetition,
              "retake": detect_retake, "retake_block": detect_retake_block,
-             "self_negative": detect_self_negative}
+             "self_negative": detect_self_negative, "hesitate": detect_hesitate}
 
 
 # ---------------------------------------------------------------- 融合
@@ -465,26 +540,65 @@ def rhetorical_suspect(cut: dict, cuts: list[dict]) -> bool:
 def build_cutlist(wl: dict, cuts: list[dict], params: dict | None = None) -> dict:
     chars = wl.get("chars", [])
     gaps = _gap_windows(chars)
-    merged = merge_overlaps(cuts)
+    for c in cuts:
+        if c["reason"] not in REASONS:
+            raise ValueError(f"未知 reason:{c['reason']}")
+    merged = smooth_cuts(merge_overlaps(cuts))
     for i, c in enumerate(merged):
         c["id"] = f"c{i + 1:03d}"
         c["guard"] = guard(c, chars, gaps)
-        if c["reason"] not in REASONS:
-            raise ValueError(f"未知 reason:{c['reason']}")
         c.setdefault("note", "")
         classify(c)
         # 反向保护只针对"停顿类"刀:重录/整段重来删掉的是一整段重复内容,不是修辞停顿
         if c["reason"] in ("silence", "breath") and rhetorical_suspect(c, merged):
             c["action"] = "review"
             c["note"] = (c["note"] + " [rhetorical_pause_suspect]").strip()
+        # v0.11 R5:每刀带前后 1.2s 文本上下文 —— 审查从「听 30 个 3 秒」变「读 30 行」
+        c["text"] = _context_text(chars, c)
     removed = [c for c in merged if c["action"] == "remove"]
     total = int(wl.get("srcDurationMs") or (int(chars[-1]["endMs"]) if chars else 0))
     keep = derive_keep(removed, total)
-    return {"version": 1, "source": wl.get("source", ""),
-            "detector": {"version": DETECTOR_VERSION, "params": params or {}},
-            "cuts": merged, "keep": keep,
-            "removedMs": sum(c["outMs"] - c["inMs"] for c in removed),
-            "srcTotalMs": total}
+    cl = {"version": 1, "source": wl.get("source", ""),
+          "detector": {"version": DETECTOR_VERSION, "params": params or {}},
+          "cuts": merged, "keep": keep,
+          "removedMs": sum(c["outMs"] - c["inMs"] for c in removed),
+          "srcTotalMs": total}
+    cl["script"] = _script_marks(chars, merged, total)
+    return cl
+
+
+def _context_text(chars: list[dict], cut: dict, ctx_ms: int = 1200) -> str:
+    """刀口前后各 1.2s 的文本上下文(R5)。"""
+    return "".join(c["ch"] for c in chars
+                   if cut["inMs"] - ctx_ms < c["endMs"] and c["startMs"] < cut["outMs"] + ctx_ms)
+
+
+def _script_marks(chars: list[dict], cuts: list[dict], total: int,
+                  line_chars: int = 42) -> list[dict]:
+    """R5 删改稿:全文按 keep/remove/review 分行标注 —— 机器粗剪、人读稿精修
+    (对齐 Descript / Premiere 文本化编辑的心智,ITERATION-GUIDE §4.3)。"""
+    if not chars:
+        return []
+    marks = []
+    for c in chars:
+        act = "keep"
+        for cut in cuts:
+            if cut["action"] == "keep":
+                continue
+            if max(cut["inMs"], c["startMs"]) < min(cut["outMs"], c["endMs"]):
+                if cut["action"] == "remove" or act == "keep":
+                    act = cut["action"]
+        marks.append((act, c["ch"]))
+    lines, buf, cur = [], [], marks[0][0]
+    for act, ch in marks + [("END", "")]:
+        if act != cur or len(buf) >= line_chars:
+            if buf:
+                lines.append({"action": cur, "text": "".join(buf)})
+            buf = []
+            cur = act
+        if act != "END":
+            buf.append(ch)
+    return lines
 
 
 def derive_keep(remove_cuts: list[dict], total: int) -> list[list[int]]:
@@ -538,6 +652,20 @@ def write_report(cl: dict, path: Path) -> None:
              (f" 告警:{','.join(warn)}" if warn else "")
         lines.append(f"| {c['id']} | {c['inMs']} | {c['outMs']} | {c['reason']} | {c['conf']} | "
                      f"{c['action']} | {gs} | {c.get('note', '')} |")
+    # v0.11 R5 删改稿:全文按 keep/remove/review 分行 —— 人读稿精修替代逐条听审
+    script = cl.get("script") or []
+    if script:
+        lines += ["## 删改稿(R5:按文本审,不改时间)", "",
+                  "> ~~删除线~~ = 自动执行 remove;**加粗** = 待审 review;正文 = 保留。", ""]
+        for seg in script:
+            t = seg["text"]
+            if seg["action"] == "remove":
+                lines.append(f"- ~~{t}~~")
+            elif seg["action"] == "review":
+                lines.append(f"- **{t}**  ←待审")
+            else:
+                lines.append(f"- {t}")
+        lines.append("")
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 

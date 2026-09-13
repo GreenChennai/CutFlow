@@ -85,7 +85,7 @@ S0 素材 ─► S1 转写+字级对齐 ─► S2 粗剪 ─► S3 基础合成 
 | **S6** | 音效 | `rs_sfx` | `mixed/` | ≤2 个 / 15s |
 | **S7** | 字幕 | `rs_subtitle` | `06_output/subtitles.ass` | 回归集全绿、CPS ≤9 |
 | **S8** | **烧录导出** | `rs_render` | `06_output/final_*.mp4` | 用**现有 ass**,不重新生成字幕 |
-| **S9** | 自评与对齐断言 | `rs_sync` + `rs_verify` | `sync_report.md` | 偏移中位数 ≤40ms;**成片音频内容闸**(片头句=1/相似度/无重复段) |
+| **S9** | 自评与对齐断言 | `rs_sync` + `rs_verify` | `sync_report.md` | 偏移中位数 ≤40ms;**成片音频内容闸**;**QC 体检**(黑帧/冻结/VFR/响度,v0.11) |
 | **S10** | 封面与文案 | 抽帧 + `rs_meta` | `cover.png`、`metadata.json` | 平台字数合规 |
 | **S11** | 交付 | `rs_cleanup [--apply]` | 变体成片 + `deliverables.md` | 清单齐全 |
 
@@ -103,7 +103,7 @@ S0 素材 ─► S1 转写+字级对齐 ─► S2 粗剪 ─► S3 基础合成 
 8. ASR 原始输出**必须经你校对**后才能用;校对改文本后**按字级锚点重聚合**(见 `rules/align.md`),不得沿用旧时间戳插值。
 9. TTS 长文**先全量合成落盘**再进时间线;逐句时长以 ffprobe **实测值**为准(禁止估算累加)。
 10. 渲染:统一帧率 → 逐段提取 → concat → 合成 → 混音 → **字幕最后叠** → 编码(rs_render 已固化,勿绕过)。
-11. 总线响度 -14 LUFS / -1 dBTP;人声先行归一。
+11. 总线响度 -14 LUFS / -1 dBTP;final 档双 pass loudnorm(linear,先测后编),人声先行归一。
 12. 9:16 安全区:底部 25%、顶部 12% 不放字幕/关键信息;**Logo 默认避开字幕带**。
 13. 写剪映草稿前确认剪映未运行;只动 5.9,绝不碰 11.3。
 14. **竖屏(9:16)每卡 10–12 字、CPS ≤9 字/秒、单卡 0.83–7s**;旧工程按当时 `maxChars` 复现,不追改。
@@ -131,7 +131,7 @@ S0 素材 ─► S1 转写+字级对齐 ─► S2 粗剪 ─► S3 基础合成 
 | **ASR 部署** | `python tools/fetch_deps.py asr [--onnx\|--pkg\|--seed-models D]` |
 | 转写 + 对齐(S1) | `rs_align.py build --media <素材> --out 05_ir/wordline.json` |
 | 重映射 | `rs_align.py remap 05_ir/wordline.json --cutlist 04_cut/cutlist.applied.json --out ...` |
-| 粗剪(S2) | `rs_cut.py 05_ir/wordline.json --detect all --out 04_cut` / `--apply ...` |
+| 粗剪(S2) | `rs_cut.py 05_ir/wordline.json --detect all --out 04_cut`(`--media 源` 增能量检测;`--apply ...`)|
 | CutList→IR | `rs_ir.py build --from-cutlist 04_cut/cutlist.applied.json --slug X --out 05_ir/project.json` |
 | IR 校验 | `rs_ir.py validate 05_ir/project.json` |
 | 渲染 | `rs_render.py 05_ir/project.json --ratio 9x16 --profile final` |

@@ -142,6 +142,14 @@ rs_cut.py --apply 04_cut/cutlist.final.json --render
 
 每一刀都会在静止机位上产生 jump cut,并因 room tone 被切掉而显得突兀。v0.10 起 rs_ir 写的 8ms 亚帧转场会被 rs_render **自动提升为 120ms 交叉溶解**(joinCrossfadeMs,ADR-0023,尾帧扩展保证零漂移)——溶解只该表达"时间/话题切换",同段内跳切的掩饰应优先 punch-in/B-roll(见 docs/ITERATION-GUIDE-v0.11.md §5)。
 
+## 8.5 v0.11 增强(R4/R5,ITERATION-GUIDE §4)
+
+- **词表外置**:`templates/fillers.json`(fillers/repeat_words/self_negative),brief 阶段补用户口癖;`rs_cut` 每次运行读取,报告按词统计命中。
+- **margin 不对称**:静音切点前留 150ms / 后留 300ms(auto-editor `--margin` 不对称语义)——后留白给呼吸感。
+- **防碎切(smooth)**:相邻刀间隙 <100ms 的保留碎片并刀;<120ms 的碎刀整体放弃(亚音素剪切只添错删风险;宁可漏删)。
+- **hesitate 检测器**(需 `--media`):0.3–1.2s 无字段能量谷 → review(conf 0.62);谷里有字保守不切。
+- **R5 文本化**:每刀带 `text`(前后 1.2s 上下文);`cut_report.md` 尾部产出**删改稿**——全文按 ~~remove~~/**review**/keep 分行,先读稿再听审。
+
 ## 9. 门禁与验收
 
 | 检查 | 通过线 |

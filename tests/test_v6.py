@@ -551,7 +551,8 @@ def test_seg_cmd_has_output_t_clamp(tmp_path, monkeypatch):
 
     def fake_run(cmd, timeout=None):
         captured["cmd"] = cmd
-        Path(cmd[-1]).write_bytes(b"x")  # 供 tmp.replace(cached)
+        mp4s = [Path(x) for x in cmd if str(x).endswith(".mp4")]
+        mp4s[-1].write_bytes(b"x")  # 供 tmp.replace(cached);v0.11 起命令尾是 matte 探针的 null 输出
         return _P()
 
     monkeypatch.setattr(rs_render, "run", fake_run)
@@ -564,7 +565,8 @@ def test_seg_cmd_has_output_t_clamp(tmp_path, monkeypatch):
     # 输出侧 -t 必须位于 filter_complex/map 之后、输出文件之前
     assert idx_out > cmd.index("-filter_complex")
     assert idx_out > cmd.index("-map")
-    assert idx_out == len(cmd) - 13             # -t + 值 + 10 个编码参数 + 输出路径
+    # v0.11:输出路径后追加 matte 探针第二输出(-map/-frames:v/-f/null/- 共 7 项)
+    assert idx_out == len(cmd) - 20             # -t + 值 + 10 个编码参数 + 输出路径 + 7 探针项
 
 
 # ================================================================ R9 问题#7/#8 回归:标点领头卡

@@ -24,6 +24,7 @@ MOTION_OUT = {"none", "fadeOut", "slideOutLeft", "slideOutRight"}
 TRANSITIONS = {"fade", "wipeleft", "wipeup", "slideleft", "circleopen"}
 KINDS = {"video", "audio", "text"}
 BG_TYPES = {"color", "image", "video", "gradient"}
+PUNCH_MIN_GAP_MS = 15000               # R3 punch-in 最小间隔(经验值,ITERATION-GUIDE §5.3)
 CHROMA_PRESET = {"green", "blue", "auto"}
 HEX_PREFIX = "0x"
 
@@ -149,7 +150,8 @@ def validate(doc: dict, base_dir: Path) -> list[str]:
 
 
 def build_from_cutlist(cutlist: dict, *, slug: str, ratio: str = "9x16",
-                       xfade_ms: int = 8, with_audio: bool = True) -> dict:
+                       xfade_ms: int = 8, with_audio: bool = True,
+                       punch_in_auto: bool = False) -> dict:
     """CutList(keep 区间)→ IR 主视频/音频轨(时间一律经 map_src_to_final 换算)。"""
     keep = [[int(a), int(b)] for a, b in (cutlist.get("keep") or [])]
     if not keep:
@@ -159,13 +161,32 @@ def build_from_cutlist(cutlist: dict, *, slug: str, ratio: str = "9x16",
 
     video, audio = [], []
     cursor = 0
+    last_punch_ms = -PUNCH_MIN_GAP_MS      # v0.11 R3 punch-in 密度控制(§5.3)
+    punch_count = 0
     for i, (a, b) in enumerate(keep):
         dur = b - a
         clip = {"src": src, "startMs": cursor, "durationMs": dur, "sourceInMs": a}
         if i > 0 and xfade_ms > 0:
             # B2:唯一合法字段是 durMs(schema/rs_render 同口径);旧字段 "ms" 会被
             # 静默落回默认 500ms,7 处转场吞掉 3.5s 造成音画错位。
-            clip["transition"] = {"type": "fade", "durMs": int(xfade_ms)}
+            # v0.11 R2(ADR-0026)转场三级语法:源间隙 <1s = 同段内跳切 → 亚帧软切
+            # (渲染端 1 帧 xfade:视觉即硬切,仅吃掉姿态/alpha 单帧 pop 与音频爆音);
+            # ≥1s = 真(话题/章节)切换 → 300ms 交叉溶解(Reisz 语法:dissolve 表达
+            # "时间过去了",同段内不用)。渲染端 cap 与整链回退不变(ADR-0023)。
+            gap = a - keep[i - 1][1]
+            if gap < 1000:
+                clip["transition"] = {"type": "fade", "durMs": int(xfade_ms),
+                                      "reason": "jumpcut"}
+            else:
+                clip["transition"] = {"type": "fade", "durMs": max(int(xfade_ms), 300),
+                                      "reason": "topic"}
+            # R3 punch-in 启发式(opt-in):真剪辑点(移除 ≥1.2s)后切更紧构图,
+            # 密度 ≥15s/次、全片 ≤3 处(多则失去强调意义)。
+            if punch_in_auto and gap >= 1200 and punch_count < 3 \
+                    and cursor - last_punch_ms >= PUNCH_MIN_GAP_MS:
+                clip["punchIn"] = {"factor": 1.4, "source": "auto"}
+                last_punch_ms = cursor
+                punch_count += 1
         video.append(clip)
         if with_audio:
             audio.append({"src": src, "startMs": cursor, "durationMs": dur,
@@ -215,6 +236,8 @@ def main() -> int:
     ap.add_argument("--slug", default="project")
     ap.add_argument("--ratio", default="9x16", choices=list(RATIOS))
     ap.add_argument("--xfade", type=int, default=8)
+    ap.add_argument("--punch-in-auto", dest="punch_in_auto", action="store_true",
+                    help="R3:真剪辑点(移除 ≥1.2s)后自动 punch-in 1.4x(密度 15s/≤3 处;opt-in)")
     ap.add_argument("--no-audio", action="store_true")
     ap.add_argument("--force", action="store_true",
                     help="检测到手注痕迹时仍覆盖(放弃手注;BUGREPORT B8)")
@@ -228,7 +251,8 @@ def main() -> int:
         try:
             doc = build_from_cutlist(json.loads(cl_path.read_text(encoding="utf-8")),
                                      slug=a.slug, ratio=a.ratio, xfade_ms=a.xfade,
-                                     with_audio=not a.no_audio)
+                                     with_audio=not a.no_audio,
+                                     punch_in_auto=a.punch_in_auto)
         except (ValueError, KeyError) as exc:
             return emit(False, "BUILD_FAIL", f"生成失败:{exc}", exit_code=2)
         out = Path(a.out or "05_ir/project.json")

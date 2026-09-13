@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.11 (2026-09-14) — QA 闭环 · 转场三级语法 · punch-in · 粗剪智能化 · 文本化(ITERATION-GUIDE R1-R5)
+
+- **R1 QA 闭环**:`rs_sync --qc` 成片体检——黑帧 ≥0.3s / 冻结 ≥2.5s / VFR 混帧 = FAIL,片内静音 ≥2s 告警(首尾白名单);响度测量进报告(I∈[-15,-13] LUFS、TP ≤ -0.9 FAIL)。**final 档双 pass loudnorm**(linear=true,先测后编;preview/draft 仍单 pass)。**matte 探针**:绿幕段渲染时第二输出抽 alpha 前景占比,<1% 或 >70% → `matte_suspect` 告警(geq 字节域事故的机械护栏);CACHE_VER v4。
+- **R2 转场三级语法(ADR-0026)**:`rs_ir` 按源间隙标注 `transition.reason`——<1s=jumpcut(1 帧软切:视觉即硬切,吃掉姿态/alpha pop 与爆音);≥1s=topic(300ms 溶解,Reisz 语法);无 reason 亚帧仍提升 joinCrossfadeMs(ADR-0023 不回退);cap 与整链回退不变。
+- **R3 punch-in**(opt-in):渲染端 clip `punchIn.factor`(1.0-2.0,anchorY 纵向偏置);`rs_ir --punch-in-auto` 启发式:真剪辑点(移除 ≥1.2s)后 1.4x,密度成片时间轴 15s/≤3 处(Hitchcock:紧构图只给重点)。
+- **R4 粗剪智能化**:词表外置 `templates/fillers.json`(brief 阶段补口癖,缺省回退内建);margin 不对称(前 150/后 300ms);防碎切 smooth(间隙 <100ms 并刀、<120ms 碎刀放弃——宁可漏删);新 `hesitate` 检测器(0.3-1.2s 无字段能量谷 → review,需 `--media`)。
+- **R5 文本化**:每刀带 `text` 前后 1.2s 上下文;`cut_report.md` 尾部产出**删改稿**(~~remove~~/**review**/keep 分行)——机器粗剪、人读稿精修(对齐 Descript/Premiere TBE 心智)。
+- schema:transition.reason / clip.punchIn;docs:ADR-0026、rules/roughcut、rules/compose、rules/verify L0 表、SKILL.md。测试 239 → **249 全绿**(新增 test_v11.py 10 用例)。
+
 ## v0.10.1 (2026-09-14) — 整片验收批修(店群工程实测,4 个真 Bug)
 
 整片重渲验收中暴露、均已修复并补像素级/占位符回归:
