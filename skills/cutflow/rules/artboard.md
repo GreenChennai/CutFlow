@@ -33,15 +33,34 @@ python 03_assets/artboard/rebuild.py     # 一条龙:上面三步 + 从 S4 级�
 ## 调用(走 artboard 技能本体)
 
 1. 预检:`python <artboard>/scripts/preflight.py`(ffmpeg 已回填,应无 WARN);
-2. 脚手架:`scaffold.py <slug> --size <品类> --fonts <字体>`;
+2. 脚手架:`scaffold.py <slug> --size <品类> --fonts <字体>`——**落盘位置由 `config.studio_dir` 决定,与 cwd 无关**;要落进当前工程目录用 `ARTBOARD_STUDIO` 环境变量指定(v0.12 补记);
 3. 导出:`export.py --source <proj>/src --output <proj>/export/o.png --width 1080 --height 1920`
    (固定高度必须带 --height;动图 `--format MP4 --fps 25`,GIF `--format GIF`);
-4. 9:16 用 1080x1920,16:9 用 1920x1080(slide 品类)。
+4. 9:16 用 1080x1920,16:9 用 1920x1080(slide 品类);
+5. **导出 MP4 的环境变量:`WPI_FFMPEG` 才是有效项**(`ARTBOARD_FFMPEG` 无效——artboard 的 MP4 导出走 WPI;两个都设,rules/intake.md 环境 checklist 同款,安信德 #13)。
+
+## 场景卡 → 纯动画成片(I7,v0.12)
+
+纯动画工程(pure-animation)的卡片定稿导出后,**不要手写 IR、不要每个工程重写组装脚本**:
+
+```powershell
+python skills/cutflow/scripts/rs_ir.py build --from-cards 03_assets/artboard/manifest.json `
+    --anchors 00_brief/cards.json --wordline 05_ir/wordline.json `
+    --voice 03_assets/vo/voice.wav --slug <slug> --ratio 16x9 --out 05_ir/project.json
+```
+
+- `--anchors` 分组表:`[{"card":"c01-x","match":"句首词|备选词"}]`,锚词**优先取句首词**;
+- 卡片↔旁白 = 字符级锚点扫描(命中消费、标点继承、同卡相邻合并),组间边界 = 停顿中点;
+- 卡比旁白短 → 自动写 `freezeMs`(冻结帧补长,出场动画前定格);
+- 详见 ADR-0027 与 rules/video-types/纯动画.md。
 
 ## 设计约定
 
 - 风格与视频风格 token 一致(看 brief 的 colors/typography);
 - 动图约束:2-6s 无缝循环、仅 transform/opacity、终态须仍是合格静态海报;
+- **单一外层统一出场、内层只挂入场**(安信德 #7):同一元素挂两个动画类(`.so` 出场 + `.count`/`.stamp` 入场)后者覆盖前者 → 元素不入场常驻 / 永不退场;计数器元素内容必须为空(由 JS 填充);
+- **定宽网格先算总宽再定起点**(安信德 #8):如 4×380px + 3×34px 间距 = 1622px,画布 1920 → 起点 x=149(149+1622=1771 ✓);起点 x=320 会溢出切边(320+1622=1942 > 1920);
+- **Mode S 录制时序**(ADR-0012,v0.12 补全):录制从页面加载 ~1.7–1.9s 才开始 → 入场动画 delay 必须从 `--t0: 2.0s` 起算;导出片长 ≈ 时间轴 −1.8s;单卡 `--max-wait` ≤15s;
 - 产出回填 01_materials/MANIFEST.md。
 
 

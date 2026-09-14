@@ -244,8 +244,36 @@ def check_artifacts(root: Path) -> dict:
             "videos": videos}
 
 
+def check_qc(root: Path) -> dict:
+    """B5(v0.12):成片体检(黑帧/冻结/VFR/响度)纳入 L0。
+
+    rules/verify.md 早已把它列为 L0 判据,但 rs_verify 从不跑——只有显式
+    `rs_sync --qc` 的路径才体检,spec 与实现脱节。这里补齐:对**最新**成片跑
+    rs_sync.run_qc。ffmpeg/ffprobe 异常 → skipped 留痕(闸的缺席必须显式,
+    ADR-0021 失败语义),不硬失败;体检判 FAIL 才 ok=False。
+    """
+    name = "成片体检(黑帧/冻结/VFR/响度)"
+    out = root / "06_output"
+    videos = sorted(out.glob("*.mp4"), key=lambda p: p.stat().st_mtime) if out.is_dir() else []
+    if not videos:
+        return {"name": name, "ok": True, "skipped": "尚无成片"}
+    try:
+        qc = rs_sync.run_qc(videos[-1])
+    except SystemExit as exc:
+        return {"name": name, "ok": True, "skipped": f"体检工具不可用:{exc}", "video": videos[-1].name}
+    except Exception as exc:  # noqa: BLE001 — 闸缺席留痕,不阻塞其余 L0
+        return {"name": name, "ok": True, "skipped": f"体检执行失败:{exc}", "video": videos[-1].name}
+    if qc.get("skipped"):
+        return {"name": name, "ok": True, "skipped": qc["skipped"], "video": videos[-1].name}
+    failed = sorted(k for k, v in (qc.get("checks") or {}).items()
+                    if isinstance(v, dict) and v.get("pass") is False)
+    return {"name": name, "ok": bool(qc.get("pass")),
+            "detail": "" if qc.get("pass") else f"{videos[-1].name}:FAIL {','.join(failed)}",
+            "video": videos[-1].name, "checks": qc.get("checks")}
+
+
 L0_CHECKS = (check_ir, check_wordline, check_cutlist, check_subtitles, check_alignment,
-             check_artifacts)
+             check_artifacts, check_qc)
 
 
 def collect_l0(root: Path) -> dict:

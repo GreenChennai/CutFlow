@@ -419,6 +419,11 @@
        ]
       }
      }
+    },
+    "freezeMs": {
+     "type": "number",
+     "minimum": 1,
+     "description": "v0.12(ADR-0027)冻结帧补长:源正常播放到该毫秒,其后 tpad 克隆尾帧补足到 durationMs(-t 在输入侧);纯动画卡片比旁白短时由 rs_ir build --from-cards 写入,冻结须在出场动画开始前(组装器预留 950ms)"
     }
    }
   }

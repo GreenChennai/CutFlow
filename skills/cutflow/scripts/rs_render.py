@@ -34,7 +34,7 @@ RATIO = dict(RATIOS)             # 画幅唯一真相源在 rs_common(新增画�
 LOUDNORM_BUS = "loudnorm=I=-14:TP=-1.0:LRA=11"
 LOUDNORM_VOICE = "loudnorm=I=-16:TP=-1.5:LRA=11"
 LOUDNESS_TARGET = {"I": -14.0, "TP": -1.0, "LRA": 11.0}   # 硬规则 11;出处 ITERATION-GUIDE §8.2
-CACHE_VER = "v4"                 # 渲染语义变更时 +1,防旧缓存幽灵命中(v0.11:双 pass 响度+matte 探针)
+CACHE_VER = "v5"                 # 渲染语义变更时 +1,防旧缓存幽灵命中(v0.12:seg 支持 clip.freezeMs 冻结帧补长)
 CHROMA_DEFAULTS = {"similarity": 0.15, "blend": 0.12}   # 基轨/overlay/schema 三处统一(唯一真相源)
 SEG_CACHE_KEEP = 400             # segcache 最大保留文件数(超出按 mtime 淘汰)
 BG_TYPES = {"color", "image", "video", "gradient"}
@@ -110,7 +110,8 @@ def seg_key(clip: dict, doc: dict, cw: int, ch: int, fp: str) -> str:
         "fps": doc["fps"], "canvas": [cw, ch], "media": fp,
         "clip": {k: clip.get(k) for k in
                  ("src", "durationMs", "sourceInMs", "speed", "loop", "volume",
-                  "reframe", "motion", "chroma", "background", "tailMs", "punchIn")},
+                  "reframe", "motion", "chroma", "background", "tailMs", "punchIn",
+                  "freezeMs")},
     }
     return hashlib.sha1(json.dumps(payload, sort_keys=True, ensure_ascii=False)
                         .encode("utf-8")).hexdigest()
@@ -338,9 +339,17 @@ def step_segment(doc: dict, ratio: str, build: Path, base_dir: Path, cfg: dict,
                   f"pad={cw}:{ch}:(ow-iw)/2:(oh-ih)/2:color=black"]
         else:
             loop = ["-stream_loop", "-1"] if clip.get("loop") else []
-            cmd += loop + ["-ss", f"{q_in_ms / 1000:.3f}", "-t", f"{take_s:.3f}",
+            # I7/v0.12 freezeMs:冻结帧补长(纯动画卡片比旁白短时)。**-t 只读到冻结
+            # 起点(输入侧)**,之后 tpad 克隆尾帧补足——B8 教训:-t 放输出侧会把
+            # tpad 补的帧整段截掉(安信德工程丢 20.4s 的事故形态)。
+            freeze_ms = float(clip.get("freezeMs") or 0)
+            read_s = min(take_s, freeze_ms / 1000.0) if freeze_ms > 0 else take_s
+            cmd += loop + ["-ss", f"{q_in_ms / 1000:.3f}", "-t", f"{read_s:.3f}",
                            "-i", pr["path"]]
             vf = [cover_crop(pr.get("width") or cw, pr.get("height") or ch, cw, ch, anchor)]
+            if freeze_ms > 0:
+                stop_s = max(0.0, take_s - read_s) + 0.5     # 补足请求时长 + 帧取整余量
+                vf.append(f"tpad=stop_mode=clone:stop_duration={stop_s:.3f}")
 
         has_audio = pr.get("has_audio", False)
         fparts: list[str] = []
@@ -774,14 +783,23 @@ def step_mix(doc: dict, src: Path, build: Path, base_dir: Path, cfg: dict) -> Pa
                      f"aresample=48000,aformat=channel_layouts=stereo")
         ducking = bgm.get("ducking", True) and mixes
         if ducking:
+            # B3(v0.12):filtergraph 标签**只能被消费一次**——旧写法把 [a1] 同时喂给
+            # sidechaincompress 与 amix → `MIX_FAIL: Stream specifier 'a1' matches
+            # no streams`(且只给 [a1] asplit 也只 duck 第一段人声)。正确做法:
+            # 先把**全部人声**合成一条总线,再 asplit 出 duck 侧链与正式混音两路。
             parts.append(f"[{idx}:a]{bgm_chain}[bgraw]")
-            parts.append(f"[bgraw][{mixes[0][1:-1]}]"
-                         f"sidechaincompress=threshold=0.02:ratio=6:attack=60:release=500[bgm]")
+            parts.append("".join(mixes)
+                         + f"amix=inputs={len(mixes)}:duration=longest:normalize=0[voice]")
+            parts.append("[voice]asplit=2[voice_m][voice_d]")
+            parts.append("[bgraw][voice_d]"
+                         "sidechaincompress=threshold=0.02:ratio=6:attack=60:release=500[bgm]")
+            graph = (";".join(parts)
+                     + ";[voice_m][bgm]amix=inputs=2:duration=first:normalize=0[mix]")
         else:
             parts.append(f"[{idx}:a]{bgm_chain}[bgm]")
-        n_in = len(mixes) + 1
-        graph = ";".join(parts) + ";" + "".join(mixes) + "[bgm]" + \
-            f"amix=inputs={n_in}:duration=first:normalize=0[mix]"
+            n_in = len(mixes) + 1
+            graph = ";".join(parts) + ";" + "".join(mixes) + "[bgm]" + \
+                f"amix=inputs={n_in}:duration=first:normalize=0[mix]"
     else:
         graph = ";".join(parts) + ";" + "".join(mixes) + \
             f"amix=inputs={len(mixes)}:duration=longest:normalize=0[mix]"
@@ -797,9 +815,17 @@ def step_mix(doc: dict, src: Path, build: Path, base_dir: Path, cfg: dict) -> Pa
 
 # ---------------- 步骤 6:字幕(最后叠) ----------------
 
-def step_subtitle(doc: dict, src: Path, build: Path, cfg: dict) -> Path:
-    ass = doc.get("subtitle", {}).get("ass")
+def step_subtitle(doc: dict, src: Path, build: Path, cfg: dict,
+                  warnings: list[str] | None = None) -> Path:
+    sub = doc.get("subtitle", {})
+    ass = sub.get("ass")
     if not ass:
+        # B4(v0.12):ass 缺失 = 本次**不会烧录字幕**——第一版"成功渲染"的成片
+        # 无字幕,靠 L1 抽帧才被发现。subtitle.ass 才是烧录字段(rules/compose.md),
+        # source 仅作溯源;有 source 没 ass 必须显式 WARN,不许静默。
+        if sub.get("source") and warnings is not None:
+            warnings.append("IR 有 subtitle.source 但无 subtitle.ass → 本次不会烧录字幕"
+                            "(subtitle.ass 才是烧录字段)")
         return src
     p = Path(ass)
     if not p.is_absolute():
@@ -963,6 +989,11 @@ def render(doc: dict, project_path: Path, ratio: str, profile: str, *,
             subtitled = step_subtitle(doc, mixed, build, cfg)
     else:
         subtitled = mixed
+        # B4(v0.12):IR 只写 subtitle.source 没写 subtitle.ass 时,字幕静默不烧。
+        # 这里是主流程的实际跳过点,必须 WARN 留痕(与 step_subtitle 内防御同文案)。
+        if doc.get("subtitle", {}).get("source"):
+            warnings.append("IR 有 subtitle.source 但无 subtitle.ass → 本次不会烧录字幕"
+                            "(subtitle.ass 才是烧录字段)")
 
     name = f"final_{doc.get('slug', 'out')}_{ratio.replace('x', '')}.mp4" if profile == "final" \
         else f"{profile}_{doc.get('slug', 'out')}_{ratio.replace('x', '')}.mp4"

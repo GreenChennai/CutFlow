@@ -20,6 +20,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
+import rs_common  # noqa: E402
 from rs_common import RATIOS, canvas_for, emit  # noqa: E402
 import segmentation  # noqa: E402
 import textopt  # noqa: E402
@@ -290,19 +291,17 @@ def events_from_wordline(wl: dict, max_chars: int, *, terms=(), top: int = 3,
 
 
 def _content_index(chars: list[dict]) -> tuple[str, list[int]]:
-    """内容字串 S + 每个内容字位置 → raw chars 下标(B7 文本锚定用)。"""
-    s, idx = [], []
-    for i, c in enumerate(chars):
-        ch = c["ch"]
-        if ch.strip() and ch not in segmentation.PUNCT_WS:
-            s.append(ch)
-            idx.append(i)
-    return "".join(s), idx
+    """内容字串 S + 每个内容字位置 → raw chars 下标(B7 文本锚定用)。
+
+    v0.12 起委托 rs_common.content_index(与 rs_cut --from-text / rs_ir --from-cards
+    同一实现,消三处重复);口径仍是标点(PUNCT_WS)+ 空白剔除。
+    """
+    return rs_common.content_index(chars)
 
 
 def _normalize_card_text(t: str) -> str:
     """卡文本去标点/空白 → 内容字(B7:按内容定位,绝不做算术偏移)。"""
-    return "".join(ch for ch in t if ch.strip() and ch not in segmentation.PUNCT_WS)
+    return rs_common.content_text(t)
 
 
 def _resolve_override_requests(ov: dict, chars: list[dict], s: str, idx: list[int]

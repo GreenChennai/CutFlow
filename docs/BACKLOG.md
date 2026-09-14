@@ -5,6 +5,18 @@
 
 ## 待办
 
+### v0.12(2026-09-14,来源 HANDOFF-v0.12-安信德GEO实测迭代与修复)
+
+- [x] **B1–B8 必修批修**:字幕 strip↔index_map 坐标系(致命)/ 中文数字折叠 / ducking asplit / ass 缺失 WARN / L0 纳入 QC / 孤卡合并 / rs_align smooth / `-t` 输入侧陷阱;回归 `tests/test_v12.py`(250 → 281)
+- [x] **I7 纯动画 IR 组装器(ADR-0027)**:`rs_ir build --from-cards`(锚点分组/停顿中点/冻结帧补长/护栏照旧)
+- [x] **I1 ASR 热词链路(ADR-0028)**:`rs_align --hotwords/--terms-file`;实测默认模型 paraformer-zh 即 SeACo,透传即生效
+- [x] **I2 按文本裁片**:`rs_cut --from-text`(引文顺序锚定,引文外走 guard)
+- [x] **I6 制作端 checklist**:`rules/intake.md` 绿幕四问 + 纯动画四问 + 环境 checklist
+- [x] **W5(部分)**:文本锚定三处重复已抽 `rs_common.content_index/anchor_span`(rs_subtitle 已委托);事件层「必并→延长→间距→校验→meta」管线去重仍开放
+- [ ] **I4 说话人分离(P2,暂不做)**:仅 `interview` 类 videoType 需要(预留位),单人口播无收益;做时落点 `fun_asr --spk`(funasr `spk_model="cam++"`,CPU 可跑)→ `--json` 带 speaker → `build_wordline` 已能消费 `seg.get("speaker")`;**勿为单人口播引入 ~1GB 模型成本**
+- [ ] **I5 音频事件(IDEA)**:掌声/笑声/音乐起等事件维度(SenseVoice 方向)可给 `dead_air`/`hesitate` 做"别删"白名单;新模型 ~1GB + 新依赖,违背零第三方依赖克制,不进近期迭代
+- [ ] **Q5 遗留副本核查**:`D:\CutFlow` 复盘引用的副本已确认不存在(Test-Path=False);若其它盘再发现旧副本,diff 后只合并有测试覆盖的差异,勿整体覆盖
+
 ### v0.8.2(2026-09-13,来源 BUGREPORT-20260913-纯口播复测 B1–B10)
 
 - [x] **B1–B10 批修**:见 `docs/BUGFIX-20260913-B1-B10.md`;音频内容闸见 ADR-0021;回归 `tests/test_v9.py`

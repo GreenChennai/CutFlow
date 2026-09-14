@@ -8,8 +8,11 @@
 - motion 枚举:fadeIn/fadeOut/slideInLeft/slideInRight/zoomIn(基轨 zoom 退化为 fadeIn 已警告)。
 - transition 挂前一片段(fade/wipeleft/wipeup/slideleft/circleopen)。
 - reframe.anchorY:比例转换时人物锚点(0=贴顶)。
-- **`subtitle.source` 应指向 `05_ir/wordline.json`**(不再是句级 transcript);旧工程可指 manifest.json。
+- **clip.freezeMs(v0.12,I7)**:冻结帧补长——渲染端 `-t` 只读到该时刻(输入侧),其后 tpad 克隆尾帧补足到 durationMs;用于纯动画卡片比旁白短的场景(冻结必须发生在出场动画开始前,组装器预留 950ms)。
+- **`subtitle.ass` 才是烧录字段**(缺失即**不会烧录字幕**,v0.12 渲染时会显式 WARN);
+  `subtitle.source` 仅作溯源(指向 `05_ir/wordline.json`)——只写 source 不写 ass = 静默无字幕成片(v0.12 前的事故形态)。
 - **显式 Gap**:粗剪后 keep 区间之间的空隙用 `{"kind":"gap","durationMs":N}` 表达,不再靠"没有 clip"隐式表示(语义对齐 OTIO 的 Gaps / Filler)。
+- **BGM ducking(v0.12 修复后可正常开启)**:`bgm.ducking: true` 时全部人声先合成一条总线再 `asplit` 出闪避侧链——历史工程里被迫写 `ducking:false` 绕 bug 的,需要闪避谁改谁的 IR,**不批量改**。
 
 ## IR 不再手写(关键改动)
 

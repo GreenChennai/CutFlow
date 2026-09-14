@@ -290,11 +290,88 @@ AUDIO_SIM_MIN = 0.90                   # 归一相似度通过线(实测正常 �
 AUDIO_REPEAT_NGRAM = 12                # 重复段检测的 n-gram 长度
 AUDIO_REPEAT_MAX = 3                   # 同一 n-gram 出现 ≥3 次 → 判重复段
 
+_CN_DIGIT_MAP = {"零": 0, "一": 1, "二": 2, "两": 2, "三": 3, "四": 4,
+                 "五": 5, "六": 6, "七": 7, "八": 8, "九": 9}
+_CN_UNIT_MAP = {"十": 10, "百": 100, "千": 1000}
+_CN_BIG_MAP = {"万": 10000, "亿": 100000000}
+_CN_NUM_CHARS = frozenset(_CN_DIGIT_MAP) | frozenset(_CN_UNIT_MAP) | frozenset(_CN_BIG_MAP) | {"点"}
+
+
+def _cn_int(seg: str) -> int | None:
+    """中文数字**值读** → 整数:两千九百八十→2980 / 一万零八百→10800 / 十五→15。
+
+    只接受纯中文数字字符;解析不了返回 None(调用方保留原文,绝不猜)。
+    """
+    total, section, num, seen = 0, 0, 0, False
+    for ch in seg:
+        if ch in _CN_DIGIT_MAP:
+            num, seen = _CN_DIGIT_MAP[ch], True
+        elif ch in _CN_UNIT_MAP:
+            section += (num if num else 1) * _CN_UNIT_MAP[ch]   # 「十五」的十无前置数
+            num = 0
+        elif ch in _CN_BIG_MAP:
+            section = (section + num) * _CN_BIG_MAP[ch]
+            total += section
+            section, num = 0, 0
+        else:
+            return None
+    return total + section + num
+
+
+def _cn_to_arabic(seg: str) -> str | None:
+    """中文数字段 → 阿拉伯串。值读(两千九百八十→2980)、位读(四九八零→4980)、
+    小数(四点三→4.3)三种读法都要(安信德工程 0.888<0.90 的误报全在这三类)。
+
+    折叠对 ref(校对稿)与 ASR 两侧同口径应用:单侧语义误折叠(如「千万注意」)
+    无害——两侧一起变,相似度不变。
+    """
+    if not seg:
+        return None
+    if "点" in seg:
+        head, _, tail = seg.partition("点")
+        if not head or not tail:
+            return None
+        if all(ch in _CN_DIGIT_MAP for ch in head):
+            h = "".join(str(_CN_DIGIT_MAP[ch]) for ch in head)   # 「零点五」
+        else:
+            v = _cn_int(head)
+            if v is None:
+                return None
+            h = str(v)
+        if not all(ch in _CN_DIGIT_MAP for ch in tail):
+            return None
+        return f"{h}.{''.join(str(_CN_DIGIT_MAP[ch]) for ch in tail)}"
+    if any(ch in _CN_UNIT_MAP or ch in _CN_BIG_MAP for ch in seg):
+        v = _cn_int(seg)
+        return str(v) if v is not None else None
+    if all(ch in _CN_DIGIT_MAP for ch in seg):
+        return "".join(str(_CN_DIGIT_MAP[ch]) for ch in seg)     # 位读
+    return None
+
 
 def _norm_hard(s: str) -> str:
-    """内容归一:去标点/空白,只留字(音频内容对账口径,兼容全/半角标点)。"""
-    return "".join(ch for ch in s.lower() if ch.strip() and ch not in STRIP
-                   and ch not in "，。、；：！？…·—–-")
+    """内容归一:中文数字→阿拉伯(值读/位读/小数)+ 去标点/空白,只留字。
+
+    音频内容对账口径,兼容全/半角标点。禁止用下调 AUDIO_SIM_MIN 替代本归一化
+    (SKILL.md §9 反模式:为过闸放宽 guard)。
+    """
+    s = s.lower()
+    out: list[str] = []
+    i, n = 0, len(s)
+    while i < n:
+        ch = s[i]
+        if ch in _CN_NUM_CHARS:
+            j = i
+            while j < n and s[j] in _CN_NUM_CHARS:
+                j += 1
+            folded = _cn_to_arabic(s[i:j])
+            out.append(folded if folded is not None else s[i:j])
+            i = j
+            continue
+        if ch.strip() and ch not in STRIP and ch not in "，。、；：！？…·—–-":
+            out.append(ch)
+        i += 1
+    return "".join(out)
 
 
 def find_fun_asr() -> Path | None:

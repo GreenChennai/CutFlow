@@ -115,6 +115,7 @@ S0 素材 ─► S1 转写+字级对齐 ─► S2 粗剪 ─► S3 基础合成 
 20. **卡时间的调整只能在「释放余量」内**:起点 ≤ 首字 `startMs`、终点 ≥ 末字 `endMs` 且延长 ≤ +0.30s;余量耗尽仍不足 2 帧就保留字级精确时间(对齐精度 > 卡间距)。`rs_sync` 同时校验起点与**终点**偏移。
 21. **画幅/平台只查表**:比例→宽高的唯一真相源是 `rs_common.RATIOS`,平台参数在 `templates/platforms.json`;禁止写死 `1080x1920` 字符串比较,CPS 上限按当前比例取(`segmentation.cps_max_for`)。
 22. **转场字段唯一 `durMs`**(`ms` 是幽灵字段,validate 直接报错;v0.10 起 0<durMs<1帧 自动提升为 `joinCrossfadeMs` 交叉溶解——尾帧扩展法保证零时间漂移,ADR-0023;仅源间隙放不下时才整链弃用走 concat)。多段人声的 `sourceInMs` 由 rs_render 输入寻址消费——不要再手工预抽 voice_full(绕过法仍有效但不必需)。**S9 自带成片音频内容闸**(ADR-0021):交付前对成片音轨跑 ASR 对账,报告"跳过"也要核对原因。ASR 未就绪一律自动部署(`fun_asr.py --ensure`),禁止让用户手装或启动服务。
+23. **`subtitle.ass` 才是烧录字段**(只写 `subtitle.source` = 不烧字幕,v0.12 渲染时显式 WARN)。生成式 IR(from-cutlist / **from-cards**)一律不得手改,重建覆盖受 `_manual_edits` 护栏。**音频闸/对齐闸不过 → 修归一化与坐标系,禁止调阈值**(AUDIO_SIM_MIN / END_TOL_MS 等);渲染后时长断言报警必须查完再交付。
 
 ---
 
@@ -129,17 +130,20 @@ S0 素材 ─► S1 转写+字级对齐 ─► S2 粗剪 ─► S3 基础合成 
 | **分级自检** | `rs_verify.py <工程>` / `--level L1` / `--mark-first` |
 | **自带 ASR** | `python tools/fun_asr.py <媒体> [--backend onnx\|pkg]` / `--probe` |
 | **ASR 部署** | `python tools/fetch_deps.py asr [--onnx\|--pkg\|--seed-models D]` |
-| 转写 + 对齐(S1) | `rs_align.py build --media <素材> --out 05_ir/wordline.json` |
+| 转写 + 对齐(S1) | `rs_align.py build --media <素材> --out 05_ir/wordline.json`(专名错 → `--terms-file 00_brief/terms.txt` 热词重跑,勿手改字) |
+| wordline 平滑 | `rs_align.py smooth 05_ir/wordline.json --out 05_ir/wordline.final.json`(标点零宽+重叠钳制,纯动画/配音工程用) |
 | 重映射 | `rs_align.py remap 05_ir/wordline.json --cutlist 04_cut/cutlist.applied.json --out ...` |
-| 粗剪(S2) | `rs_cut.py 05_ir/wordline.json --detect all --out 04_cut`(`--media 源` 增能量检测;`--apply ...`)|
+| 粗剪(S2) | `rs_cut.py 05_ir/wordline.json --detect all --out 04_cut`(`--media 源` 增能量检测;`--apply ...`)| 
+| 按文本裁片 | `rs_cut.py 05_ir/wordline.json --from-text "引文"`(只保留引文区间;引文外走 guard) |
 | CutList→IR | `rs_ir.py build --from-cutlist 04_cut/cutlist.applied.json --slug X --out 05_ir/project.json` |
+| **纯动画组装** | `rs_ir.py build --from-cards 03_assets/artboard/manifest.json --anchors 00_brief/cards.json --wordline 05_ir/wordline.json --voice 03_assets/vo/voice.wav --slug X --ratio 16x9 --out 05_ir/project.json` |
 | IR 校验 | `rs_ir.py validate 05_ir/project.json` |
 | 渲染 | `rs_render.py 05_ir/project.json --ratio 9x16 --profile final` |
 | 品牌变体 | `rs_brand.py --expand --logos a,b --ratios 9x16,16x9 --out 05_ir/variants.json` |
 | 音效落点 | `rs_sfx.py 05_ir/project.json --auto --wordline 05_ir/wordline.json` |
 | 字幕 | `rs_subtitle.py --from-wordline 05_ir/wordline.json --platform douyin --out 06_output`（`--platform` 取预设；显式 `--style/--ratio/--max-chars` 优先） |
 | **artboard 闭环** | `rs_artboard.py 03_assets/artboard/manifest.json --export\|--apply` |
-| 对齐自检 | `rs_sync.py --wordline ... --ass 06_output/subtitles.ass --out 06_output --video 成片.mp4 --audio-content` |
+| 对齐自检 | `rs_sync.py --wordline ... --ass 06_output/subtitles.ass --out 06_output --video 成片.mp4 --audio-content --qc` |
 | 抽帧目测 | `rs_bench.py <成片> --ir 05_ir/project.json --out 06_output/bench.png` |
 | 文案 | `rs_meta.py --wordline ... --brief 00_brief/brief.md --platform douyin,bili` |
 | 剪映草稿 | `rs_jy_draft.py 05_ir/project.json --name <名>` |

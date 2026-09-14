@@ -22,6 +22,7 @@ from difflib import SequenceMatcher
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
+import rs_common  # noqa: E402
 from rs_common import emit, guard_passed  # noqa: E402
 
 DETECTOR_VERSION = "cutflow-1.1"
@@ -613,6 +614,40 @@ def derive_keep(remove_cuts: list[dict], total: int) -> list[list[int]]:
     return [k for k in keep if k[1] - k[0] > 0]
 
 
+# ---------------------------------------------------------------- I2:按文本裁片(v0.12)
+
+def cut_from_text(wl: dict, quote: str) -> dict:
+    """`--from-text` 正向入口:用户说「我只要『第三步』到『第四步』」时不再手算时间。
+
+    在 wordline 内容串上**顺序锚定**引文(rs_common.anchor_span,与字幕 override /
+    rs_ir --from-cards 同一实现)→ keep = 引文区间;区间外两刀 reason=manual 走
+    **现有 guard**(宁可漏删:guard 不过自动降级 review,绝不硬切)。
+    cutlist.fromText 留痕(引文/chars 区间/毫秒区间),下游可审计。
+    """
+    chars = wl.get("chars", [])
+    if not chars:
+        raise ValueError("wordline 没有 chars,无法按文本裁片")
+    s, idx = rs_common.content_index(chars)
+    ca, cb = rs_common.anchor_span(s, idx, quote)
+    a_ms = int(chars[ca]["startMs"])
+    b_ms = int(chars[cb - 1]["endMs"])
+    total = int(wl.get("srcDurationMs") or int(chars[-1]["endMs"]))
+    cuts = []
+    if a_ms > 0:
+        # 出点向前借 TAIL_KEEP_MS 作释放余量,但**绝不越过前一字 endMs**(wordClipped
+        # 是 guard 底线,永不放松):字间 gap ≥60ms → 出点落 gap 内直达 remove;
+        # gap 不足 → tailKeep 不过自动降级 review(宁可漏删,不硬切)。
+        prev_end = int(chars[ca - 1]["endMs"]) if ca > 0 else 0
+        cuts.append({"inMs": 0, "outMs": max(prev_end, a_ms - TAIL_KEEP_MS), "reason": "manual",
+                     "conf": 0.95, "note": f"from-text:引文之前(锚「{quote[:10]}…」)"})
+    if b_ms < total:
+        cuts.append({"inMs": b_ms, "outMs": total, "reason": "manual", "conf": 0.95,
+                     "note": f"from-text:引文之后(锚至「…{quote[-10:]}」)"})
+    cl = build_cutlist(wl, cuts, {"mode": "from-text"})
+    cl["fromText"] = {"quote": quote, "charsSpan": [ca, cb], "ms": [a_ms, b_ms]}
+    return cl
+
+
 # ---------------------------------------------------------------- 输出
 
 def write_report(cl: dict, path: Path) -> None:
@@ -753,7 +788,45 @@ def main() -> int:
     ap.add_argument("--media", help="源素材路径(给 dead_air 做音频能量探测;不给则退回字间 gap)")
     ap.add_argument("--retake-ratio", dest="retake_ratio", type=float, default=0.80,
                     help="重录相似度阈值(口播 0.80;怕误删的类型可提到 0.86)")
+    ap.add_argument("--from-text", dest="from_text", default="",
+                    help="I2 按文本裁片:只保留引文区间(顺序锚定 wordline),"
+                         "如 --from-text \"第三步……第四步\";区间外走 guard 可降级 review")
+    ap.add_argument("--from-text-file", dest="from_text_file", default="",
+                    help="同 --from-text,引文从文件读(UTF-8,支持 # 注释行)")
     a = ap.parse_args()
+
+    if a.from_text or a.from_text_file:
+        if not a.wordline:
+            return emit(False, "NO_INPUT", "--from-text 需要 <wordline.json>", exit_code=2)
+        quote = a.from_text
+        if a.from_text_file:
+            tf = Path(a.from_text_file)
+            if not tf.is_file():
+                return emit(False, "NO_QUOTE_FILE", f"引文文件不存在:{tf}", exit_code=2)
+            lines = [ln for ln in tf.read_text(encoding="utf-8").splitlines()
+                     if ln.strip() and not ln.strip().startswith("#")]
+            quote = " ".join(lines).strip()
+        if not quote.strip():
+            return emit(False, "NO_QUOTE", "引文为空", exit_code=2)
+        wl = json.loads(Path(a.wordline).read_text(encoding="utf-8"))
+        try:
+            cl = cut_from_text(wl, quote)
+        except ValueError as exc:
+            return emit(False, "ANCHOR_FAIL", str(exc), exit_code=2)
+        outdir = Path(a.out)
+        outdir.mkdir(parents=True, exist_ok=True)
+        (outdir / "cutlist.json").write_text(json.dumps(cl, ensure_ascii=False, indent=1),
+                                             encoding="utf-8")
+        write_report(cl, outdir / "cut_report.md")
+        keep_ms = sum(b - x for x, b in cl["keep"])
+        return emit(True, "CUT_FROM_TEXT",
+                    f"引文锚定 chars{cl['fromText']['charsSpan']} → "
+                    f"保留 {keep_ms / 1000:.1f}s / {len(cl['keep'])} 段;"
+                    f"引文外 {len([c for c in cl['cuts'] if c['action'] == 'remove'])} 刀自动删、"
+                    f"{len([c for c in cl['cuts'] if c['action'] == 'review'])} 刀待审",
+                    {"cutlist": str(outdir / "cutlist.json"),
+                     "report": str(outdir / "cut_report.md"), **cl["fromText"],
+                     "keep": cl["keep"], "removedMs": cl["removedMs"]})
 
     if a.review_pack:
         cl = json.loads(Path(a.review_pack).read_text(encoding="utf-8"))

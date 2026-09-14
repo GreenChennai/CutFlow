@@ -11,6 +11,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).parent))
+import segmentation  # noqa: E402  — 纯标准库,提供统一的标点口径(PUNCT_WS)
+
 REPO_ROOT = Path(__file__).resolve().parents[3]
 CONFIG_PATH = REPO_ROOT / "config.json"
 
@@ -22,6 +25,46 @@ RATIOS: dict[str, tuple[int, int]] = {
     "3x4": (1080, 1440),       # 小红书
     "16x9": (1920, 1080),      # B站 / YouTube
 }
+
+
+# ---------------------------------------------------------------- 文本锚定(v0.12 共享)
+
+def content_text(t: str) -> str:
+    """归一化到内容字:去标点/空白。锚定口径与断句(PUNCT_WS)全链一致。"""
+    return "".join(ch for ch in (t or "") if ch.strip() and ch not in segmentation.PUNCT_WS)
+
+
+def content_index(chars: list[dict]) -> tuple[str, list[int]]:
+    """wordline.chars → (内容串 S, 内容串位置 → chars 下标)。
+
+    文本锚定共享实现(v0.12):rs_subtitle override / rs_cut --from-text /
+    rs_ir build --from-cards 同族消费者一律用这里,绝不做"按内容字数算术偏移"
+    (raw 下标含标点/空白条目,偏移必切错位)。
+    """
+    s: list[str] = []
+    idx: list[int] = []
+    for i, c in enumerate(chars):
+        ch = str(c.get("ch", ""))
+        if ch.strip() and ch not in segmentation.PUNCT_WS:
+            s.append(ch)
+            idx.append(i)
+    return "".join(s), idx
+
+
+def anchor_span(s: str, idx: list[int], text: str, cursor: int = 0) -> tuple[int, int]:
+    """在内容串 S 上**顺序锚定**引文 → chars 区间 [start, end)。
+
+    顺序 + 游标:引文必须按原文出现,找不到即 ValueError(绝不模糊匹配/乱序搜索);
+    返回的 chars 区间可直接喂 _span_ms 类函数换时间。
+    """
+    t = content_text(text)
+    if not t:
+        raise ValueError(f"锚定文本归一化后为空:{text!r}")
+    pos = s.find(t, cursor)
+    if pos < 0:
+        raise ValueError(f"无法在内容串中顺序锚定「{t[:20]}」(游标 {cursor}/{len(s)});"
+                         "引文必须按原文出现且逐字一致")
+    return idx[pos], idx[pos + len(t) - 1] + 1
 
 
 def p95(values: list[float]) -> float:

@@ -106,6 +106,9 @@ REGRESSION = (
      "must_not_split": ("而且", "所以")},
     {"text": "他非常努力地准备但是没有成功最后还是失败了", "terms": (),
      "must_not_split": ("非常", "但是", "最后", "失败")},
+    # B6(v0.12):破折/短语收尾的 3 字孤卡必须并入前卡(安信德:『说谁好』孤卡)
+    {"text": "这个方案真的非常不错所以我们最终决定采用它了说谁好", "terms": (),
+     "must_not_split": ("说谁好",)},
 )
 
 
@@ -378,6 +381,31 @@ def cards_from_cuts(text: str, cuts: list[int]) -> list[dict]:
             for i, (a, b) in enumerate(spans) if b > a]
 
 
+def _merge_orphan_tail(cards: list[dict], max_chars: int) -> tuple[list[dict], str | None]:
+    """B6(v0.12)孤卡合并:末卡 <4 字(_card_penalty 的「过短」线,如破折句切出的
+    3 字孤卡)且并入前卡后 ≤ max_chars → 并入前卡;并不下 → 显式留痕 orphan-card
+    (不静默;人工通道 rs_subtitle --override textPrefix+textSuffix 可合并)。
+    MIN_CHARS 保持 2 不变——调到 4 会在 _dp 制造超字数无解路径。只动文本跨度,
+    时间在 _finalize 里按合并后的首末字重新锚定,对齐精度不受影响。
+    """
+    if len(cards) < 2:
+        return cards, None
+    tail = cards[-1]
+    tail_n = len(tail["text"].replace(" ", ""))
+    if tail_n >= 4:
+        return cards, None
+    prev = cards[-2]
+    if len(prev["text"].replace(" ", "")) + tail_n > max_chars:
+        return cards, (f"orphan-card:末卡「{tail['text']}」仅 {tail_n} 字且并入前卡超 "
+                       f"{max_chars} 字上限(可 rs_subtitle --override 合并)")
+    prev["end"] = tail["end"]
+    prev["text"] = prev["text"] + tail["text"]
+    cards.pop()
+    for k, c in enumerate(cards):
+        c["i"] = k
+    return cards, None
+
+
 def _attach_times(cards: list[dict], index_map: list[int | None],
                   char_times: list[dict]) -> None:
     """把卡的时间锚到首末字(align.md §4):start = 首字 startMs - 20ms,end = 末字 endMs + 20ms。
@@ -474,7 +502,17 @@ def segment(text: str, max_chars: int = 12, *, min_chars: int = MIN_CHARS,
             char_times: list[dict] | None = None, terms=(), idioms=DEFAULT_IDIOMS,
             top: int = 3, cps_max: float = 9.0, dur_range=DUR_RANGE) -> dict:
     """约束最优卡切分。返回 {plans, ambiguous, cards, violations, degraded}。"""
-    text = (text or "").strip()
+    raw_text = text or ""
+    text = raw_text.strip()
+    # B1(v0.12):strip 剥掉句首/尾空白后,index_map 必须同步裁剪,否则一切按位
+    # 取值(卡内位置 → chars 下标 → 字级时间)系统性偏移——实测 rs_sync 终点
+    # 中位 -170ms、59/68 卡早退。必须**双侧对称**裁剪(校对稿句尾全角空格同样
+    # 致命);末尾切片用 len(index_map)-trail_n,不用 lead_n+len(text)
+    # (句中含连续空白时两者不等价)。
+    if index_map and len(raw_text) != len(text):
+        lead_n = len(raw_text) - len(raw_text.lstrip())
+        trail_n = len(raw_text) - len(raw_text.rstrip())
+        index_map = list(index_map[lead_n:len(index_map) - trail_n])
     if not text:
         return {"plans": [], "ambiguous": False, "cards": [], "violations": [],
                 "degraded": False, "wordFallback": False}
@@ -502,10 +540,13 @@ def segment(text: str, max_chars: int = 12, *, min_chars: int = MIN_CHARS,
     plans = []
     for cuts in raw_plans:
         cards = cards_from_cuts(text, cuts)
+        cards, orphan_note = _merge_orphan_tail(cards, max_chars)
         cards = _finalize(cards, index_map, char_times, max_chars, cps_max, dur_range)
         viol = check_constraints(cards, max_chars, cps_max, dur_range) if char_times else \
             [v for v in check_constraints(cards, max_chars, cps_max, dur_range) if "CPS" not in v
              and "时长" not in v and "重叠" not in v]
+        if orphan_note:
+            viol.append(orphan_note)
         plans.append({"score": round(plan_score(text, cuts, max_chars, gaps, preferred,
                                                 in_word if word_fallback else set()), 3),
                       "cuts": cuts, "cards": cards, "violations": viol})

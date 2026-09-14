@@ -178,9 +178,12 @@ CutFlow 的"剪得好"不是玄学,每条数值都有出处(完整索引见 [ITE
 | 一键重建 | `rs_run.py --init`(生成 rebuild.py)/ `--rollback` |
 | 分级自检 | `rs_verify.py <工程>` / `--mark-first --result pass` |
 | 转写 | `python tools\fun_asr.py <媒体>` / `--probe` |
-| 对齐(S1) | `rs_align.py build --media <素材> --out 05_ir\wordline.json` |
+| 对齐(S1) | `rs_align.py build --media <素材> --out 05_ir\wordline.json`(专名错 → `--terms-file 00_brief\terms.txt` 热词重跑) |
+| wordline 平滑 | `rs_align.py smooth 05_ir\wordline.json --out 05_ir\wordline.final.json`(标点零宽+重叠钳制) |
 | 粗剪(S2) | `rs_cut.py 05_ir\wordline.json --detect all --media 源 --out 04_cut` → `--apply` |
+| 按文本裁片 | `rs_cut.py 05_ir\wordline.json --from-text "只想要的引文"`(引文外走 guard) |
 | CutList→IR(S3) | `rs_ir.py build --from-cutlist 04_cut\cutlist.applied.json --slug X --out 05_ir\project.json`(`--punch-in-auto` 启用变焦掩饰) |
+| 纯动画组装(I7) | `rs_ir.py build --from-cards 03_assets\artboard\manifest.json --anchors 00_brief\cards.json --wordline 05_ir\wordline.json --voice 03_assets\vo\voice.wav --slug X --ratio 16x9 --out 05_ir\project.json`(锚点分组/停顿中点/冻结帧补长) |
 | 字幕(S7) | `rs_subtitle.py --from-wordline 05_ir\wordline.final.json --platform douyin --out 06_output` |
 | 对齐自检+体检(S9) | `rs_sync.py --wordline 05_ir\wordline.final.json --ass 06_output\subtitles.ass --video 成片.mp4 --audio-content --qc` |
 | 封面文案(S10) | `rs_meta.py --wordline ... --brief 00_brief\brief.md --platform douyin,bili` |

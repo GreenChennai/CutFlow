@@ -1,8 +1,13 @@
 """IR 校验与生成。
 用法:python rs_ir.py validate <project.json>
       python rs_ir.py build --from-cutlist 04_cut/cutlist.applied.json --slug X --out 05_ir/project.json
+      python rs_ir.py build --from-cards 03_assets/artboard/manifest.json \\
+             --anchors 00_brief/cards.json --wordline 05_ir/wordline.json \\
+             --voice 03_assets/vo/voice.wav --slug X --ratio 16x9 --out 05_ir/project.json
 
 build 把 CutList 的 keep 区间转成 IR 主轨——**消灭「Agent 手写毫秒」这一整类误差**(rules/compose.md)。
+build --from-cards(ADR-0027,I7):纯动画工程一条命令组装 IR——卡片↔旁白字符级锚点
+分组、停顿中点切卡、冻结帧补长(freezeMs),此前每个工程要重写一遍脚本(安信德 GEO)。
 """
 from __future__ import annotations
 
@@ -14,7 +19,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 from rs_common import emit  # noqa: E402
 from rs_align import keep_to_segments, map_src_to_final  # noqa: E402
-from rs_common import RATIOS  # noqa: E402
+from rs_common import RATIOS, content_text  # noqa: E402
+import segmentation  # noqa: E402  — 标点口径与断句/字幕全链一致
 
 CANVAS = {k: {"width": w, "height": h} for k, (w, h) in RATIOS.items()}
 _CANVAS_PAIRS = tuple(RATIOS.values())
@@ -207,6 +213,167 @@ def build_from_cutlist(cutlist: dict, *, slug: str, ratio: str = "9x16",
     }
 
 
+# ---------------------------------------------------------------- I7:纯动画 IR 组装(ADR-0027)
+
+CARD_FREEZE_RESERVE_MS = 950   # 卡片出场动画预留(出场 0.5s + 收尾 0.4s + 余量):冻结必须发生在出场开始前
+
+
+def _resolve(base_dir: Path | None, p: str) -> Path:
+    q = Path(p)
+    if q.is_absolute() or base_dir is None:
+        return q
+    return base_dir / q
+
+
+def assign_card_groups(chars: list[dict], anchors: list[dict]) -> list[dict]:
+    """卡片↔旁白分组 = **字符级锚点扫描**(I7,安信德工程自写脚本上游化)。
+
+    规则(全部来自实测,别再让下一个工程重推一遍):
+    · 锚点 match 用 `|` 分隔多候选(任一命中即切组),归一化 = 去标点/空白;
+    · **命中后消费 len(k) 个内容字**——防「交给安信德GEO优化系统」把
+      「安信德GEO优化系统」的后缀锚点在原处重复触发;
+    · 组号只进不退(range(gi, N) 向前扫);**绝不可写 `if gi == g: break`**——
+      `g` 从 `gi` 起步时第一轮恒真,锚点永不前进(安信德 bug #9 的真凶),必须用 hit 标志;
+    · 标点继承当前组(标点没有锚,属于正在讲的卡);
+    · 同卡相邻组合并(如 c16 的两个锚点「八成客户」「先布局」)。
+    锚词**优先取句首词**:句中锚会让上一张卡拖尾、下一张卡过短(rules/video-types/纯动画.md)。
+    返回 [{card, startMs, endMs}](按锚点顺序,时间 = 组内首末字的字级时间)。
+    """
+    if not anchors:
+        raise ValueError("anchors 为空:至少要有一张卡的锚点")
+    text = "".join(str(c.get("ch", "")) for c in chars)
+    keys: list[list[str]] = []
+    cards: list[str] = []
+    for a in anchors:
+        alts = [content_text(k) for k in str(a.get("match", "")).split("|")]
+        alts = [k for k in alts if k]
+        if not alts:
+            raise ValueError(f"锚点 match 归一化后为空:{a!r}")
+        cards.append(str(a.get("card", "")))
+        if not cards[-1]:
+            raise ValueError(f"锚点缺 card 字段:{a!r}")
+        keys.append(alts)
+    # 同卡多条锚点合法(如「八成客户」「先布局」都指 c16):相邻自动合并,
+    # 不相邻由组聚合后的同名组检查兜底报错。
+
+    norm_pos = [i for i, ch in enumerate(text) if ch.strip() and ch not in segmentation.PUNCT_WS]
+    norm = "".join(text[i] for i in norm_pos)
+    assign = [0] * len(text)
+    gi, p = 0, 0
+    hit_count = [0] * len(keys)          # 每条锚点的命中次数(同卡可写多条锚点,如 c16)
+    for i in range(len(text)):
+        if p < len(norm_pos) and norm_pos[p] == i:
+            hit = False
+            for g in range(gi, len(keys)):
+                for k in keys[g]:
+                    if norm[p:p + len(k)] == k:
+                        gi = g
+                        p += len(k)            # 消费命中串(防后缀重复触发)
+                        hit_count[g] += 1
+                        hit = True
+                        break
+                if hit:
+                    break
+            if not hit:
+                p += 1
+        assign[i] = gi                          # 标点继承当前组
+
+    gmap: dict[int, list[int]] = {}
+    for i, g in enumerate(assign):
+        gmap.setdefault(g, []).append(i)
+    raw = [{"card": cards[g], "startMs": int(chars[idxs[0]]["startMs"]),
+            "endMs": int(chars[idxs[-1]]["endMs"])}
+           for g, idxs in sorted(gmap.items())]
+    groups: list[dict] = []
+    for r in raw:
+        if groups and groups[-1]["card"] == r["card"]:
+            groups[-1]["endMs"] = r["endMs"]    # 同卡相邻组合并
+        else:
+            groups.append(dict(r))
+    missing = [cards[g] for g in range(len(cards)) if hit_count[g] == 0]
+    if missing:
+        raise ValueError(f"锚点未命中(空组,检查词是否与旁白逐字一致):{missing}")
+    if len({g["card"] for g in groups}) != len(groups):
+        raise ValueError("同名卡的组不相邻——锚点顺序必须与旁白出现顺序一致"
+                         "(锚词优先取句首词,句中锚会让上一张卡拖尾)")
+    return groups
+
+
+def build_from_cards(manifest: dict, wordline: dict, anchors: list[dict], *, slug: str,
+                     ratio: str = "16x9", voice: str | None = None,
+                     voice_ms: int | None = None,
+                     bgm: dict | None = None,
+                     fps: int = 30, base_dir: Path | None = None) -> dict:
+    """纯动画 IR 组装器(I7,ADR-0027):场景卡串联主轨 + 旁白音频轨 + BGM。
+
+    时间唯一来源 = wordline 字级锚;组间边界 = 语音停顿中点;卡比旁白短 →
+    clip.freezeMs(渲染端 tpad 冻结帧补长,`-t` 输入侧)。subtitle.ass **必须写全**
+    (B4:缺 ass 字段 = 静默不烧字幕的事故根源)。BGM 不预裁:step_mix 的
+    atrim + stream_loop 自动裁齐循环。卡片路径口径与 rs_artboard --apply 一致:
+    manifest.output 写工程根相对路径(挂点匹配按归一化绝对路径,rules/artboard.md)。
+    """
+    from rs_common import media_duration_s  # noqa: PLC0415 — 延迟导入,纯逻辑单测不必装 ffmpeg
+    root_items = {it.get("id"): it for it in (manifest.get("items") or [])}
+    chars = wordline.get("chars") or []
+    if not chars:
+        raise ValueError("wordline 没有 chars(先跑 rs_align)")
+    groups = assign_card_groups(chars, anchors)
+
+    total_ms = int(voice_ms) if voice_ms else int(
+        wordline.get("finalDurationMs") or wordline.get("srcDurationMs") or 0)
+    if voice and not voice_ms:
+        try:
+            total_ms = int(media_duration_s(_resolve(base_dir, voice)) * 1000)
+        except (Exception, SystemExit):  # noqa: BLE001 — 探测失败留 0,由下方总时长校验报
+            total_ms = 0
+    if total_ms <= 0:
+        raise ValueError("无法确定旁白总时长(给 --voice 或保证 wordline 有 srcDurationMs)")
+
+    bounds = [0]
+    for a, b in zip(groups, groups[1:]):
+        bounds.append((a["endMs"] + b["startMs"]) // 2)   # 组边界 = 语音停顿中点
+    bounds.append(total_ms)
+
+    clips: list[dict] = []
+    freeze_count = 0
+    for i, g in enumerate(groups):
+        item = root_items.get(g["card"])
+        if item is None:
+            raise ValueError(f"卡「{g['card']}」不在 manifest(先 rs_artboard --scan)")
+        src = str(item.get("output", ""))
+        dur = bounds[i + 1] - bounds[i]
+        clip = {"src": src, "startMs": bounds[i], "durationMs": dur, "sourceInMs": 0}
+        if item.get("kind") == "mp4":
+            try:
+                card_ms = int(media_duration_s(_resolve(base_dir, src)) * 1000)
+            except (Exception, SystemExit):  # noqa: BLE001 — ffprobe die()/缺失:validate 会兜底报
+                card_ms = 0
+            hold = card_ms - CARD_FREEZE_RESERVE_MS
+            if card_ms > 0 and dur > hold:
+                clip["freezeMs"] = max(1, hold)   # 出场动画开始前定格(时长语义见 rs_render.step_segment)
+                freeze_count += 1
+        clips.append(clip)
+
+    audio = []
+    if voice:
+        audio.append({"src": voice, "startMs": 0, "durationMs": total_ms, "role": "voice"})
+    doc = {
+        "version": 1, "slug": slug, "fps": fps, "canvas": dict(CANVAS[ratio]),
+        "tracks": [{"kind": "video", "clips": clips},
+                   {"kind": "audio", "clips": audio}],
+        "subtitle": {"ass": "06_output/subtitles.ass", "source": "05_ir/wordline.json"},
+        "outputs": [ratio],
+        "_meta": {"generatedFrom": "cards", "cardCount": len(clips),
+                  "freezeClips": freeze_count, "finalDurationMs": bounds[-1],
+                  "anchorCount": len(anchors)},
+    }
+    if bgm and bgm.get("src"):
+        doc["bgm"] = {"src": bgm["src"],
+                      "gainDb": float(bgm.get("gainDb", -20)),
+                      "ducking": bool(bgm.get("ducking", True))}
+    return doc
+
+
 def _manual_edits(out: Path) -> list[str]:
     """检测现存 project.json 的手注痕迹(B8):这些字段 fresh build 永不产生,
     出现即说明 Agent 手改过 IR —— 重建覆盖前必须显式确认,防止静默冲掉。"""
@@ -233,6 +400,18 @@ def main() -> int:
     ap.add_argument("command", choices=["validate", "build"])
     ap.add_argument("project", nargs="?")
     ap.add_argument("--from-cutlist")
+    ap.add_argument("--from-cards", dest="from_cards",
+                    help="I7 纯动画组装:artboard manifest.json(卡清单);"
+                         "配合 --anchors/--wordline/--voice")
+    ap.add_argument("--anchors", help="卡片↔旁白分组表 JSON:[{\"card\":…,\"match\":\"词A|词B\"}]"
+                                      "(顺序=卡片顺序;match 归一化后必须与旁白逐字一致)")
+    ap.add_argument("--wordline", help="from-cards:05_ir/wordline.json(时间唯一来源)")
+    ap.add_argument("--voice", help="from-cards:旁白音频(总时长来源)")
+    ap.add_argument("--bgm", help="from-cards:BGM 音频(渲染端自动裁齐循环)")
+    ap.add_argument("--gain-db", dest="gain_db", type=float, default=-20)
+    ap.add_argument("--no-ducking", dest="no_ducking", action="store_true",
+                    help="BGM 关闭闪避(默认开;B3 修复后 ducking 可正常使用)")
+    ap.add_argument("--root", default=".", help="工程根(解析卡片相对路径;默认 cwd)")
     ap.add_argument("--slug", default="project")
     ap.add_argument("--ratio", default="9x16", choices=list(RATIOS))
     ap.add_argument("--xfade", type=int, default=8)
@@ -245,6 +424,40 @@ def main() -> int:
     a = ap.parse_args()
 
     if a.command == "build":
+        if a.from_cards:
+            for need, flag in ((a.anchors, "--anchors"), (a.wordline, "--wordline")):
+                if not need:
+                    return emit(False, "NO_INPUT", f"--from-cards 需要 {flag}", exit_code=2)
+            base_dir = Path(a.root).resolve()
+            try:
+                manifest = json.loads(Path(a.from_cards).read_text(encoding="utf-8"))
+                wl = json.loads(Path(a.wordline).read_text(encoding="utf-8"))
+                anchors = json.loads(Path(a.anchors).read_text(encoding="utf-8"))
+                if not isinstance(anchors, list):
+                    return emit(False, "BAD_ANCHORS", "--anchors 必须是 [{card,match}] 数组", exit_code=2)
+                bgm_cfg = {"src": a.bgm, "gainDb": a.gain_db,
+                           "ducking": not a.no_ducking} if a.bgm else None
+                doc = build_from_cards(manifest, wl, anchors, slug=a.slug, ratio=a.ratio,
+                                       voice=a.voice, bgm=bgm_cfg, base_dir=base_dir)
+            except (ValueError, KeyError, json.JSONDecodeError) as exc:
+                return emit(False, "BUILD_FAIL", f"生成失败:{exc}", exit_code=2)
+            out = Path(a.out or "05_ir/project.json")
+            out.parent.mkdir(parents=True, exist_ok=True)
+            manual = _manual_edits(out)
+            if manual and not a.force:
+                return emit(False, "IR_MANUAL_EDITS",
+                            f"现存 IR 含手注痕迹,重建会冲掉:{';'.join(manual[:4])};"
+                            "确认放弃手注请加 --force(I7 生成式产物同样不得手改)", exit_code=2)
+            errs = validate(doc, base_dir)
+            out.write_text(json.dumps(doc, ensure_ascii=False, indent=1), encoding="utf-8")
+            msg = (f"IR 已生成:{doc['_meta']['cardCount']} 卡 / "
+                   f"{doc['_meta']['finalDurationMs'] / 1000:.1f}s / "
+                   f"冻结补长 {doc['_meta']['freezeClips']} 卡")
+            if errs:
+                msg += f"(校验 {len(errs)} 个提示:src 文件可能尚未就位)"
+            return emit(True, "IR_BUILT", msg,
+                        {"path": str(out), **doc["_meta"], "validateErrors": errs})
+
         cl_path = Path(a.from_cutlist or "")
         if not cl_path.is_file():
             return emit(False, "NO_CUTLIST", f"cutlist 不存在:{cl_path}", exit_code=2)

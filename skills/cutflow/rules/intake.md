@@ -24,6 +24,24 @@
 9. BGM(用户提供 / 不要 / Agent 选 CC0 并告知)
 10. 专有名词表(人名/产品名,供 ASR 校对)
 
+## 制作端 checklist(v0.12,I6:「素材差算法救不了」,开工前问一句能省一轮返工)
+
+**绿幕类(talking-head)追加问句**:
+- [ ] 人离幕 ≥1.5m?(太近 = 身上溢色,抠像边缘救不回来)
+- [ ] 幕面亮度差 <10%?(打光不均 = colorkey 相似度拉不高)
+- [ ] 服装/发色与幕色有对比?(绿衣绿幕 = 无解,提前换装)
+- [ ] 快门 ≥1/50?(运动模糊 = 边缘发虚)
+
+**纯动画类(pure-animation)追加问句**:
+- [ ] 比例确认 16:9 还是 9:16?(卡片按画幅导出,返工=全重导)
+- [ ] 卡片总数与节奏预期?(≈2s/卡;决定旁白写法)
+- [ ] 旁白是 TTS 还是真人原声?(决定 wordline 走哪条入口)
+- [ ] 卡片是否已定稿?(定稿才能 scan+export,中途改卡 = 时长全漂)
+
+**环境 checklist**(缺一开工前就补,不进渲染再发现):
+- [ ] `WPI_FFMPEG` **与** `ARTBOARD_FFMPEG` 都已设置(artboard 的 MP4 导出走 WPI,只认 `WPI_FFMPEG`,`ARTBOARD_FFMPEG` 无效;安信德 #13)
+- [ ] ASR 环境:`python tools/fun_asr.py --probe` 就绪(专名错 → 先补热词重跑,见 rules/asr.md)
+
 ## brief.md 契约(templates/brief.md)
 
 问卷答案 + 素材清单 + 决策记录,落 `00_brief/brief.md`。**此后一切决策只查 brief,不再问人。**

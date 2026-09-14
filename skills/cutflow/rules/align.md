@@ -108,6 +108,7 @@ def map_src_to_final(t_src_ms: float, segments: list[dict]) -> float:
 | retext 统计字段位置 | 测试按 `doc["retext"]["stats"]["editChars"]` 断言 KeyError | 统计**平铺**在 `doc["retext"]` 下(如 `editChars`/`similarity`),没有嵌套 stats 层 |
 | **无字级时间戳时"卡内位置"是估算的** | 被当成字级用 → 逐字染色/终点校验失去意义 | v0.7.0(#1)起 `build_wordline` 置 `charTimingEstimated=True`、逐字打 `estimated` 标,`degradeReasons` 明写"卡内位置为估算(不可当字级用)";卡拉OK 显式拒绝;正解是 `rs_dub align` 做强制对齐(#10) |
 | **估算时间仍会造成卡内漂移** | 只有句级时间准 → 句内快慢靠运气 | 这是**已知且有意的折中**:句级整句卡会伤长句可读性,所以在 `max_chars` 内出卡并**显式标注**;真正的字级必须走 `rs_dub align`(译文:L1 目测清单会把"卡内位置为估算"列为待确认项) |
+| **wordline 时间病态**(v0.12,B7) | 外部/手写时间轴:标点零宽(endMs≤startMs)撞 rs_verify 单调门禁;相邻字互相重叠 | `rs_align.py smooth <wordline> --out …`:标点零宽 `end=start+1`(严格单调且不占显示时长)、起点单调化、重叠钳制(前字 end 收到后字 start);**平滑只在此入口做,build 路径的 `max(b, a+20)` 保底不动** |
 
 ## 6. 门禁与验收
 

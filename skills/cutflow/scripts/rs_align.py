@@ -4,6 +4,8 @@
   rs_align.py build --from-transcript 02_sensed/transcript_corrected.json --out 05_ir/wordline.json
   rs_align.py build --from-tts 03_assets/tts/manifest.json --out 05_ir/wordline.json
   rs_align.py build --media 01_materials/a.mp4 --out 05_ir/wordline.json
+  rs_align.py build --media a.mp4 --hotwords "安信德 GEO优化" --out 05_ir/wordline.json
+  rs_align.py smooth 05_ir/wordline.json --out 05_ir/wordline.final.json
   rs_align.py remap 05_ir/wordline.json --cutlist 04_cut/cutlist.json --out 05_ir/wordline.final.json
 
 三条入口统一落到同一数据结构;取不到字级时间戳时降级为「句级均分」并**显式标注 degraded**。
@@ -12,6 +14,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import statistics
 import sys
@@ -19,6 +22,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from rs_common import die, emit, load_config  # noqa: E402
+import segmentation  # noqa: E402  — PUNCT_WS 与断句/字幕同一标点口径
 
 VERSION = 1
 GAP_MIN_MS = 150          # 相邻字间隔超过此值记为一个 gap(供断句用)
@@ -203,6 +207,48 @@ def remap_wordline(wl: dict, keep: list[list[int]], cutlist: dict | None = None)
     return out
 
 
+# ---------------------------------------------------------------- 平滑(v0.12 B7)
+
+SMOOTH_PUNCT = frozenset(segmentation.PUNCT_WS + "·—–-《》〈〉")
+
+
+def smooth_wordline(wl: dict) -> tuple[dict, dict]:
+    """wordline 平滑上游化(B7):此前纯动画/配音工程各自手写 _smooth_wordline.py,
+    把标点设成零宽时还违反 rs_verify 的单调门禁(endMs<=startMs 硬失败)。统一规则:
+      1. 标点/空白零宽:endMs = startMs + 1(+1ms 恰好满足严格单调,不占显示时长);
+      2. startMs 单调不减(后字起点早于前字 → 钳到前字起点);
+      3. 内容字重叠钳制:前字 endMs > 后字 startMs → 收到后字 startMs
+        (不足 1ms 的间隙让位给对齐精度);
+      4. 保底:任何 endMs<=startMs → startMs+1。
+    不动 build 路径的 max(b, a + 20) 保底——那是单调门禁的第一道护栏,平滑只在本入口做。
+    """
+    doc = copy.deepcopy(wl)
+    chars = doc.get("chars") or []
+    stats = {"zeroWidthPunct": 0, "clampedOverlap": 0, "minWidthFixed": 0}
+    for c in chars:
+        ch = str(c.get("ch", ""))
+        if (not ch.strip()) or ch in SMOOTH_PUNCT:
+            c["endMs"] = int(c["startMs"]) + 1
+            stats["zeroWidthPunct"] += 1
+    prev = None
+    for c in chars:
+        if prev is not None and int(c["startMs"]) < prev:
+            c["startMs"] = prev
+            stats["clampedOverlap"] += 1
+        prev = int(c["startMs"])
+    for a, b in zip(chars, chars[1:]):
+        if int(a["endMs"]) > int(b["startMs"]):
+            a["endMs"] = int(b["startMs"])
+            stats["clampedOverlap"] += 1
+    for c in chars:
+        if int(c["endMs"]) <= int(c["startMs"]):
+            c["endMs"] = int(c["startMs"]) + 1
+            stats["minWidthFixed"] += 1
+    doc["gaps"] = compute_gaps(chars)
+    doc["smooth"] = {"applied": True, **stats}
+    return doc, stats
+
+
 # ---------------------------------------------------------------- 校对回灌(v0.6.0)
 
 SENT_END = "。！？；!?"
@@ -367,10 +413,12 @@ def _load_segments(path: Path) -> list[dict]:
 
 
 def _from_media(media: Path, cfg: dict, backend: str = "auto",
-                max_end_sil: int = 0) -> tuple[list[dict], dict]:
+                max_end_sil: int = 0, hotwords: str = "") -> tuple[list[dict], dict]:
     """调 **CutFlow 自带** ASR(tools/fun_asr.py)取转写 —— 不需要任何外部服务器。
 
     返回值: (segments, meta),meta 含 backend / capabilities / degraded / degradeReasons。
+    热词经 --hotwords 透传(I1):默认模型 paraformer-zh **就是** SeACo-Paraformer
+    (funasr name_maps_from_hub.py 的短名映射),热词是其模型级原生能力,直接生效。
     """
     import subprocess
     runner = Path(__file__).resolve().parents[3] / "tools" / "fun_asr.py"
@@ -379,6 +427,8 @@ def _from_media(media: Path, cfg: dict, backend: str = "auto",
     cmd = [sys.executable, str(runner), str(media), "--json", "--backend", backend]
     if max_end_sil:
         cmd += ["--max-end-sil", str(max_end_sil)]
+    if hotwords:
+        cmd += ["--hotwords", hotwords]
     p = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
     out = (p.stdout or "").strip()
     if not out:
@@ -403,13 +453,21 @@ def _from_media(media: Path, cfg: dict, backend: str = "auto",
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("command", nargs="?", default="build", choices=["build", "remap", "retext"])
-    ap.add_argument("source", nargs="?", help="remap/retext 时为 wordline 路径")
+    ap.add_argument("command", nargs="?", default="build",
+                    choices=["build", "remap", "retext", "smooth"])
+    ap.add_argument("source", nargs="?", help="remap/retext/smooth 时为 wordline 路径")
     ap.add_argument("--from-transcript")
     ap.add_argument("--from-tts")
     ap.add_argument("--media")
     ap.add_argument("--backend", default="auto", choices=["auto", "pkg", "onnx", "server"],
                     help="自带 ASR 后端;auto=精度优先(pkg→onnx→server)")
+    ap.add_argument("--hotwords", default="",
+                    help="I1 热词(空格分隔):专名/生造词,如「安信德 GEO优化」。"
+                         "透传自带 ASR(默认模型 paraformer-zh=SeACo,原生吃热词);"
+                         "wordline.asr.hotwords 留痕")
+    ap.add_argument("--terms-file", dest="terms_file", default=None,
+                    help="热词文件:每行一个词(# 注释;约定放 00_brief/terms.txt,"
+                         "来源 brief.md 术语表;与 --hotwords 合并)")
     ap.add_argument("--max-end-sil", dest="max_end_sil", type=int, default=0,
                     help="VAD 静音切分阈值 ms(0=用工具默认 400)")
     ap.add_argument("--cutlist")
@@ -422,6 +480,20 @@ def main() -> int:
                     help="retext:只报告编辑摘要,不写文件")
     a = ap.parse_args()
     out = Path(a.out) if a.out else None
+
+    if a.command == "smooth":
+        if not a.source:
+            return emit(False, "NO_INPUT", "smooth 需要:<wordline.json> [--out <path>]"
+                          "(无 --out 时原地覆盖)", exit_code=2)
+        wl = json.loads(Path(a.source).read_text(encoding="utf-8"))
+        doc, stats = smooth_wordline(wl)
+        out = out or Path(a.source)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(doc, ensure_ascii=False, indent=1), encoding="utf-8")
+        return emit(True, "SMOOTH_OK",
+                    f"平滑完成:标点零宽 {stats['zeroWidthPunct']} / 重叠钳制 "
+                    f"{stats['clampedOverlap']} / 最小宽度修复 {stats['minWidthFixed']} → {out}",
+                    {"path": str(out), **stats})
 
     if a.command == "retext":
         if not a.source or not a.text:
@@ -469,6 +541,19 @@ def main() -> int:
 
     source, segments, degraded = "", [], None
     asr_meta: dict = {}
+    # I1 热词:--terms-file(每行一词,# 注释;json 数组亦可)+ --hotwords 合并去重
+    hotwords = a.hotwords or ""
+    if a.terms_file:
+        tp = Path(a.terms_file)
+        if not tp.is_file():
+            return emit(False, "NO_TERMS_FILE", f"热词文件不存在:{tp}", exit_code=2)
+        try:
+            terms_doc = json.loads(tp.read_text(encoding="utf-8"))
+            file_terms = [str(t) for t in terms_doc] if isinstance(terms_doc, list) else []
+        except json.JSONDecodeError:
+            file_terms = [ln.strip() for ln in tp.read_text(encoding="utf-8").splitlines()
+                          if ln.strip() and not ln.strip().startswith("#")]
+        hotwords = " ".join(dict.fromkeys(hotwords.split() + file_terms))
     if a.from_transcript:
         p = Path(a.from_transcript)
         segments, source = _load_segments(p), (a.src or str(p))
@@ -486,7 +571,9 @@ def main() -> int:
             return emit(False, "NO_MEDIA", f"素材不存在:{media}", exit_code=2)
         cfg = load_config()
         source = str(media)
-        segments, asr_meta = _from_media(media, cfg, a.backend, a.max_end_sil)
+        segments, asr_meta = _from_media(media, cfg, a.backend, a.max_end_sil, hotwords)
+        if hotwords:
+            asr_meta["hotwords"] = hotwords     # 留痕:复跑/排障要知道当时喂了什么
         if asr_meta.get("asrDegraded"):
             degraded = "；".join(asr_meta.get("asrDegradeReasons")
                                 or ["自带 ASR 标注为降级"]) + \
