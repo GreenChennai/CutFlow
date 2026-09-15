@@ -48,7 +48,9 @@ def spec() -> list[dict]:
          "inputs": ["01_materials/*"], "outputs": ["05_ir/wordline.json"],
          "scripts": ["rs_align.py"],
          "cmd": ["rs_align.py", "build", "--media", "{first_material}",
-                 "--out", "05_ir/wordline.json"]},
+                 "--out", "05_ir/wordline.json"],
+         "post": ["rs_align.py", "calibrate", "05_ir/wordline.json",
+                  "--media", "{first_material}", "--out", "05_ir/wordline.json"]},
         {"id": "S2", "name": "粗剪处理",
          "inputs": ["05_ir/wordline.json"], "outputs": ["04_cut/cutlist.json"],
          "scripts": ["rs_cut.py"],
@@ -448,6 +450,25 @@ def pick_asr_media(mats: list[Path]) -> Path | None:
     return next((p for p in mats if p.suffix.lower() in ASR_MEDIA_EXTS), None)
 
 
+def build_cmd_from_argv(root: Path, argv: list[str]) -> list[str] | None:
+    """argv 形如 [script, tok...] —— 与 st["cmd"] 同构,套同一映射规则。"""
+    mats = expand(root, ["01_materials/*"])
+    media = pick_asr_media(mats)
+    finals = sorted(((root / "06_output").glob("final_*.mp4") if (root / "06_output").is_dir() else []),
+                    key=lambda p: p.stat().st_mtime)
+    fw = root / "05_ir" / "wordline.final.json"
+    final_wl = str(fw.relative_to(root)) if fw.is_file() else "05_ir/wordline.json"
+    mapping = {"{first_material}": str(media.relative_to(root)) if media else "01_materials/",
+               "{slug}": root.name,
+               "{final_wordline}": final_wl,
+               "{final_video}": str(finals[-1].relative_to(root)) if finals
+               else "06_output/final_latest.mp4"}
+    out = [sys.executable, str(SCRIPTS_DIR / argv[0])]
+    for tok in argv[1:]:
+        out.append(mapping.get(tok, tok))
+    return out
+
+
 def build_cmd(root: Path, st: dict) -> list[str] | None:
     if not st.get("cmd"):
         return None
@@ -477,6 +498,14 @@ def run_stage(root: Path, st: dict) -> tuple[bool, str]:
     if cmd is None:
         return False, f"{st['id']} 是人工阶段(Agent 介入),完成后用 --mark {st['id']}"
     p = subprocess.run(cmd, cwd=str(root), capture_output=True, text=True)
+    if p.returncode == 0 and st.get("post"):
+        # v0.13:主命令成功后的附加步骤(如 S1 的能量校准);任一失败即阶段失败
+        post_argv = [st["cmd"][0]] + st["post"]
+        post_cmd = build_cmd_from_argv(root, post_argv)
+        if post_cmd is not None:
+            pp = subprocess.run(post_cmd, cwd=str(root), capture_output=True, text=True)
+            if pp.returncode != 0:
+                return False, f"{st['id']} post 步骤失败:{(pp.stderr or pp.stdout or '')[-300:]}"
     if p.returncode != 0:
         return False, f"{st['id']} 失败(exit {p.returncode}):{(p.stderr or p.stdout or '')[-300:]}"
     parts = stage_parts(root, st, params_of(root), external_versions())

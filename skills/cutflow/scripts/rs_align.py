@@ -177,6 +177,180 @@ def compute_gaps(chars: list[dict], min_ms: int = GAP_MIN_MS) -> list[dict]:
     return gaps
 
 
+
+
+# ---------------------------------------------------------------- 能量校准(v0.13 FMSmartSnap)
+
+ENV_SR = 16000                    # 包络采样率
+ENV_WIN_MS = 10                   # RMS 窗长
+ENV_SUSTAIN_MS = 50               # 起止判定需连续活跃的时长
+DEFAULT_CALIB_WINDOW_MS = 250     # 搜索窗口
+DEFAULT_CALIB_MIN_SHIFT_MS = 20   # 小于此偏移不动(噪声抖动)
+
+
+def energy_envelope(media: Path, cfg: dict | None = None,
+                    sr: int = ENV_SR, win_ms: int = ENV_WIN_MS) -> tuple[list[float], int]:
+    """mono PCM → RMS 能量包络(每 win_ms 一个值)。纯 stdlib(array+math)。
+
+    返回 (envelope, win_ms_actual) —— 第二个值是每窗毫秒宽(供 mask 下标换算:
+    下标 i 覆盖 [i*win_ms_actual, (i+1)*win_ms_actual) );失败 die(PCM_EXTRACT_FAIL)。
+    """
+    import array as _array
+    import subprocess as _sp
+    from rs_common import ffmpeg_bin, die
+    win = max(1, int(sr * win_ms / 1000))
+    cmd = [ffmpeg_bin(cfg or {}), "-v", "error", "-i", str(media), "-vn",
+           "-ac", "1", "-ar", str(sr), "-f", "s16le", "-"]
+    proc = _sp.run(cmd, capture_output=True)
+    if proc.returncode != 0 or not proc.stdout:
+        die(4, "PCM_EXTRACT_FAIL",
+            f"音频包络提取失败:{(proc.stderr or b'')[-200:]}(文件损坏或无音轨)")
+    samples = _array.array("h")
+    samples.frombytes(proc.stdout[:len(proc.stdout) // 2 * 2])
+    win_ms_actual = max(1, round(win * 1000 / sr))
+    step = round(sr * win_ms_actual / 1000)
+    n = len(samples) // step
+    env: list[float] = []
+    for i in range(n):
+        chunk = samples[i * step:(i + 1) * step]
+        acc = 0
+        for s in chunk:
+            acc += s * s
+        env.append((acc / step) ** 0.5)
+    return env, win_ms_actual
+
+
+def _active_mask(env: list[float], peak_ratio: float = 0.08,
+                 floor_mult: float = 3.0) -> list[bool]:
+    """能量活跃掩码:env > max(噪声底*floor_mult, 峰值*peak_ratio)。"""
+    if not env:
+        return []
+    peak = max(env)
+    floor = sorted(env)[max(0, len(env) // 5)]        # 20 分位近似噪声底
+    th = max(floor * floor_mult, peak * peak_ratio, 1.0)
+    return [v > th for v in env]
+
+
+def _energy_onset(mask: list[bool], t0_ms: int, t1_ms: int, win_ms: int = ENV_WIN_MS,
+                  sustain_ms: int = ENV_SUSTAIN_MS, *, from_end: bool = False) -> int | None:
+    """在 [t0,t1] 内找首个(或末个,from_end)连续活跃点,返回 ms;找不到 None。
+
+    mask 下标 = 包络窗序号(每窗 ENV_WIN_MS);t0/t1 单位 ms。
+    """
+    sustain = max(1, sustain_ms // ENV_WIN_MS)
+    i0, i1 = max(0, t0_ms // ENV_WIN_MS), min(len(mask), t1_ms // ENV_WIN_MS)
+    if from_end:
+        rng = range(i1 - 1, i0 - 1, -1)
+    else:
+        rng = range(i0, i1)
+    run = 0
+    for i in rng:
+        run = run + 1 if mask[i] else 0
+        if run >= sustain:
+            return (i - sustain + 1) * win_ms if not from_end else (i + 1) * win_ms
+    return None
+
+
+def calibrate_wordline(wl: dict, media: Path, cfg: dict | None = None, *,
+                       window_ms: int = DEFAULT_CALIB_WINDOW_MS,
+                       min_shift_ms: int = DEFAULT_CALIB_MIN_SHIFT_MS) -> tuple[dict, dict]:
+    """按音频能量包络校准 wordline 字/句时间。
+
+    返回 (new_wl, report)。report 含句级前后偏差(median/p95)、修正数、跳过原因。
+    """
+    env, win_ms_used = energy_envelope(media, cfg)
+    mask = _active_mask(env)
+    chars = wl.get("chars") or []
+    sents = wl.get("sentences") or []
+    if not chars:
+        die(2, "NO_CHARS", "wordline 无 chars,无法校准")
+    if not mask:
+        rep = {"sentences": len(sents), "snapped": 0, "skipped": len(sents),
+               "medianBeforeMs": None, "medianAfterMs": None,
+               "note": "音频无可检测的语音能量(静音/无声素材),未做修正"}
+        out = json.loads(json.dumps(wl, ensure_ascii=False))
+        out["calibration"] = rep
+        return out, rep
+    if not sents:                       # 无句结构:按 8 字滑窗粗分组兜底
+        sents = [{"id": i, "span": [i, min(i + 8, len(chars))]}
+                 for i in range(0, len(chars), 8)]
+    space = wl.get("space", "source")
+    frame_ms = 1000.0 / float(wl.get("fps") or 30)
+    rows, moves = [], []
+    for s in sents:
+        a, b = s.get("span") or [0, 0]
+        if b <= a:
+            continue
+        s0 = int(chars[a]["startMs"])
+        s1 = int(chars[b - 1]["endMs"])
+        onset = _energy_onset(mask, s0 - window_ms, s0 + window_ms, win_ms_used)
+        offset = (onset - s0) if onset is not None else None
+        end_at = _energy_onset(mask, s1 - window_ms, s1 + window_ms, win_ms_used, from_end=True)
+        end_off = (end_at - s1) if end_at is not None else None
+        rows.append({"id": s.get("id"), "startMs": s0, "onsetOffsetMs": offset,
+                     "endOffsetMs": end_off})
+        if offset is not None and abs(offset) >= min_shift_ms:
+            moves.append((a, b, offset))
+    def _med(vals: list[int]) -> float | None:
+        vs = sorted(vals)
+        return float(vs[len(vs) // 2]) if vs else None
+    med_before = _med([abs(r["onsetOffsetMs"]) for r in rows if r["onsetOffsetMs"] is not None])
+    # 逐句位移(含全局偏置一次性修正);守单调:句 i 位移后 start 不得早于句 i-1 位移后 end
+    applied: list[dict] = []
+    prev_end = -1
+    for (a, b, off) in moves:
+        s0 = int(chars[a]["startMs"]) + off
+        s0 = max(s0, prev_end + 1)
+        real = s0 - int(chars[a]["startMs"])
+        if abs(real) < min_shift_ms:
+            real = 0
+        delta = {"a": a, "b": b, "shift": int(real)}
+        applied.append(delta)
+        prev_end = int(chars[b - 1]["endMs"]) + real
+    for d in applied:
+        for i in range(d["a"], d["b"]):
+            c = chars[i]
+            c["startMs"] = int(c["startMs"]) + d["shift"]
+            c["endMs"] = int(c["endMs"]) + d["shift"]
+            if space == "source" and "srcStartMs" in c:
+                c["srcStartMs"] = int(c["srcStartMs"]) + d["shift"]
+                c["srcEndMs"] = int(c["srcEndMs"]) + d["shift"]
+        if applied:
+            d["applied"] = True
+    # 残差统计(校准后再测一次)
+    after = []
+    for r, d in zip(rows, [None] * len(rows)):
+        pass
+    # 重算残差:直接按位移后 chars 重新 onset
+    resid = []
+    for s, d in zip([s for s in sents if (s.get("span") or [0, 0])[1] > (s.get("span") or [0, 0])[0]],
+                    [None] * len(sents)):
+        pass
+    # 简化:重扫一遍
+    resid_rows = []
+    for s in sents:
+        a, b = s.get("span") or [0, 0]
+        if b <= a:
+            continue
+        s0 = int(chars[a]["startMs"])
+        onset = _energy_onset(mask, s0 - window_ms, s0 + window_ms, win_ms_used)
+        if onset is not None:
+            resid_rows.append(abs(onset - s0))
+    med_after = _med(resid_rows)
+    gaps = compute_gaps(chars)
+    wl["gaps"] = gaps
+    rep = {"sentences": len(sents), "snapped": len(applied),
+           "skipped": len(sents) - len(applied),
+           "medianBeforeMs": round(med_before, 1) if med_before is not None else None,
+           "medianAfterMs": round(med_after, 1) if med_after is not None else None,
+           "p95BeforeMs": round(sorted([abs(r["onsetOffsetMs"]) for r in rows if r["onsetOffsetMs"] is not None])[int(0.95 * max(0, len([r for r in rows if r["onsetOffsetMs"] is not None]) - 1))], 1) if any(r["onsetOffsetMs"] is not None for r in rows) else None,
+           "windowMs": window_ms, "minShiftMs": min_shift_ms,
+           "shifts": [{"charRange": [d["a"], d["b"]], "shiftMs": d["shift"]} for d in applied]}
+    wl["calibration"] = rep
+    wl["calibrated"] = True
+    return wl, rep
+
+
 # ---------------------------------------------------------------- 重映射
 
 def remap_wordline(wl: dict, keep: list[list[int]], cutlist: dict | None = None) -> dict:
@@ -454,7 +628,7 @@ def _from_media(media: Path, cfg: dict, backend: str = "auto",
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("command", nargs="?", default="build",
-                    choices=["build", "remap", "retext", "smooth"])
+                    choices=["build", "remap", "retext", "smooth", "calibrate"])
     ap.add_argument("source", nargs="?", help="remap/retext/smooth 时为 wordline 路径")
     ap.add_argument("--from-transcript")
     ap.add_argument("--from-tts")
@@ -468,6 +642,12 @@ def main() -> int:
     ap.add_argument("--terms-file", dest="terms_file", default=None,
                     help="热词文件:每行一个词(# 注释;约定放 00_brief/terms.txt,"
                          "来源 brief.md 术语表;与 --hotwords 合并)")
+    ap.add_argument("--calib-window", dest="calib_window", type=int,
+                    default=DEFAULT_CALIB_WINDOW_MS,
+                    help="calibrate:能量起点搜索窗口 ms(默认 250)")
+    ap.add_argument("--calib-min-shift", dest="calib_min_shift", type=int,
+                    default=DEFAULT_CALIB_MIN_SHIFT_MS,
+                    help="calibrate:小于该偏移不修正 ms(默认 20,抗噪声抖动)")
     ap.add_argument("--max-end-sil", dest="max_end_sil", type=int, default=0,
                     help="VAD 静音切分阈值 ms(0=用工具默认 400)")
     ap.add_argument("--cutlist")
@@ -480,6 +660,31 @@ def main() -> int:
                     help="retext:只报告编辑摘要,不写文件")
     a = ap.parse_args()
     out = Path(a.out) if a.out else None
+
+
+    if a.command == "calibrate":
+        if not a.source or not a.media:
+            return emit(False, "NO_INPUT",
+                        "calibrate 需要:<wordline.json> --media <音视频素材> [--out <path>] "
+                        "(无 --out 时原地覆盖)", exit_code=2)
+        media = Path(a.media)
+        if not media.is_file():
+            return emit(False, "NO_MEDIA", f"素材不存在:{media}", exit_code=2)
+        wl = json.loads(Path(a.source).read_text(encoding="utf-8"))
+        cfg = load_config()
+        doc, rep = calibrate_wordline(wl, media, cfg,
+                                      window_ms=a.calib_window,
+                                      min_shift_ms=a.calib_min_shift)
+        out = out or Path(a.source)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(doc, ensure_ascii=False, indent=1), encoding="utf-8")
+        before = rep.get("medianBeforeMs")
+        after = rep.get("medianAfterMs")
+        msg = (f"能量校准:{rep['snapped']}/{rep['sentences']} 句修正"
+               f"(窗口 ±{a.calib_window}ms);起点中位偏差 "
+               f"{before if before is not None else '-'}ms → {after if after is not None else '-'}ms → {out}")
+        return emit(True, "CALIBRATE_OK", msg,
+                    {"path": str(out), **rep})
 
     if a.command == "smooth":
         if not a.source:

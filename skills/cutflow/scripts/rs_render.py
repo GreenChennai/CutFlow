@@ -34,7 +34,7 @@ RATIO = dict(RATIOS)             # 画幅唯一真相源在 rs_common(新增画�
 LOUDNORM_BUS = "loudnorm=I=-14:TP=-1.0:LRA=11"
 LOUDNORM_VOICE = "loudnorm=I=-16:TP=-1.5:LRA=11"
 LOUDNESS_TARGET = {"I": -14.0, "TP": -1.0, "LRA": 11.0}   # 硬规则 11;出处 ITERATION-GUIDE §8.2
-CACHE_VER = "v5"                 # 渲染语义变更时 +1,防旧缓存幽灵命中(v0.12:seg 支持 clip.freezeMs 冻结帧补长)
+CACHE_VER = "v6"                 # 渲染语义变更时 +1,防旧缓存幽灵命中(v0.12:seg 支持 clip.freezeMs 冻结帧补长)
 CHROMA_DEFAULTS = {"similarity": 0.15, "blend": 0.12}   # 基轨/overlay/schema 三处统一(唯一真相源)
 SEG_CACHE_KEEP = 400             # segcache 最大保留文件数(超出按 mtime 淘汰)
 BG_TYPES = {"color", "image", "video", "gradient"}
@@ -171,13 +171,16 @@ def sample_chroma(src: Path, cfg: dict) -> str:
             continue
         mid = px[24:27]  # 中心像素
         samples.append((mid[0], mid[1], mid[2]))
+    # v0.13:绿/蓝幕布都自动识别(g 主导或 b 主导);混合样本按主导通道聚类取均值
     greens = [s for s in samples if s[1] > 100 and s[1] > s[0] * 1.30 and s[1] > s[2] * 1.30]
-    if not greens:
+    blues = [s for s in samples if s[2] > 100 and s[2] > s[0] * 1.30 and s[2] > s[1] * 1.30]
+    if not greens and not blues:
         die(4, "CHROMA_SAMPLE_FAIL",
-            f"边缘采样未找到绿幕(样本:{samples});请在 clip.chroma.color 显式指定,如 0x2AA81E")
-    r = sum(s[0] for s in greens) // len(greens)
-    g = sum(s[1] for s in greens) // len(greens)
-    b = sum(s[2] for s in greens) // len(greens)
+            f"边缘采样未找到绿幕/蓝幕(样本:{samples});请在 clip.chroma.color 显式指定,如 0x2AA81E")
+    pool = greens or blues
+    r = sum(s[0] for s in pool) // len(pool)
+    g = sum(s[1] for s in pool) // len(pool)
+    b = sum(s[2] for s in pool) // len(pool)
     return f"0x{r:02X}{g:02X}{b:02X}"
 
 
@@ -229,6 +232,78 @@ def _crop_pct_chain(c: dict) -> list[str]:
         chain.append(f"crop=iw:ih*{1 - pct:.4f}:0:0" if not c.get("cropTopPct")
                      else f"crop=iw:ih*{1 - pct:.4f}:0:0")
     return chain
+
+
+def _chroma_key_v2_chain(c: dict, src: Path, cfg: dict) -> list[str]:
+    """v0.13 键控 v2(ADR-0029):亮度无关比值 matte + YUV 域去混合 + 分离门控 despill。
+
+    取代 colorkey+despill+腐蚀链(可经 chroma.keyMode="legacy" 回退)。三处根因修复:
+    1) 黑边: 旧链 despill 对边缘混合像素做 RGB 钳位,边缘被压暗;新链 R/B(Y 域)
+       永不触碰,溢色只在色度平面向中性收,黑边源头消除;
+    2) 暗场: colorkey 是 RGB 球,对暗角/投影下的绿幕键不干净;新 alpha 用
+       min(G/max(R,1),G/max(B,1)) 比值,对亮度缩放完全免疫;
+    3) 吃边: 旧链对混合像素二值丢弃(eaten≈90%);新链二值 matte 后 gblur 空间
+       平均出真半透明,再按 alpha 扣除屏幕混色(un-premultiply)。
+
+    参数(全部可经 clip.chroma 覆盖,括号为默认):
+      keyTcut(2.2) 比值阈值:ratio 小于 tCut 判人物(屏幕纯绿约 4.0,人物/混合 <3.5);
+      keyFeather(1.2) matte 模糊 sigma(空间 AA,产生半透明);
+      keyAFloor(0.35) 去混合 alpha 下限(低于它数值不稳,顺势钳到该透明度);
+      keyDespill(0.85) 溢色中和强度(向 Cb/Cr 中性收的幅度);
+      keyMode("v2"|"legacy") 键控器选择。
+    """
+    key = chroma_hex(c, src, cfg)
+    r = int(key[2:4], 16)
+    g = int(key[4:6], 16)
+    b = int(key[6:8], 16)
+    t_cut = float(c.get("keyTcut", 2.2))
+    feather = float(c.get("keyFeather", 1.2))
+    a_floor = min(max(float(c.get("keyAFloor", 0.35)), 0.05), 0.9)
+    despill = min(max(float(c.get("keyDespill", 0.85)), 0.0), 1.0)
+    pre = ("st(0,1.16438*(lum(X,Y)-16));"
+           "st(1,ld(0)+1.59603*(cr(X,Y)-128));"
+           "st(2,ld(0)-0.39176*(cb(X,Y)-128)-0.81297*(cr(X,Y)-128));"
+           "st(3,ld(0)+2.01723*(cb(X,Y)-128))")
+    # 主导通道方向按键色自动选:绿幕看 G 比值,蓝幕看 B 比值(写死绿色会整帧误判)
+    if b >= g:
+        ratio = "ld(3)/max(ld(1),1)"
+    else:
+        ratio = "ld(2)/max(ld(3),1)"
+    # 色度距离第二判据(OR 逻辑):色度远离键色的像素(绿衣/草地图案等合法前景)
+    # 即使比值偏高也保留 —— 前景 = (ratio<tCut) 或 (dist>distCut)
+    rn, gn, bn = r / 255.0, g / 255.0, b / 255.0
+    cbs = 128 + 224 * (-0.168736 * rn - 0.331264 * gn + 0.5 * bn)
+    crs = 128 + 224 * (0.5 * rn - 0.418688 * gn - 0.081312 * bn)
+    dist_cut = min(max(float(c.get("keyDistCut", 3.0)), 2.0), 40.0)
+    _vx, _vy = 128 - cbs, 128 - crs
+    _vlen = (_vx * _vx + _vy * _vy) ** 0.5
+    cdist = f"abs({_vx:.0f}*(cr(X,Y)-{crs:.0f})-{_vy:.0f}*(cb(X,Y)-{cbs:.0f}))/{_vlen:.1f}"
+    # dist 项用 ratio 门控:只救比值歧义带内的像素(绿衣等),防背景色度漂移误救
+    a1 = (f"{pre};max(255*clip({t_cut:.2f}-{ratio},0,1),"
+          f"255*clip(({cdist}-{dist_cut:.0f})*0.5,0,1)*clip(({ratio}-{t_cut:.2f})*3,0,1))")
+    ys = 16 + 219 * (0.299 * r + 0.587 * g + 0.114 * b) / 255.0
+    pre2 = f"st(9,max(alpha(X,Y)/255,{a_floor:.2f}));"
+    y2 = f"{pre2}clip((lum(X,Y)-16-(1-ld(9))*{ys - 16:.1f})/ld(9)+16,16,235)"
+    cb2 = (f"{pre2}"
+           f"st(8,clip((cb(X,Y)-128-(1-ld(9))*{cbs - 128:.1f})/ld(9)+128,16,240));"
+           f"st(7,clip((cr(X,Y)-128-(1-ld(9))*{crs - 128:.1f})/ld(9)+128,16,240));"
+           # 色度修正钳制 ±40:细结构/4:2:0 色度块下 alpha 低估会让去混过冲(紫边),钳住单像素修正量
+           f"st(6,cb(X,Y)+clip(ld(8)-cb(X,Y),-40,40));"
+           f"ld(6)+(128-ld(6))*{despill:.2f}*clip((122-ld(6))/25,0,1)")
+    cr2 = (f"{pre2}"
+           f"st(8,clip((cb(X,Y)-128-(1-ld(9))*{cbs - 128:.1f})/ld(9)+128,16,240));"
+           f"st(7,clip((cr(X,Y)-128-(1-ld(9))*{crs - 128:.1f})/ld(9)+128,16,240));"
+           f"st(5,cr(X,Y)+clip(ld(7)-cr(X,Y),-40,40));"
+           f"ld(5)+(128-ld(5))*{despill:.2f}*clip((115-ld(5))/25,0,1)")
+    # alpha 曲线扩展:blur 后过渡带按 0.25-0.75 重映射收紧(轮廓回位,抑制光晕外扩)
+    tighten = "clip((alpha(X,Y)-64)/127*255,0,255)"
+    return [
+        "format=yuva444p",
+        f"geq=lum='lum(X,Y)':cb='cb(X,Y)':cr='cr(X,Y)':a='{a1}'",
+        f"gblur=sigma={feather:.2f}:planes=8",
+        f"geq=lum='lum(X,Y)':cb='cb(X,Y)':cr='cr(X,Y)':a='{tighten}'",
+        f"geq=lum='{y2}':cb='{cb2}':cr='{cr2}':a='alpha(X,Y)'",
+    ]
 
 
 def _chroma_fg_chain(c: dict) -> list[str]:
@@ -360,12 +435,15 @@ def step_segment(doc: dict, ratio: str, build: Path, base_dir: Path, cfg: dict,
             # alpha 全坏(人物区域≈0,YAVG 2.07/255;alphaextract 实测),叠任何背景
             # 都是"幽灵人物";-vf 单输入 + JPG 因丢弃 alpha 而看不出来。
             # colorkey(RGB 距离键控)alpha 正常(人物 255/背景 0),改用之。
-            fg.append(f"colorkey={chroma_hex(chroma, src, cfg)}:"
-                      f"{chroma.get('similarity', CHROMA_DEFAULTS['similarity'])}:"
-                      f"{chroma.get('blend', CHROMA_DEFAULTS['blend'])}")
-            if chroma.get("despill", True):
-                fg.append("despill=type=green")
-            fg += _chroma_fg_chain(chroma)
+            if chroma.get("keyMode", "v2") == "legacy":
+                fg.append(f"colorkey={chroma_hex(chroma, src, cfg)}:"
+                          f"{chroma.get('similarity', CHROMA_DEFAULTS['similarity'])}:"
+                          f"{chroma.get('blend', CHROMA_DEFAULTS['blend'])}")
+                if chroma.get("despill", True):
+                    fg.append("despill=type=green")
+                fg += _chroma_fg_chain(chroma)
+            else:
+                fg += _chroma_key_v2_chain(chroma, src, cfg)
             fg.append(cover_crop(pr.get("width") or cw, pr.get("height") or ch, cw, ch, anchor))
             # v0.11 R1:显式 yuva444p + split —— alpha 平面从这里分给 overlay(合成)
             # 与 matte 探针;否则格式协商会被下游 yuv420p 分支拉成无 alpha,探针恒 255。
@@ -398,7 +476,8 @@ def step_segment(doc: dict, ratio: str, build: Path, base_dir: Path, cfg: dict,
             fparts.append("[bg][fg]overlay=0:0:shortest=1[m]")
             warnings.append(f"seg[{i}]:基轨绿幕已应用(color={chroma.get('color', 'auto')},"
                             f"相似度 {chroma.get('similarity', CHROMA_DEFAULTS['similarity'])};"
-                            "edgeShrink 腐蚀+羽化+green-only killRect;效果需 L1 目测确认)")
+                            "keyMode=v2: 比值键控+YUV去混合+门控despill;"
+                            "edgeShrink/killRect 仅 keyMode=legacy 生效)")
             vf_tail = [f"fps={fps}", "setsar=1"]
         else:
             vf_tail = [f"fps={fps}", "setsar=1"]
@@ -682,13 +761,16 @@ def step_compose(doc: dict, ratio: str, base: Path, build: Path, base_dir: Path,
                 if c.get("cropTopPct"):
                     pct = float(c["cropTopPct"])
                     chain.append(f"crop=iw:ih*{1-pct:.4f}:0:ih*{pct:.4f}")
-                hexc = chroma_hex(c, Path(pr["path"]), cfg)
-                # 同上:chromakey alpha 坏 → colorkey(见 step_segment 内注释)
-                chain.append(f"colorkey={hexc}:{c.get('similarity', CHROMA_DEFAULTS['similarity'])}:"
-                             f"{c.get('blend', CHROMA_DEFAULTS['blend'])}")
-                if c.get("despill", True):
-                    chain.append("despill=type=green")
-                chain += _chroma_fg_chain(c)      # v0.10:overlay 层同样吃边缘精修
+                if c.get("keyMode", "v2") == "legacy":
+                    hexc = chroma_hex(c, Path(pr["path"]), cfg)
+                    # chromakey alpha 坏 → colorkey(见 step_segment 内注释)
+                    chain.append(f"colorkey={hexc}:{c.get('similarity', CHROMA_DEFAULTS['similarity'])}:"
+                                 f"{c.get('blend', CHROMA_DEFAULTS['blend'])}")
+                    if c.get("despill", True):
+                        chain.append("despill=type=green")
+                    chain += _chroma_fg_chain(c)      # v0.10:overlay 层同样吃边缘精修
+                else:
+                    chain += _chroma_key_v2_chain(c, Path(pr["path"]), cfg)
                 warnings.append(f"compose[{idx}]:chroma 已应用({hexc},效果需自评确认)")
             # v0.10(ADR-0025):支持 clip.overlay={x,y,w,h,opacity} 绝对像素定位
             # (rs_brand 变体轨的产出;v0.9 该字段无人消费,Logo 会以 scale 默认值贴满画布)。

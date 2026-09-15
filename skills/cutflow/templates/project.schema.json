@@ -250,6 +250,36 @@
        },
        "description": "键不掉的绿幕投影清除区 [[x0,y0,x1,y1]…](归一化,裁剪后前景坐标);配合 killRectMode"
       },
+      "keyMode": {
+       "enum": ["v2", "legacy"],
+       "default": "v2",
+       "description": "键控器:v2=亮度无关比值键控+YUV去混合(黑边/暗场根治,默认);legacy=colorkey+despill+腐蚀(v0.10-0.12)"
+      },
+      "keyTcut": {
+       "type": "number",
+       "default": 2.2,
+       "description": "v2 比值阈值:G/max(R,B) 低于它判前景;屏幕纯绿≈4.0,溢色混合区 2.4-3.5;键不掉背景→调大,吃前景→调小"
+      },
+      "keyFeather": {
+       "type": "number",
+       "default": 1.2,
+       "description": "v2 matte 模糊 sigma(空间抗锯齿,产生半透明边缘)"
+      },
+      "keyAFloor": {
+       "type": "number",
+       "default": 0.35,
+       "description": "v2 去混合 alpha 下限(0.05-0.9);越低边缘去混越激进,过低数值不稳"
+      },
+      "keyDistCut": {
+       "type": "number",
+       "default": 3,
+       "description": "v2 混合线距离第二判据(OR):色度偏离键色-中性混合线超过它判前景,救回绿衣/草地图案等绿色前景"
+      },
+      "keyDespill": {
+       "type": "number",
+       "default": 0.85,
+       "description": "v2 溢色中和强度(0-1);边缘发绿→调大,人物偏灰→调小"
+      },
       "killRectMode": {
        "enum": [
         "green",
