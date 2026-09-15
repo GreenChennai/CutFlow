@@ -93,6 +93,14 @@ ASR 字级时间戳存在系统性偏移(引擎延迟/时间基)与句边界局�
   3. **提交回退**(已合并后):`git revert -m 1 <merge-commit>` 生成反向提交,保留历史
   4. **校准回退**:删除工程 `05_ir/wordline.json` 的 `calibration` 字段并重跑 S1(`rs_run --from S1`),或直接用 `rs_align build` 重建(校准是纯增量步骤,不破坏原始 ASR 数据锚)
 
+### 回滚演练记录(2026-09-16 实际执行)
+
+| 演练 | 操作 | 结果 |
+|---|---|---|
+| 参数级 | 临时工程 IR 写 keyMode: legacy 跑 step_segment | 成功:出片 29019 字节,行为与 v0.12 链一致 |
+| 分支级 | git checkout main 后检查代码 | 成功:_chroma_key_v2_chain 不存在、keyMode 无、CACHE_VER=v5,v2 代码完全不在 main |
+| 提交级 | 临时分支 git revert --no-edit HEAD | 成功:反向提交 14 files changed(-1505),v2 链移除、CACHE_VER 回 v5,无冲突 |
+
 ## 七、已知限制(诚实清单)
 
 - 绿色/蓝色服饰与幕布同色系时存在键控固有歧义,极端场景建议换幕布色(keyDistCut 可缓解大部分)
