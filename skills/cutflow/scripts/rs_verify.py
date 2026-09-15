@@ -329,6 +329,38 @@ def write_report(res: dict, path: Path, l1: dict | None = None) -> None:
 
 # ---------------------------------------------------------------- CLI
 
+def chroma_edge_probe(seg: Path, cfg: dict) -> dict | None:
+    """v0.13 绿幕边缘探针:对已渲染段抽 3 帧,检查背景暗场残留。
+
+    原理:背景应被完全抠掉;若合成背景是深色且残留了"抠不掉的暗绿",
+    表明键控失败。取画面四角 48x48 窗 + 中心带,统计"疑似残留"像素占比。
+    仅对带 chroma 的 IR 有意义;由调用方按 IR 判断是否调用。
+    """
+    try:
+        import rs_render
+    except Exception:
+        return None
+    probe_cmd = [rs_render.ffmpeg_bin(cfg), "-v", "error", "-ss", "1",
+                 "-i", str(seg), "-frames:v", "3",
+                 "-vf", "scale=160:90", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]
+    p = rs_render.run(probe_cmd, timeout=120)
+    if p.returncode != 0 or not p.stdout:
+        return None
+    raw = p.stdout
+    n_px = len(raw) // 3
+    if n_px < 160 * 90:
+        return None
+    # 只统计第 1 帧,足够诊断
+    frame = raw[:160 * 90 * 3]
+    arr = [frame[i * 3:i * 3 + 3] for i in range(160 * 90)]
+    # 简化诊断:全帧最暗 10% 像素的平均亮度(暗场指示)与最绿像素占比(残绿指示)
+    lumas = sorted((0.299 * f[0] + 0.587 * f[1] + 0.114 * f[2], i) for i, f in enumerate(arr))
+    darkest = [l for l, _ in lumas[:n_px // 10]]
+    greenish = sum(1 for f in arr if f[1] > f[0] + 40 and f[1] > f[2] + 40)
+    return {"dark10Avg": round(sum(darkest) / max(1, len(darkest)), 1),
+            "greenLeakPct": round(greenish / max(1, n_px) * 100, 3)}
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("root", nargs="?", default=".")

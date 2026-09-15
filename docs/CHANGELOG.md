@@ -1,5 +1,80 @@
 # Changelog
 
+## v0.13 (2026-09-15) — 绿幕键控 v2(黑边/暗场根治)· 字幕-人声能量校准 · 质量探针
+
+来源:用户主诉三向迭代(①字幕/人声/画面对齐 ②绿幕黑边/暗场 ③细节)。**测试 281 → 291 全绿**(新增 `tests/test_v13.py` 10 用例 + `tests/rs_chroma_bench.py` 像素级基准)。算法依据与验证数据见 **ADR-0029**(键控 v2)与 **ADR-0030**(能量校准)。
+
+### 1. 绿幕键控 v2(ADR-0029,默认启用)
+
+旧链 `colorkey+despill+腐蚀` 三类根因缺陷(黑边/暗场/吃边)逐一修复;`chroma.keyMode="legacy"` 一键回退。
+
+- **黑边清零**:旧 `despill=green` 在 RGB 域钳 G,边缘半透明像素被压暗。新链溢色只在色度平面向中性收,**R/B(Y 平面)永不触碰**——压暗源头消除。难例(投影+4:2:0)黑边像素 23.3% → 7.7%,均匀光场景 4.9% → **0**。
+- **暗场清零**:colorkey 是 RGB 欧氏球,暗角/投影下幕布绿键不掉。新 alpha 用 `G/max(R,1)` **比值判据,对亮度缩放完全免疫**(暗角 0.45/投影 0.6 场景实测背景残留 0.00%)。
+- **吃边改善 8.4×**:colorkey 对混合像素近二值丢弃(难例 eaten≈90%)。新链二值 matte → matte blur 空间平均出真半透明 → **YUV 域 alpha 感知去混合**(limited-range 对混色线性,精确反解前景色)→ alpha 曲线收紧(0.25-0.75)。边缘保留率 6.8% → 57.4%,alpha MAE 22.6 → 12.5(-45%)。
+- **色度修正钳 ±40**:细发丝/4:2:0 色度块下 alpha 低估会让去混过冲(紫边),单像素色度修正量钳住——发际紫边清零。
+- **绿色前景保护(混合线距离判据)**:背景任何混色的色度都在"键色→中性灰"连线上(dline 0-2),绿衣 dline≈11——干净分界;`keyDistCut`(默认 3)第二判据按 OR 逻辑救回绿色服饰,纯背景不受 ratio 门控影响。
+- **蓝幕同链支持**:主导通道方向按键色自动选(绿幕 G 比值/蓝幕 B 比值),`sample_chroma` 蓝/绿幕布都能自动采样。
+- 参数:`keyMode/keyTcut(2.2)/keyFeather(1.2)/keyAFloor(0.35)/keyDespill(0.85)/keyDistCut(3)`;`edgeShrink/killRects` 等旧参数仅 legacy 生效。`CACHE_VER v5→v6`(旧 seg 缓存失效一次)。
+- 基准工具正式化:`tests/rs_chroma_bench.py`——合成难例(暗角/投影/热斑/4:2:0 欠采样)+ 像素级指标(黑边/暗场/残绿/alpha MAE/边缘误差 p95)+ `--grid` 参数网格搜索;`tests/chroma_pixels.py` PPM/PGM 读写与场景合成(无 PIL 依赖)。
+
+### 2. 字幕-人声能量校准(ADR-0030,S1 自动执行)
+
+- `rs_align.py calibrate <wordline> --media <素材>`:RMS 能量包络(10ms 窗,纯 stdlib)→ 自适应活跃掩码(噪声底×3/峰值×8%)→ 逐句 ±250ms 窗内**连续活跃段**(50ms sustained)定位能量起点 → 偏移 ≥20ms 才修正(抗抖动)。
+- **实测:系统性偏移 +150ms 校准后中位偏差 140ms → 0ms**(门禁要求 ≥30% 改善);无偏移素材 0 修正;守单调性、同步 src* 字段(remap 锚一致)、重算 gaps、`wordline.calibration` 报告落盘。
+- **S1 管线自动化**:`rs_run.py` S1 注册表加 `post` 步骤(build 成功即自动 calibrate),`build_cmd_from_argv` 泛化支持 post 命令映射。
+- 异常路径:静音素材显式降级说明不崩溃;损坏文件 `PCM_EXTRACT_FAIL` 明确报错。
+
+### 3. 细节迭代
+
+- **rs_verify 绿幕探针**:`chroma_edge_probe`——成片抽帧统计暗场/残绿指示,绿幕工程交付前机械巡检。
+- **sample_chroma 蓝/绿幕自动识别**:主导通道聚类,不再只认绿。
+- pytest/pillow 入 dev 依赖说明(venv 即装即用)。
+
+### 测试
+
+- `tests/test_v13.py` 10 用例:难例质量门槛(黑边/暗场/残留/漏抠)、v2 vs legacy 对比、光照不均回归、绿衣保护、蓝幕键控、legacy 回退、校准修偏/无操作/静音降级/损坏文件报错。
+- 全量 291 通过(281 → 291)。
+
+## v0.12 (2026-09-14) — 安信德 GEO 纯动画实测批修(B1-B8)· 纯动画 IR 组装器(I7)· 热词(I1)· 文本裁片(I2)
+
+来源:安信德 GEO 品牌宣传工程(pure-animation,16:9 / 19 卡 / 158.93s)实机复盘;对账 `docs/HANDOFF-v0.12-安信德GEO实测迭代与修复.md`。**测试 250 → 281 全绿**(新增 `tests/test_v12.py` 31 用例)。
+
+### 必修 Bug(现象 → 根因 → 修法)
+
+- **B1 字幕系统性提前收字(致命)**:终点偏移中位 -170ms、59/68 卡早退(个别 -680~-1420ms);同一卡在 ass / cards.json / wordline 三处时间不一致。根因:`segment()` 对 text 做 `.strip()` 剥掉句首空白后,`index_map`(句内位置 → chars 下标)未同步裁剪,此后一切按位取值系统性偏移 1。修法:**双侧对称同步裁剪**(句尾全角空格同样致命;末尾切片用 `len-map - trail_n`)。? **本修复会改变断句结果**(复盘实测卡数 68→79、节奏 ≈2s/卡)——早退字幕是硬伤,卡数变化是修复副产,预期行为。回归:`test_segment_strip_keeps_index_map_aligned`(前导/尾随全角空格,charSpan 首末下标精确断言)。
+- **B2 音频内容闸误报(高)**:`--audio-content` 相似度 0.888 < 0.90 判 FAIL,人工对账差异几乎全是良性(`1500`?`一千五百`、`10800`?`一万零八百`、`2980`?`两千九百八十`、`4.3`?`四点三`、`四九八零`?`4980`)。根因:`_norm_hard` 只做 lower+去标点,无中文数字折叠。修法:值读/位读/小数三种读法折叠,两侧同口径(ref 与 ASR 一起变,单侧语义误折叠无害)。**未调 `AUDIO_SIM_MIN`**。回归:`test_norm_hard_folds_cn_numbers`(表驱动 12 例)+ `test_audio_content_sim_improves_with_fold`(折叠后 ≥0.94)。
+- **B3 BGM ducking 滤镜图标签二次消费(致命)**:`ducking:true` 必报 `MIX_FAIL: Stream specifier 'a1' matches no streams`(该工程靠 IR 写 `ducking:false` 绕开,bug 仍在)。根因:ffmpeg filtergraph 标签只能被消费一次,旧图把 `[a1]` 同时喂给 sidechaincompress 与 amix。修法:**全部人声先合成一条总线 `[voice]`**,再 `asplit=2` 出闪避侧链与正式混音两路(`duration=first` 语义保留,以人声为准)。ducking:false 分支不动;历史 IR 不批量改回(rules/compose.md 说明"现在可以开")。回归:`test_mix_ducking_graph_has_asplit`(字符串护栏)+ **实机** `test_mix_ducking_renders`(真跑 step_mix,断言时长 ≈ 人声)。
+- **B4 字幕静默不烧(高)**:第一版"成功渲染"的成片**没有字幕**,靠 L1 抽帧才发现。根因:IR 只写了 `subtitle.source` 没写 `subtitle.ass`,`step_subtitle` 遇 ass 缺失无声返回。修法:`subtitle.source` 存在而 `ass` 缺失 → 渲染 warnings 显式 WARN「本次不会烧录字幕」;`rules/compose.md` 改写契约——**`subtitle.ass` 才是烧录字段,source 仅作溯源**。回归:`test_render_warns_when_ass_missing`。
+- **B5 QC 体检四处口径不一致(中)**:rules/verify.md 列 QC 为 L0 判据、rs_run S9 有 `--qc`、README 写了,但 `rs_verify` 的 `L0_CHECKS` 不含 QC、SKILL.md 命令速查漏 `--qc`——只跑 rs_verify 的路径永远不体检。修法:`check_qc` 进 L0(成片存在即对最新成片跑 `rs_sync.run_qc`;QC 不可用 → skipped 留痕不硬失败,ADR-0021 失败语义);SKILL.md 补 `--qc`。注意:有成片的工程 L0 会因此变慢(全片扫描 + 响度测量),且 QC FAIL 会让 L0 失败——这是 rules 早已承诺的行为。回归:`test_verify_l0_includes_qc_when_video_present`。
+- **B6 3 字孤卡(中)**:破折/短语收尾切出 3 字孤卡「说谁好」。根因:`_card_penalty` 对 <4 字只罚 -1.2,DP 在长破折句上仍会选出孤卡方案。修法:保持 `MIN_CHARS=2` 不变(调 4 会制造超字数无解),新增**后处理孤卡合并**:末卡 <4 字且并入前卡 ≤ max_chars → 并入(时间按合并后首末字重新锚定,对齐精度不动);并不下 → violations 显式记 `orphan-card` 不静默。? **卡数会变**(孤卡并入前卡)。回归:`test_no_three_char_orphan_card_on_dash_sentence` + REGRESSION 固化 + `test_orphan_card_reported_in_violations`。
+- **B7 wordline 平滑上游化(中)**:纯动画工程自写 `_smooth_wordline.py` 把标点设零宽(endMs=startMs)违反 rs_verify 单调门禁(147 字 endMs≤startMs 硬失败)。修法:新增 `rs_align.py smooth` 子命令——标点零宽 `end=start+1`(+1ms 恰好严格单调)、起点单调化、内容字重叠钳制(前字 end 收到后字 start)、最小宽度保底;**不动 build 路径的 `max(b, a+20)` 保底**(单调门禁第一道护栏)。回归:`test_align_smooth_punct_zero_width_monotonic` + `test_align_smooth_clamps_overlap`。
+- **B8 ffmpeg `-t` 位置陷阱(高,丢 20.4s)**:10 张补长卡各短一截(视频流 138.77s ≠ 预期 159.17s),靠 rs_render 音画对齐断言抓到。根因:`-t` 放输出侧会把 tpad 补的帧整段截掉。修法:`references/ffmpeg-recipes.md` 补正确/错误对照;`rules/selfcheck.md` 写明「渲染后时长断言 ≠ 通过即停下」;I7 冻结帧实现即按输入侧 `-t` 落地。
+
+### 新能力
+
+- **I7 纯动画 IR 组装器(ADR-0027)**:`rs_ir.py build --from-cards <manifest> --anchors <cards.json> --wordline <wl> [--voice --bgm]`——字符级锚点分组(命中消费/标点继承/同卡相邻合并/空组显式报错/hit 标志防不前进)+ 停顿中点切卡 + 冻结帧补长(`clip.freezeMs`,渲染端 tpad;`CACHE_VER` v4→**v5**,旧 seg 缓存失效一次)+ `_manual_edits` 护栏照旧 + subtitle.ass 写全。**消灭"每个纯动画工程重写三个脚本"**(安信德 `_build_ir.py` 等已上游化);文本锚定抽 `rs_common.content_index/anchor_span` 共享(rs_subtitle override 委托同源)。回归:`test_assign_card_groups_*` / `test_build_from_cards_end_to_end`(3 卡最小工程一条命令出 IR、validate 全绿)/ `test_freeze_frame_extends_segment`(实机)。
+- **I1 ASR 热词链路(ADR-0028)**:`rs_align build --hotwords "安信德 GEO优化"` / `--terms-file 00_brief/terms.txt`(每行一词,# 注释)透传自带 ASR;wordline `asr.hotwords` 留痕。**实测结论:默认模型 paraformer-zh 即 SeACo-Paraformer(funasr 源码映射),热词原生生效,无需切档**;专名错 → 先补热词重跑,不要手工改字(rules/asr.md §5.1)。回归:`test_align_passes_hotwords_to_asr`(monkeypatch 断言命令行)。
+- **I2 按文本裁片**:`rs_cut.py <wordline> --from-text "引文"`(或 `--from-text-file`)——引文顺序锚定(rs_common.anchor_span,乱序拒绝)→ 只保留引文区间;引文外两刀走现有 guard(窄 gap 出点借不进 → 保守 review,宁可漏删);`cutlist.fromText` 留痕。回归:`test_cut_from_text_builds_keep_intervals`。
+- **I6 制作端 checklist**:`rules/intake.md` 补绿幕四问(离幕距离/幕面亮度差/服装对比/快门)+ 纯动画四问(比例/卡数节奏/旁白来源/卡定稿)+ 环境 checklist(`WPI_FFMPEG` 与 `ARTBOARD_FFMPEG` 都要设、ASR probe)。
+
+### 交叉技能条目(只在本仓库留规则,不改 artboard 本体)
+
+`rules/artboard.md`:单一外层统一出场/内层只挂入场 + 计数器内容为空(#7);定宽网格先算总宽再定起点(#8);`WPI_FFMPEG` 才是 MP4 导出有效环境变量(#13);Mode S 录制 t0=2.0s 起算/片长 ≈ 时间轴 ?1.8s/`--max-wait` ≤15s(#16,ADR-0012 补全);scaffold 落盘由 `config.studio_dir` 决定、进工程目录用 `ARTBOARD_STUDIO`。`references/ffmpeg-recipes.md`:Windows/Git Bash 引号与路径纪律(#15);chromakey→colorkey 与 BGM 闪避 asplit 版写法勘误。
+
+### 文档
+
+ADR-0027(纯动画 IR 组装器)、ADR-0028(ASR 热词链路)落盘;CONTEXT.md 补 5 个术语;BACKLOG 更新(I4 说话人分离 P2 不做、I5 音频事件 IDEA、W5 锚定共享已部分完成);SKILL.md 命令速查 + 硬规则 23;README 命令速查;rules:compose / verify / asr / intake / artboard / selfcheck / 纯动画分册。
+
+## v0.11 (2026-09-14) — QA 闭环 · 转场三级语法 · punch-in · 粗剪智能化 · 文本化(ITERATION-GUIDE R1-R5)
+
+- **R1 QA 闭环**:`rs_sync --qc` 成片体检——黑帧 ≥0.3s / 冻结 ≥2.5s / VFR 混帧 = FAIL,片内静音 ≥2s 告警(首尾白名单);响度测量进报告(I∈[-15,-13] LUFS、TP ≤ -0.9 FAIL)。**final 档双 pass loudnorm**(linear=true,先测后编;preview/draft 仍单 pass)。**matte 探针**:绿幕段渲染时第二输出抽 alpha 前景占比,<1% 或 >70% → `matte_suspect` 告警(geq 字节域事故的机械护栏);CACHE_VER v4。
+- **R2 转场三级语法(ADR-0026)**:`rs_ir` 按源间隙标注 `transition.reason`——<1s=jumpcut(1 帧软切:视觉即硬切,吃掉姿态/alpha pop 与爆音);≥1s=topic(300ms 溶解,Reisz 语法);无 reason 亚帧仍提升 joinCrossfadeMs(ADR-0023 不回退);cap 与整链回退不变。
+- **R3 punch-in**(opt-in):渲染端 clip `punchIn.factor`(1.0-2.0,anchorY 纵向偏置);`rs_ir --punch-in-auto` 启发式:真剪辑点(移除 ≥1.2s)后 1.4x,密度成片时间轴 15s/≤3 处(Hitchcock:紧构图只给重点)。
+- **R4 粗剪智能化**:词表外置 `templates/fillers.json`(brief 阶段补口癖,缺省回退内建);margin 不对称(前 150/后 300ms);防碎切 smooth(间隙 <100ms 并刀、<120ms 碎刀放弃——宁可漏删);新 `hesitate` 检测器(0.3-1.2s 无字段能量谷 → review,需 `--media`)。
+- **R5 文本化**:每刀带 `text` 前后 1.2s 上下文;`cut_report.md` 尾部产出**删改稿**(~~remove~~/**review**/keep 分行)——机器粗剪、人读稿精修(对齐 Descript/Premiere TBE 心智)。
+- schema:transition.reason / clip.punchIn;docs:ADR-0026、rules/roughcut、rules/compose、rules/verify L0 表、SKILL.md。测试 239 → **250 全绿**(新增 test_v11.py 11 用例)。
+
+
 ## v0.12 (2026-09-14) — 安信德 GEO 纯动画实测批修(B1-B8)· 纯动画 IR 组装器(I7)· 热词(I1)· 文本裁片(I2)
 
 来源:安信德 GEO 品牌宣传工程(pure-animation,16:9 / 19 卡 / 158.93s)实机复盘;对账 `docs/HANDOFF-v0.12-安信德GEO实测迭代与修复.md`。**测试 250 → 281 全绿**(新增 `tests/test_v12.py` 31 用例)。
