@@ -38,4 +38,4 @@ material `content` 是 JSON 字符串:`{styles:[{fill{content{solid{color[RGB 0-
 ## 已知限制
 
 - 6.0+ 加密(11.3=protocol 183),pyJianYingDraft 只支持 5.9。
-- chroma 抠像在 5.9 有 chromas material,但 pyJianYingDraft 未封装 → CutFlow v1 不写,警告转 FFmpeg。
+- chroma 抠像在 5.9 有 chromas material,但 v0.14(ADR-0031)起 CutFlow 已不做抠像,该 material 不再使用。

@@ -158,7 +158,7 @@ rs_subtitle.py --from-transcript 02_sensed/transcript_corrected.json --style sub
 
 | style | 用途 | 特点 |
 |---|---|---|
-| talkshow-bold | 口播/绿幕 | 大字居中偏下、粗体黑边、9:16 marginV=500 / 3:4 marginV=400 / 16:9 marginV=120 |
+| talkshow-bold | 口播 | 大字居中偏下、粗体黑边、9:16 marginV=500 / 3:4 marginV=400 / 16:9 marginV=120 |
 | tutorial-clean | 教程 | 底部半透明底条(BorderStyle=3) |
 | subtitle-white | 通用白字黑边 | |
 

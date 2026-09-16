@@ -1,6 +1,6 @@
 ---
 name: cutflow
-description: AI 视频制作总控技能:接收口播视频/文案/剧本分镜/图片,经自带 ASR(字级对齐)→粗剪(CutList)→合成(TTS/artboard/品牌/音效)→剪辑(FFmpeg直出+剪映5.9草稿)→字幕→烧录导出→分级自检→封面与文案,产出成片与平台物料;支持 9:16/16:9 与多 Logo 变体,支持手工改阶段后一键重建。当用户想要:做视频、剪视频、口播视频、教程视频、动画视频、把文案变成视频、给视频加字幕、粗剪去口误去重录、绿幕抠像、配音、生成剪映草稿、出 AI 视频提示词、生成封面与标题简介 Tag 时使用。
+description: AI 视频制作总控技能:接收口播视频/文案/剧本分镜/图片,经自带 ASR(字级对齐)→粗剪(CutList)→合成(TTS/artboard/品牌/音效)→剪辑(FFmpeg直出+剪映5.9草稿)→字幕→烧录导出→分级自检→封面与文案,产出成片与平台物料;支持 9:16/16:9 与多 Logo 变体,支持手工改阶段后一键重建。**抠像与背景合成由用户在交付前自行完成**(S0 自动检测未处理绿幕/蓝幕并阻断提醒)。当用户想要:做视频、剪视频、口播视频、教程视频、动画视频、把文案变成视频、给视频加字幕、粗剪去口误去重录、配音、生成剪映草稿、出 AI 视频提示词、生成封面与标题简介 Tag 时使用。
 ---
 
 # CutFlow — AI 视频制作总控
@@ -76,7 +76,7 @@ S0 素材 ─► S1 转写+字级对齐 ─► S2 粗剪 ─► S3 基础合成 
 
 | 阶段 | 名称 | 主要脚本 | 产物 | 门禁 |
 |---|---|---|---|---|
-| **S0** | 基础素材 | `rs_ingest` + `rs_doctor` | `01_materials/manifest.json` + `brief.md` | 素材可解码 |
+| **S0** | 基础素材 | `rs_ingest` + `rs_doctor` | `01_materials/manifest.json` + `brief.md` | 素材可解码;**未处理幕布检测(ADR-0031)** |
 | **S1** | 转写与字级对齐 | `rs_align`(→`tools/fun_asr.py`) | `05_ir/wordline.json` | 覆盖率 ≥99% |
 | **S2** | 粗剪处理 | `rs_cut` | `04_cut/cutlist.json` | remove 刀 guard 全过 |
 | **S3** | 基础合成 | `rs_ir build` + `rs_render` | `seg_*/base/` | IR validate |
@@ -109,13 +109,14 @@ S0 素材 ─► S1 转写+字级对齐 ─► S2 粗剪 ─► S3 基础合成 
 14. **竖屏(9:16)每卡 10–12 字、CPS ≤9 字/秒、单卡 0.83–7s**;旧工程按当时 `maxChars` 复现,不追改。
 15. 素材/中间件/git:`01_materials` 只读;大文件与 `models/` 不进 git;工程目录 `<YYYYMMDD>-<中文标题>-<类型>`;产物中文命名并带 variantId;测试件用 `dev-` 前缀,交付前 `rs_cleanup` 必删。
 16. 感知备选:Agent 自带视觉优先自己看图;OCR/VQA 仅在批量/无视觉/`force_local` 时用。
-17. 开工必读 `brief.videoType`(`talking-head` / `talking-head+animation` / `pure-animation`)对应的 `rules/video-types/` 分册(**仅一册**);它同时定义该类型的**管线分支**(绿幕抠像 / 动画密度与贴合 / 声音来源)。预留扩展位:`screen-recording` / `interview` / `drama` / `film-commentary`(暂不实现)。
+17. 开工必读 `brief.videoType`(`talking-head` / `talking-head+animation` / `pure-animation`)对应的 `rules/video-types/` 分册(**仅一册**);它同时定义该类型的**管线分支**(素材是否需预抠像 / 动画密度与贴合 / 声音来源)。预留扩展位:`screen-recording` / `interview` / `drama` / `film-commentary`(暂不实现)。
 18. **卡拉OK(--karaoke)**:挂字必须在必并/合规校验**之前**,以「显示字形」(含标点,`_clean_card` 剥掉的标点会在 `\kf` 层经 chars 带回)为唯一预算口径;合并事件同步拼 `chars`;任何 ASS Dialogue 文本匹配/计数前必须剥 `{...}` override 标签(rs_sync 已内置)。
 19. **必并线 = 单卡时长下限(0.83s)**,两线之间不留死区(不并又延不满 → L0 硬失败);预算放不下时向下一卡吞并,起点取短卡(对齐精度不动)。
 20. **卡时间的调整只能在「释放余量」内**:起点 ≤ 首字 `startMs`、终点 ≥ 末字 `endMs` 且延长 ≤ +0.30s;余量耗尽仍不足 2 帧就保留字级精确时间(对齐精度 > 卡间距)。`rs_sync` 同时校验起点与**终点**偏移。
 21. **画幅/平台只查表**:比例→宽高的唯一真相源是 `rs_common.RATIOS`,平台参数在 `templates/platforms.json`;禁止写死 `1080x1920` 字符串比较,CPS 上限按当前比例取(`segmentation.cps_max_for`)。
 22. **转场字段唯一 `durMs`**(`ms` 是幽灵字段,validate 直接报错;v0.10 起 0<durMs<1帧 自动提升为 `joinCrossfadeMs` 交叉溶解——尾帧扩展法保证零时间漂移,ADR-0023;仅源间隙放不下时才整链弃用走 concat)。多段人声的 `sourceInMs` 由 rs_render 输入寻址消费——不要再手工预抽 voice_full(绕过法仍有效但不必需)。**S9 自带成片音频内容闸**(ADR-0021):交付前对成片音轨跑 ASR 对账,报告"跳过"也要核对原因。ASR 未就绪一律自动部署(`fun_asr.py --ensure`),禁止让用户手装或启动服务。
 23. **`subtitle.ass` 才是烧录字段**(只写 `subtitle.source` = 不烧字幕,v0.12 渲染时显式 WARN)。生成式 IR(from-cutlist / **from-cards**)一律不得手改,重建覆盖受 `_manual_edits` 护栏。**音频闸/对齐闸不过 → 修归一化与坐标系,禁止调阈值**(AUDIO_SIM_MIN / END_TOL_MS 等);渲染后时长断言报警必须查完再交付。
+24. **绿幕由用户自行预处理**(ADR-0031,v0.14):CutFlow 不再抠像/合成背景 —— 用户须先抠好并合成背景再交付编辑。S0 摄取自动抽帧检测幕布,命中即阻断(`GREEN_SCREEN_INPUT`),提示用户处理;确属误判时用户说明后 `rs_ingest.py green-ok <工程> --reason "…"` 留痕放行。L0 自检二次把关;**禁止绕过检测或替用户抠像**。
 
 ---
 
@@ -124,7 +125,7 @@ S0 素材 ─► S1 转写+字级对齐 ─► S2 粗剪 ─► S3 基础合成 
 | 环节 | 命令 |
 |------|------|
 | 体检 | `rs_doctor.py --report` |
-| **素材摄取(S0)** | `rs_ingest.py scan <工程>` / `rs_ingest.py deliverables <工程>` |
+| **素材摄取(S0)** | `rs_ingest.py scan <工程>` / `rs_ingest.py deliverables <工程>` / `rs_ingest.py green-ok <工程> --reason "误判说明"` |
 | **阶段状态 / 增量** | `rs_run.py --status` / `--from S3` / `--only S7` / `--dirty` / `--explain S7` |
 | **一键重建** | `rs_run.py --init`(生成 rebuild.py)/ `--from S8 --force` / `--rollback` |
 | **分级自检** | `rs_verify.py <工程>` / `--level L1` / `--mark-first` |
@@ -161,7 +162,7 @@ S0 素材 ─► S1 转写+字级对齐 ─► S2 粗剪 ─► S3 基础合成 
 | 你改了什么 | 运行哪个 |
 |---|---|
 | 字幕 `06_output/subtitles.ass` | `python 06_output/rebuild.py` |
-| IR / Wordline `05_ir/` | `python 05_ir/rebuild.py`;⚠ **手改过 `05_ir/project.json`**(手注 chroma/背景/单 clip 音频)→ 改跑 `python 06_output/rebuild.py`(S8 只用现有 ass,不碰 IR) |
+| IR / Wordline `05_ir/` | `python 05_ir/rebuild.py`;⚠ **手改过 `05_ir/project.json`**(手注单 clip 音频/转场)→ 改跑 `python 06_output/rebuild.py`(S8 只用现有 ass,不碰 IR) |
 | 粗剪决策 `04_cut/cutlist*.json` | `python 04_cut/rebuild.py` |
 | artboard 卡片 `03_assets/artboard/` | `python 03_assets/artboard/rebuild.py` |
 | 拿不准 | `python rebuild.py`(全量) |
@@ -207,9 +208,9 @@ S0 素材 ─► S1 转写+字级对齐 ─► S2 粗剪 ─► S3 基础合成 
 
 ## 8. 剪映 5.9 双通道 / AI 生视频边界
 
-- **草稿直写**(主):`rs_jy_draft` → 用户获得可编辑工程;绿幕叠加无对应字段会警告。
+- **草稿直写**(主):`rs_jy_draft` → 用户获得可编辑工程。
 - **GUI 自动导出**(辅,computer-use):控件锚点见 `references/jianying-gui-anchors.md`(11.3 草稿加密,永不操作)。
-- 变体标记 `backends`;剪映缺特性(如 chroma)自动降级并在交付说明标注。
+- 变体标记 `backends`;剪映缺特性自动降级并在交付说明标注。
 - **AI 生视频**:只产提示词(首帧图 + 5–10s i2v);原 `cutflow-prompt` 技能组已停用并归档到 `docs/archive/cutflow-prompt/`(见 OPTIMIZATION-v7 #5),**绝不调用任何生图/生视频 API**。
 
 ---

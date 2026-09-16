@@ -10,8 +10,7 @@
 `rs_jy_draft.py 05_ir/project.json --name <草稿名> [--subtitles 03_assets/tts/manifest.json] [--open]`
 
 - 落位 `<draft_root>/<名>/draft_content.json` + `draft_meta_info.json`,并注册 root_meta_info.json(首页可见)。
-- 能力映射:视频/音频/文本字幕/位置缩放;**chroma 绿幕无 5.9 对应→警告跳过**(该类项目交付以 FFmpeg 成片为准);
-- 交付时告诉用户:在剪映首页找到同名草稿即可继续精修。
+- 能力映射:视频/音频/文本字幕/位置缩放;交付时告诉用户:在剪映首页找到同名草稿即可继续精修。
 
 ## 通道二:GUI 自动导出(辅,用 computer-use)
 

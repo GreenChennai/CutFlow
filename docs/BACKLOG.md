@@ -5,6 +5,14 @@
 
 ## 待办
 
+### v0.14(2026-09-16,来源用户要求:抠像移交用户 + 幕布检测)
+
+- [x] **抠像/背景合成移交用户(ADR-0031)**:删除 `chroma`/`background` 全链(render/ir/schema/jy/verify/文档/测试);用户预抠像+合成背景后交付剪辑
+- [x] **S0 幕布检测门禁**:`rs_greenscreen.py` 抽帧判据 + `rs_ingest green-ok` 误判放行留痕 + `rs_verify` L0 二次把关
+- [x] **批修**:`rs_subtitle` 卡尾标点终点锚(NCLM1605);测试 ffmpeg cfg/skipif 健壮性;`skills/cutflow-prompt/` 遗留副本
+- [ ] **检测阈值实测校准(P2)**:`rs_greenscreen` 的 BORDER_FRAC/OVERALL_FRAC/MAX_CV 是经验值,需用真实绿幕/非绿幕素材各跑一批统计误报率/漏报率,必要时按素材类型分档
+- [ ] **多段素材联合判定(P2)**:当前逐条素材独立检测;同一工程多条同源素材可合并判据(减少单条抽帧抖动)
+
 ### v0.12(2026-09-14,来源 HANDOFF-v0.12-安信德GEO实测迭代与修复)
 
 - [x] **B1–B8 必修批修**:字幕 strip↔index_map 坐标系(致命)/ 中文数字折叠 / ducking asplit / ass 缺失 WARN / L0 纳入 QC / 孤卡合并 / rs_align smooth / `-t` 输入侧陷阱;回归 `tests/test_v12.py`(250 → 281)

@@ -79,10 +79,18 @@ def main() -> int:
     checks.append(_check("GPT-SoVITS 引擎", ok, f"{cfg['tts']['url']} {msg}", fatal=False,
                          group="感知服务", hint="启动 EchoSmith 引擎 api_v2.py"))
 
-    for key, label, group in (("ocr_exe", "OCR 可执行文件", "感知本地"),
-                              ("vqa_python", "VQA 解释器", "感知本地"),
-                              ("vqa_cli", "VQA 入口脚本", "感知本地")):
-        checks.append(_check(label, Path(cfg[key]).is_file(), cfg[key], group=group))
+    checks.append(_check("OCR 可执行文件", Path(cfg["ocr_exe"]).is_file(),
+                         cfg["ocr_exe"], group="感知本地"))
+    # v0.3.0 vqa_exe 直连模式优先;无直连时回退 vqa_python+vqa_cli 本地项目模式
+    vqa_exe_ok = bool(cfg.get("vqa_exe")) and Path(cfg["vqa_exe"]).is_file()
+    checks.append(_check("VQA 直连 exe", vqa_exe_ok, cfg.get("vqa_exe", ""),
+                         group="感知本地"))
+    legacy_vqa = Path(cfg["vqa_python"]).is_file() and Path(cfg["vqa_cli"]).is_file()
+    checks.append(_check("VQA 解释器+入口(直连缺失时的回退)",
+                         vqa_exe_ok or legacy_vqa,
+                         f"vqa_exe={cfg.get('vqa_exe', '')}" if vqa_exe_ok
+                         else f"{cfg['vqa_python']} + {cfg['vqa_cli']}",
+                         group="感知本地"))
 
     jy = cfg.get("jianying59", {})
     checks.append(_check("剪映 5.9 主程序", Path(jy.get("exe", "")).is_file(),

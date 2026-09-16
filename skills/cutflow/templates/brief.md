@@ -4,7 +4,9 @@
 
 ## 目标
 - videoType(决定 `rules/video-types/` 分册与管线分支):
-  `talking-head`(纯口播 · 绿幕抠像 + 字幕) / `talking-head+animation`(口播+动画) / `pure-animation`(纯动画)
+  `talking-head`(纯口播 · 素材须已抠像并合成背景 + 字幕) / `talking-head+animation`(口播+动画) / `pure-animation`(纯动画)
+- 绿幕预处理(仅 talking-head 系):已由用户自行抠像并合成背景(是/否;若为"否"→ 不得开工,先按 `01_materials/GREENSCREEN.md` 处理)
+  - 误判放行说明(可选,检测误报时填):`绿幕检测:误判(<原因>)`
 - 穿插动画密度:少(无/少/多;纯口播可填"无")
 - 声音来源(纯动画必填):TTS 音色卡(默认 koubo-test) / 视频中人物原声
 - 用途/平台:

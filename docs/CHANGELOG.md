@@ -1,5 +1,33 @@
 # Changelog
 
+## v0.14 (2026-09-16) — 抠像/背景合成移交用户 · S0 幕布检测门禁(ADR-0031)
+
+来源:用户要求「删除绿幕抠像功能,改为让用户自己抠像然后合成背景,之后再对处理完的原始素材进行剪辑;并增加检测,若是绿幕视频提醒用户处理,误判可说明后放行」。**测试 286 通过 / 8 跳过**(删除旧键控用例,新增 `tests/test_v14.py` 15 用例)。
+
+### 1. 移除抠像与背景合成(破坏性)
+
+- **IR 不再支持 `chroma`/`background`**:旧工程 IR 带这两个字段时 `rs_ir validate` 明确报错并给出迁移指引(不再静默忽略)。
+- **rs_render**:删除 `sample_chroma`/`chroma_hex`/`_chroma_key_v2_chain`/`_chroma_fg_chain`/`_crop_pct_chain`/`parse_matte_log`/`matte_fg_ratio`/`matte_probe_args`、`CHROMA_DEFAULTS`/`BG_TYPES`、基轨背景合成与 matte 探针;`CACHE_VER v6→v7`。
+- **配套清理**:`rs_ir._validate_chroma_bg`、`rs_verify.chroma_edge_probe`、`rs_jy_draft` 绿幕警告、schema `chroma` 定义、规则/文档/README/CONTEXT 全部同步;删除 `tests/chroma_pixels.py`、`tests/rs_chroma_bench.py`。
+- ADR-0003 / 0022 / 0029 标记**已作废**。
+
+### 2. S0 幕布检测门禁(ADR-0031)
+
+- 新增 `rs_greenscreen.py`(纯 stdlib + ffmpeg 抽帧):边框环(外 20%)幕色占比 ≥0.45、全帧 ≥0.18、幕色亮度离散度 cv ≤0.40 三条件同时满足才判绿幕/蓝幕(均匀度用于排除草地/树叶等自然绿)。
+- `rs_ingest scan` 逐条视频检测;命中且无放行 → 阻断(**`GREEN_SCREEN_INPUT`**),写 `01_materials/GREENSCREEN.md` 处理指引(用户自行抠像+合成背景后替换素材重跑)。
+- **误判放行**:`rs_ingest.py green-ok <工程> --reason "…"` 写 `00_brief/greenscreen-override.txt`(也接受 brief.md 的「绿幕检测:误判…」行),manifest 标 `overridden`,可审计。
+- `rs_verify` L0 新增「素材无未处理幕布」判据,交付前二次把关;旧工程 manifest 无该字段 → skipped(不误伤)。
+
+### 3. Bug 修复
+
+- **`rs_subtitle` 卡尾标点当终点锚**(NCLM1605,2026-09-15):卡尾标点在重映射后可能吸收停顿宽度,导致 rs_sync「滞留过久」闸必炸;`_event_from_content_range` 的 `end/anchorEnd` 改取最后一个**内容字**(标点仍显示)。回归 `test_override_end_anchor_excludes_trailing_punct`。
+- **测试健壮性**:`test_v13` 把 ffmpeg **二进制路径**误当 `ffmpeg_dir` 传入(应传父目录),且校准用例缺 `@needs_ff` 跳过保护;`test_v12` 两个 ffmpeg 用例缺 skipif;`skills/cutflow-prompt/` 遗留副本导致 `test_v7` 报存在 —— 均已修。
+
+### 测试
+
+- `tests/test_v14.py` 15 用例:帧级判据(绿/蓝幕、均匀度反例、纯色场景)、放行留痕(CLI/brief)、S0 阻断与放行、L0 闸(失败/放行/旧 manifest/干净)、真实视频抽帧。
+- 移除旧键控用例后全量 **286 通过、8 跳过**。
+
 ## v0.13 (2026-09-15) — 绿幕键控 v2(黑边/暗场根治)· 字幕-人声能量校准 · 质量探针
 
 来源:用户主诉三向迭代(①字幕/人声/画面对齐 ②绿幕黑边/暗场 ③细节)。**测试 281 → 291 全绿**(新增 `tests/test_v13.py` 10 用例 + `tests/rs_chroma_bench.py` 像素级基准)。算法依据与验证数据见 **ADR-0029**(键控 v2)与 **ADR-0030**(能量校准)。

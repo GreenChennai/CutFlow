@@ -98,33 +98,6 @@ def test_concat_trims_to_nominal_total():
     assert "cum - offset - frame" in src          # 安全边际
 
 
-# ---------------------------------------------------------------- ADR-0022 边缘精修
-
-def test_chroma_defaults_unified():
-    assert rs_render.CHROMA_DEFAULTS == {"similarity": 0.15, "blend": 0.12}
-
-
-def test_chroma_chain_edge_shrink_and_green_killrect():
-    c = {"edgeShrink": 1.2, "edgeFeather": 0.6,
-         "killRects": [[0, 0.8, 0.32, 1.0]], "killRectMode": "green"}
-    joined = ",".join(rs_render._chroma_fg_chain(c))
-    assert "clip((alpha(X,Y)-140.2)/114.7*255,0,255)" in joined  # 腐蚀硬化(v0.10.1:geq 是 0-255 字节域,不是 [0,1])
-    assert "gblur=sigma=1.20:planes=8" in joined                 # 腐蚀模糊
-    assert "gblur=sigma=0.60:planes=8" in joined                 # 细羽化
-    assert "lt(cb(X,Y),116)*lt(cr(X,Y),116)" in joined           # green-only
-    assert joined.index("geq") < joined.index("gblur=sigma=0.60")  # 先硬化后羽化
-
-
-def test_chroma_chain_killrect_all_legacy():
-    c = {"edgeShrink": 0, "killRects": [[0, 0, 1, 1]], "killRectMode": "all"}
-    joined = ",".join(rs_render._chroma_fg_chain(c))
-    assert "if(" in joined and "lt(cb" not in joined
-
-
-def test_chroma_chain_empty_when_disabled():
-    assert rs_render._chroma_fg_chain({"edgeShrink": 0, "edgeFeather": 0}) == []
-
-
 # ---------------------------------------------------------------- ADR-0024 ASR 自举
 
 def _load_fun_asr():
@@ -234,10 +207,10 @@ def test_probe_logo_alpha_bbox(tmp_path):
 def test_schema_json_valid_and_new_fields():
     schema = json.loads((REPO / "skills" / "cutflow" / "templates" /
                          "project.schema.json").read_text(encoding="utf-8"))
-    chroma = schema["$defs"]["clip"]["properties"]["chroma"]["properties"]
-    assert chroma["edgeShrink"]["default"] == 1.2
-    assert chroma["killRectMode"]["default"] == "green"
-    assert "overlay" in schema["$defs"]["clip"]["properties"]
+    props = schema["$defs"]["clip"]["properties"]
+    assert "chroma" not in props and "background" not in props, \
+        "v0.14(ADR-0031):抠像/背景合成已移除,schema 不得再留字段"
+    assert "overlay" in props
     assert "joinCrossfadeMs" in schema["properties"]
     assert "cut" in schema["$defs"]["clip"]["properties"]["transition"]["properties"]["type"]["enum"]
 
@@ -261,33 +234,12 @@ def test_first_material_skips_manifest_and_images(tmp_path):
 
 
 @pytest.mark.skipif(not Path(FFMPEG).is_file(), reason="ffmpeg 不可用")
-def test_chroma_chain_preserves_opaque_subject(tmp_path):
-    """v0.10.1 回归:geq 的 alpha(X,Y) 是 0-255 字节域,不是 [0,1]。
-    旧式 clip((alpha-t)/(1-t),0,1) 恒输出 1 → 店群工程人物整帧透明(全片无人)。
-    修复后:不透明人体不透明、矩形内绿幕被 green-only 清除、矩形外绿幕不受影响。"""
-    frame = tmp_path / "f.png"
-    p = subprocess.run(
-        [FFMPEG, "-y", "-v", "error",
-         "-f", "lavfi", "-i", "color=c=green:s=270x480:d=1,format=yuv420p",
-         "-f", "lavfi", "-i", "color=c=red:s=100x200:d=1",
-         "-filter_complex", "[0][1]overlay=85:140,format=yuva444p",
-         "-frames:v", "1", str(frame)], capture_output=True)
-    if p.returncode != 0:
-        pytest.skip(f"lavfi 不可用:{p.stderr[-120:]}".encode("ascii", "replace").decode())
-    chroma = {"edgeShrink": 1.2, "edgeShrinkT": 0.55, "edgeFeather": 0.6,
-              "killRects": [[0, 0, 0.5, 1.0]], "killRectMode": "green"}
-    vf = ",".join(rs_render._chroma_fg_chain(chroma))
-    out = tmp_path / "out.png"
-    p = subprocess.run([FFMPEG, "-y", "-v", "error", "-i", str(frame),
-                        "-vf", vf, "-frames:v", "1", str(out)], capture_output=True)
-    if p.returncode != 0:
-        pytest.skip(f"geq 链失败:{p.stderr[-160:]}".encode("ascii", "replace").decode())
-    import numpy as np  # noqa: PLC0415 — 仅测试用
-    a = np.asarray(Image.open(out).convert("RGBA")) if (Image := _pil()) else None
-    assert a is not None, "需要 Pillow"
-    assert a[240, 135, 3] >= 250, "红块(人体模拟)必须保持不透明 —— 字节域腐蚀不得清人"
-    assert a[10, 200, 3] >= 250, "矩形外绿幕不在 killRect 内,不得被动"
-    assert a[240, 30, 3] <= 5, "矩形内绿幕主导像素必须被 green-only killRect 清除"
+def test_removed_chroma_helpers_are_gone():
+    """v0.14(ADR-0031):抠像链函数整体移除 —— 不得残留任何键控实现。"""
+    for name in ("sample_chroma", "chroma_hex", "_chroma_key_v2_chain", "_chroma_fg_chain",
+                 "_crop_pct_chain", "parse_matte_log", "matte_fg_ratio", "matte_probe_args",
+                 "CHROMA_DEFAULTS", "BG_TYPES"):
+        assert not hasattr(rs_render, name), f"rs_render.{name} 应随抠像功能一并删除"
 
 
 def _pil():

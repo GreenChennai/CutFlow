@@ -10,8 +10,8 @@ v0.6.0 新增(rules/incremental.md §3):
     只改一张卡 → 仅该卡重渲,其余全部命中。
   · 步骤级缓存链:concat/compose/mix/subtitle/encode 各自的键 = 上游键 + 本步参数;
     零改动重跑整条渲染链全部命中,秒级返回。
-  · 基轨绿幕:clip.chroma + clip.background(色块/图片/视频/lavfi 动态渐变),
-    抠像在 segment 步完成(逐段合成背景,天然支持缓存)。
+  · v0.14(ADR-0031):抠像/背景合成已移除 —— 用户须先自行抠像+合成背景再交付;
+    本渲染器只做剪辑(转场/punch-in/字幕/音效/品牌)。
   · --explain 逐段/逐步报告命中情况(不执行);--clear-cache 清 seg 缓存。
 """
 from __future__ import annotations
@@ -34,10 +34,8 @@ RATIO = dict(RATIOS)             # 画幅唯一真相源在 rs_common(新增画�
 LOUDNORM_BUS = "loudnorm=I=-14:TP=-1.0:LRA=11"
 LOUDNORM_VOICE = "loudnorm=I=-16:TP=-1.5:LRA=11"
 LOUDNESS_TARGET = {"I": -14.0, "TP": -1.0, "LRA": 11.0}   # 硬规则 11;出处 ITERATION-GUIDE §8.2
-CACHE_VER = "v6"                 # 渲染语义变更时 +1,防旧缓存幽灵命中(v0.12:seg 支持 clip.freezeMs 冻结帧补长)
-CHROMA_DEFAULTS = {"similarity": 0.15, "blend": 0.12}   # 基轨/overlay/schema 三处统一(唯一真相源)
+CACHE_VER = "v7"                 # 渲染语义变更时 +1,防旧缓存幽灵命中(v0.14:移除抠像/背景合成)
 SEG_CACHE_KEEP = 400             # segcache 最大保留文件数(超出按 mtime 淘汰)
-BG_TYPES = {"color", "image", "video", "gradient"}
 
 
 def esc_sub(path: Path) -> str:
@@ -110,8 +108,7 @@ def seg_key(clip: dict, doc: dict, cw: int, ch: int, fp: str) -> str:
         "fps": doc["fps"], "canvas": [cw, ch], "media": fp,
         "clip": {k: clip.get(k) for k in
                  ("src", "durationMs", "sourceInMs", "speed", "loop", "volume",
-                  "reframe", "motion", "chroma", "background", "tailMs", "punchIn",
-                  "freezeMs")},
+                  "reframe", "motion", "tailMs", "punchIn", "freezeMs")},
     }
     return hashlib.sha1(json.dumps(payload, sort_keys=True, ensure_ascii=False)
                         .encode("utf-8")).hexdigest()
@@ -140,219 +137,13 @@ def prune_seg_cache(cache_dir: Path) -> None:
         old.unlink(missing_ok=True)
 
 
-# ---------------------------------------------------------------- 绿幕
-
-def sample_chroma(src: Path, cfg: dict) -> str:
-    """从素材边缘 4 点自动采绿幕色(取绿色主导点的均值)。
-
-    采样点避开常见天花板/地板:左右两侧 12% 与 45% 高度。失败则要求显式指定 color。
-    """
-    pr = ffprobe_json(src, cfg)
-    vs = next((s for s in pr["streams"] if s["codec_type"] == "video"), None)
-    if not vs:
-        die(4, "CHROMA_NO_VIDEO", f"无法采样色度(无视频流):{src}")
-    w, h = int(vs["width"]), int(vs["height"])
-    pts = [(0.03, 0.12), (0.97, 0.12), (0.03, 0.45), (0.97, 0.45)]
-    samples: list[tuple[int, int, int]] = []
-    for fx, fy in pts:
-        x, y = max(0, int(w * fx) - 8), max(0, int(h * fy) - 8)
-        tmp = src.with_suffix(f".chroma_{fx}_{fy}.pam")
-        p = run([ffmpeg_bin(cfg), "-v", "error", "-y", "-ss", "1", "-i", str(src),
-                 "-vf", f"crop=16:16:{x}:{y},format=rgb24", "-frames:v", "1", str(tmp)])
-        if p.returncode != 0 or not tmp.is_file():
-            continue
-        raw = tmp.read_bytes()
-        tmp.unlink(missing_ok=True)
-        end = raw.find(b"ENDHDR\n")
-        if end < 0:
-            continue
-        px = raw[end + 7:]
-        if len(px) < 48:
-            continue
-        mid = px[24:27]  # 中心像素
-        samples.append((mid[0], mid[1], mid[2]))
-    # v0.13:绿/蓝幕布都自动识别(g 主导或 b 主导);混合样本按主导通道聚类取均值
-    greens = [s for s in samples if s[1] > 100 and s[1] > s[0] * 1.30 and s[1] > s[2] * 1.30]
-    blues = [s for s in samples if s[2] > 100 and s[2] > s[0] * 1.30 and s[2] > s[1] * 1.30]
-    if not greens and not blues:
-        die(4, "CHROMA_SAMPLE_FAIL",
-            f"边缘采样未找到绿幕/蓝幕(样本:{samples});请在 clip.chroma.color 显式指定,如 0x2AA81E")
-    pool = greens or blues
-    r = sum(s[0] for s in pool) // len(pool)
-    g = sum(s[1] for s in pool) // len(pool)
-    b = sum(s[2] for s in pool) // len(pool)
-    return f"0x{r:02X}{g:02X}{b:02X}"
+# v0.14(ADR-0031):抠像与背景合成整体移除 —— 用户须在交付前自行抠好并合成背景。
+# 本脚本不再有任何色度键控/背景替换/alpha 探针代码;素材是否仍为幕布由 S0
+# rs_greenscreen 检测并在 rs_ingest / rs_verify 门禁。历史键控实现见 git 历史
+# (v0.13 及以前)与 docs/adr/0029-绿幕键控v2.md(已作废)。
 
 
-def chroma_hex(c: dict, src: Path, cfg: dict) -> str:
-    col = c.get("color", "auto")
-    if isinstance(col, str) and col.startswith("0x"):
-        return col
-    if col == "blue":
-        return "0x0000FF"
-    if col == "green":
-        return "0x00FF00"
-    return sample_chroma(src, cfg)  # auto / 未知值 → 自动采样
-
-
-def parse_matte_log(text: str) -> float | None:
-    """从 metadata=print 输出解析 alpha YAVG → 前景占比(≈ 人物面积比,二值 matte)。
-    多帧取均值;无数据返回 None。"""
-    vals = [float(v) / 255.0 for v in re.findall(r"lavfi\.signalstats\.YAVG=([\d.]+)", text or "")]
-    return round(sum(vals) / len(vals), 4) if vals else None
-
-
-def matte_fg_ratio(seg: Path, dur_s: float, cfg: dict) -> float | None:
-    """独立探针:对已合成段抽帧测 alpha 前景占比(仅用于测试/诊断;编码后的 mp4
-    已无 alpha 平面,管线内探针走 step_segment 的第二输出,见 matte_probe_args)。"""
-    p = run([ffmpeg_bin(cfg), "-v", "info", "-ss", f"{max(0.1, dur_s * 0.5):.2f}",
-             "-i", str(seg), "-frames:v", "1",
-             "-vf", "format=yuva444p,alphaextract,signalstats,metadata=print",
-             "-f", "null", "-"], timeout=120)
-    return parse_matte_log(p.stderr) if p.returncode == 0 else None
-
-
-def matte_probe_args(key: str, cache_dir: Path) -> tuple[str, list[str]]:
-    """段命令的第二输出:抽 [fg](alpha 消费点之前)2 帧统计 alpha,写 cache_dir 下文件。
-
-    返回 (文件名, 追加到命令尾部的参数)。文件用**相对名**,配合 run(cwd=cache_dir)
-    —— metadata=print:file= 的路径冒号在 filtergraph 里转义不可靠(单/双转义均
-    解析失败,v0.11 实测),相对名是唯一稳解;继续走 run() 保持可 monkeypatch。
-    """
-    name = f"matte_{key[:16]}.txt"
-    return name, ["-map", "[fgprobe]", "-frames:v", "2", "-f", "null", "-"]
-
-
-def _crop_pct_chain(c: dict) -> list[str]:
-    chain = []
-    if c.get("cropTopPct"):
-        chain.append(f"crop=iw:ih*{1 - float(c['cropTopPct']):.4f}:0:ih*{float(c['cropTopPct']):.4f}")
-    if c.get("cropBottomPct"):
-        pct = float(c["cropBottomPct"])
-        chain.append(f"crop=iw:ih*{1 - pct:.4f}:0:0" if not c.get("cropTopPct")
-                     else f"crop=iw:ih*{1 - pct:.4f}:0:0")
-    return chain
-
-
-def _chroma_key_v2_chain(c: dict, src: Path, cfg: dict) -> list[str]:
-    """v0.13 键控 v2(ADR-0029):亮度无关比值 matte + YUV 域去混合 + 分离门控 despill。
-
-    取代 colorkey+despill+腐蚀链(可经 chroma.keyMode="legacy" 回退)。三处根因修复:
-    1) 黑边: 旧链 despill 对边缘混合像素做 RGB 钳位,边缘被压暗;新链 R/B(Y 域)
-       永不触碰,溢色只在色度平面向中性收,黑边源头消除;
-    2) 暗场: colorkey 是 RGB 球,对暗角/投影下的绿幕键不干净;新 alpha 用
-       min(G/max(R,1),G/max(B,1)) 比值,对亮度缩放完全免疫;
-    3) 吃边: 旧链对混合像素二值丢弃(eaten≈90%);新链二值 matte 后 gblur 空间
-       平均出真半透明,再按 alpha 扣除屏幕混色(un-premultiply)。
-
-    参数(全部可经 clip.chroma 覆盖,括号为默认):
-      keyTcut(2.2) 比值阈值:ratio 小于 tCut 判人物(屏幕纯绿约 4.0,人物/混合 <3.5);
-      keyFeather(1.2) matte 模糊 sigma(空间 AA,产生半透明);
-      keyAFloor(0.35) 去混合 alpha 下限(低于它数值不稳,顺势钳到该透明度);
-      keyDespill(0.85) 溢色中和强度(向 Cb/Cr 中性收的幅度);
-      keyMode("v2"|"legacy") 键控器选择。
-    """
-    key = chroma_hex(c, src, cfg)
-    r = int(key[2:4], 16)
-    g = int(key[4:6], 16)
-    b = int(key[6:8], 16)
-    t_cut = float(c.get("keyTcut", 2.2))
-    feather = float(c.get("keyFeather", 1.2))
-    a_floor = min(max(float(c.get("keyAFloor", 0.35)), 0.05), 0.9)
-    despill = min(max(float(c.get("keyDespill", 0.85)), 0.0), 1.0)
-    pre = ("st(0,1.16438*(lum(X,Y)-16));"
-           "st(1,ld(0)+1.59603*(cr(X,Y)-128));"
-           "st(2,ld(0)-0.39176*(cb(X,Y)-128)-0.81297*(cr(X,Y)-128));"
-           "st(3,ld(0)+2.01723*(cb(X,Y)-128))")
-    # 主导通道方向按键色自动选:绿幕看 G 比值,蓝幕看 B 比值(写死绿色会整帧误判)
-    if b >= g:
-        ratio = "ld(3)/max(ld(1),1)"
-    else:
-        ratio = "ld(2)/max(ld(3),1)"
-    # 色度距离第二判据(OR 逻辑):色度远离键色的像素(绿衣/草地图案等合法前景)
-    # 即使比值偏高也保留 —— 前景 = (ratio<tCut) 或 (dist>distCut)
-    rn, gn, bn = r / 255.0, g / 255.0, b / 255.0
-    cbs = 128 + 224 * (-0.168736 * rn - 0.331264 * gn + 0.5 * bn)
-    crs = 128 + 224 * (0.5 * rn - 0.418688 * gn - 0.081312 * bn)
-    dist_cut = min(max(float(c.get("keyDistCut", 3.0)), 2.0), 40.0)
-    _vx, _vy = 128 - cbs, 128 - crs
-    _vlen = (_vx * _vx + _vy * _vy) ** 0.5
-    cdist = f"abs({_vx:.0f}*(cr(X,Y)-{crs:.0f})-{_vy:.0f}*(cb(X,Y)-{cbs:.0f}))/{_vlen:.1f}"
-    # dist 项用 ratio 门控:只救比值歧义带内的像素(绿衣等),防背景色度漂移误救
-    a1 = (f"{pre};max(255*clip({t_cut:.2f}-{ratio},0,1),"
-          f"255*clip(({cdist}-{dist_cut:.0f})*0.5,0,1)*clip(({ratio}-{t_cut:.2f})*3,0,1))")
-    ys = 16 + 219 * (0.299 * r + 0.587 * g + 0.114 * b) / 255.0
-    pre2 = f"st(9,max(alpha(X,Y)/255,{a_floor:.2f}));"
-    y2 = f"{pre2}clip((lum(X,Y)-16-(1-ld(9))*{ys - 16:.1f})/ld(9)+16,16,235)"
-    cb2 = (f"{pre2}"
-           f"st(8,clip((cb(X,Y)-128-(1-ld(9))*{cbs - 128:.1f})/ld(9)+128,16,240));"
-           f"st(7,clip((cr(X,Y)-128-(1-ld(9))*{crs - 128:.1f})/ld(9)+128,16,240));"
-           # 色度修正钳制 ±40:细结构/4:2:0 色度块下 alpha 低估会让去混过冲(紫边),钳住单像素修正量
-           f"st(6,cb(X,Y)+clip(ld(8)-cb(X,Y),-40,40));"
-           f"ld(6)+(128-ld(6))*{despill:.2f}*clip((122-ld(6))/25,0,1)")
-    cr2 = (f"{pre2}"
-           f"st(8,clip((cb(X,Y)-128-(1-ld(9))*{cbs - 128:.1f})/ld(9)+128,16,240));"
-           f"st(7,clip((cr(X,Y)-128-(1-ld(9))*{crs - 128:.1f})/ld(9)+128,16,240));"
-           f"st(5,cr(X,Y)+clip(ld(7)-cr(X,Y),-40,40));"
-           f"ld(5)+(128-ld(5))*{despill:.2f}*clip((115-ld(5))/25,0,1)")
-    # alpha 曲线扩展:blur 后过渡带按 0.25-0.75 重映射收紧(轮廓回位,抑制光晕外扩)
-    tighten = "clip((alpha(X,Y)-64)/127*255,0,255)"
-    return [
-        "format=yuva444p",
-        f"geq=lum='lum(X,Y)':cb='cb(X,Y)':cr='cr(X,Y)':a='{a1}'",
-        f"gblur=sigma={feather:.2f}:planes=8",
-        f"geq=lum='lum(X,Y)':cb='cb(X,Y)':cr='cr(X,Y)':a='{tighten}'",
-        f"geq=lum='{y2}':cb='{cb2}':cr='{cr2}':a='alpha(X,Y)'",
-    ]
-
-
-def _chroma_fg_chain(c: dict) -> list[str]:
-    """抠像后处理(v0.10,ADR-0022):alpha 腐蚀收缩 → 细羽化 → killRect(green-only)。
-
-    v0.9 只有 edgeBlur 羽化:colorkey 的 alpha 近二值,边缘锯齿与暗色残边(黑边)
-    原样保留 —— 用户实测发丝锯齿+黑边。腐蚀 = alpha 大 sigma 模糊后用偏高频阈值
-    重新硬化(收缩量 ≈ sigma×系数),再小 sigma 羽化找回平滑过渡。
-    killRect 默认 `killRectMode=green`:框内**只清绿色主导像素**(despill 后仍
-    cb/cr 双低),入区人体(中性色)不受影响 —— 硬矩形连人一起抹、矩形边界随
-    人物动作进出穿帮,是店群工程"左下角闪烁黑影"的根因。`all` 保留 v0.9 硬清。
-
-    ⚠ geq 域约定(v0.10.1 实测修复):geq 的 alpha/cb/cr(X,Y) 返回**原始 0-255
-    字节值**,表达式结果也按字节写入 —— 不是归一化 [0,1]。旧式
-    `clip((alpha-t)/(1-t),0,1)` 把 255 当 1.0 算 → 恒输出 1 → 人物整帧透明
-    (店群工程实测全片无人物)。阈值 t∈[0,1] 是参数域,必须换算进字节域再比较。
-    """
-    chain = []
-    shrink = float(c.get("edgeShrink", 1.2) or 0)
-    t = min(max(float(c.get("edgeShrinkT", 0.55)), 0.0), 1.0)
-    feather = float(c.get("edgeFeather", c.get("edgeBlur", 0.6)) or 0)
-    core = "alpha(X,Y)"
-    if shrink > 0:
-        # 字节域腐蚀:t*255 以下归 0,以上线性爬升回 255(半透明过渡带宽度 = (1-t)*255)
-        tn, rn = t * 255.0, (1.0 - t) * 255.0
-        core = f"clip((alpha(X,Y)-{tn:.1f})/{rn:.1f}*255,0,255)"
-    conds = []
-    mode = c.get("killRectMode", "green")
-    for r in c.get("killRects") or []:
-        x0, y0, x1, y1 = (float(v) for v in r)
-        box = (f"(between(X,W*{x0:.4f},W*{x1:.4f})"
-               f"*between(Y,H*{y0:.4f},H*{y1:.4f}))")
-        if mode == "green":
-            # despill 后残留绿仍呈 cb/cr 双低(pure green cb≈44/cr≈21,半中和 ≈86/75);
-            # 中性灰/人体 cb≈cr≈128,不会被误清。116 取两者分界。
-            conds.append(f"{box}*lt(cb(X,Y),116)*lt(cr(X,Y),116)")
-        else:
-            conds.append(box)
-    if conds:
-        core = "if(" + "+".join(conds) + f",0,{core})"
-    if shrink > 0 or conds:
-        pre = "format=yuva444p" + (f",gblur=sigma={shrink:.2f}:planes=8" if shrink > 0 else "")
-        chain.append(f"{pre},geq=lum='p(X,Y)':cb='p(X,Y)':cr='p(X,Y)':a='{core}'")
-    if feather > 0:
-        chain.append(f"gblur=sigma={feather:.2f}:planes=8")
-    return chain
-
-
-# ---------------- 步骤 2:逐段提取(带 seg 缓存 + 基轨绿幕) ----------------
+# ---------------- 步骤 2:逐段提取(带 seg 缓存) ----------------
 
 def step_segment(doc: dict, ratio: str, build: Path, base_dir: Path, cfg: dict,
                  warnings: list[str], use_cache: bool = True, dry_run: bool = False
@@ -401,11 +192,6 @@ def step_segment(doc: dict, ratio: str, build: Path, base_dir: Path, cfg: dict,
         q_out_ms = max(1, round(out_ms / 1000.0 * fps)) / fps * 1000.0
         take_s = (q_out_ms + tails[i] * 1000.0) / 1000.0 / speed
 
-        chroma = clip.get("chroma")
-        bg = clip.get("background") if chroma else None
-        if bg and bg.get("type") not in BG_TYPES:
-            die(2, "BG_TYPE_INVALID", f"seg[{i}]:background.type 非法:{bg.get('type')}(可选 {sorted(BG_TYPES)})")
-
         tmp = cache_dir / f".tmp_{key}.mp4"
         cmd = [ffmpeg_bin(cfg), "-v", "error", "-y"]
         if pr["type"] == "image":
@@ -427,60 +213,7 @@ def step_segment(doc: dict, ratio: str, build: Path, base_dir: Path, cfg: dict,
                 vf.append(f"tpad=stop_mode=clone:stop_duration={stop_s:.3f}")
 
         has_audio = pr.get("has_audio", False)
-        fparts: list[str] = []
-        if bg:
-            # 前景:裁边 → 抠像 → 去绿边 → 覆盖画布
-            fg = ["setpts=PTS-STARTPTS"] + [x for x in _crop_pct_chain(chroma) if x]
-            # dev-jj2815 实测(ffmpeg 2026-07-30 git master 回归):chromakey 输出的
-            # alpha 全坏(人物区域≈0,YAVG 2.07/255;alphaextract 实测),叠任何背景
-            # 都是"幽灵人物";-vf 单输入 + JPG 因丢弃 alpha 而看不出来。
-            # colorkey(RGB 距离键控)alpha 正常(人物 255/背景 0),改用之。
-            if chroma.get("keyMode", "v2") == "legacy":
-                fg.append(f"colorkey={chroma_hex(chroma, src, cfg)}:"
-                          f"{chroma.get('similarity', CHROMA_DEFAULTS['similarity'])}:"
-                          f"{chroma.get('blend', CHROMA_DEFAULTS['blend'])}")
-                if chroma.get("despill", True):
-                    fg.append("despill=type=green")
-                fg += _chroma_fg_chain(chroma)
-            else:
-                fg += _chroma_key_v2_chain(chroma, src, cfg)
-            fg.append(cover_crop(pr.get("width") or cw, pr.get("height") or ch, cw, ch, anchor))
-            # v0.11 R1:显式 yuva444p + split —— alpha 平面从这里分给 overlay(合成)
-            # 与 matte 探针;否则格式协商会被下游 yuv420p 分支拉成无 alpha,探针恒 255。
-            fparts.append(f"[0:v]{','.join(fg)}[fg0]")
-            fparts.append("[fg0]format=yuva444p,split=2[fg][fgs]")
-            # 背景:四种来源统一覆盖画布
-            btype = bg.get("type")
-            if btype == "color":
-                cmd += ["-f", "lavfi", "-t", f"{take_s:.3f}", "-i",
-                        f"color=c={bg.get('value', '0x101820')}:s={cw}x{ch}:r={fps}"]
-                bchain = "null"
-            elif btype == "gradient":
-                cmd += ["-f", "lavfi", "-t", f"{take_s:.3f}", "-i",
-                        f"gradients=s={cw}x{ch}:c0={bg.get('from', '0x0F2027')}"
-                        f":c1={bg.get('to', '0x2C5364')}:speed={bg.get('speed', 0.015)}"]
-                bchain = "null"
-            else:
-                bp = Path(bg.get("src", ""))
-                bp = bp if bp.is_absolute() else base_dir / bp
-                if not bp.is_file():
-                    die(2, "BG_SRC_MISSING", f"seg[{i}]:background.src 不存在:{bp}")
-                if btype == "image":
-                    cmd += ["-loop", "1", "-t", f"{take_s:.3f}", "-i", str(bp)]
-                else:
-                    cmd += ["-stream_loop", "-1", "-t", f"{take_s:.3f}", "-i", str(bp)]
-                bchain = cover_crop(cw, ch, cw, ch, 0.5)
-            if bg.get("dim"):
-                bchain += f",eq=brightness=-{float(bg['dim']):.3f}"
-            fparts.append(f"[1:v]{bchain},fps={fps},setsar=1[bg]")
-            fparts.append("[bg][fg]overlay=0:0:shortest=1[m]")
-            warnings.append(f"seg[{i}]:基轨绿幕已应用(color={chroma.get('color', 'auto')},"
-                            f"相似度 {chroma.get('similarity', CHROMA_DEFAULTS['similarity'])};"
-                            "keyMode=v2: 比值键控+YUV去混合+门控despill;"
-                            "edgeShrink/killRect 仅 keyMode=legacy 生效)")
-            vf_tail = [f"fps={fps}", "setsar=1"]
-        else:
-            vf_tail = [f"fps={fps}", "setsar=1"]
+        vf_tail = [f"fps={fps}", "setsar=1"]
 
         motion = clip.get("motion", {})
         if motion.get("in", "none") != "none":
@@ -503,18 +236,7 @@ def step_segment(doc: dict, ratio: str, build: Path, base_dir: Path, cfg: dict,
                               f"crop={cw}:{ch}:(iw-ow)/2:(ih-oh)*{anchor:.3f}")
         vf_tail.append("format=yuv420p")
 
-        probe_name, probe_args = "", []
-        if bg:
-            fparts[-1] = fparts[-1].replace("[m]", "[m0]")
-            fparts.append(f"[m0]{','.join(vf_tail)}[vout]")
-            # v0.11 R1 matte 探针:第二输出抽 [fgs](split 自 alpha 平面,overlay 消费
-            # 之前)2 帧,统计写 cache_dir/matte_<key>.txt —— 编码前的真 alpha。
-            probe_name, probe_args = matte_probe_args(key, cache_dir)
-            fparts.append(f"[fgs]alphaextract,signalstats,"
-                          f"metadata=print:file={probe_name}[fgprobe]")
-            cmd += ["-filter_complex", ";".join(fparts), "-map", "[vout]", "-map", "0:a?"]
-        else:
-            cmd += ["-vf", ",".join(vf + vf_tail)]
+        cmd += ["-vf", ",".join(vf + vf_tail)]
 
         if has_audio:
             af = (f"atrim=0:{take_s:.3f},asetpts=PTS-STARTPTS,"
@@ -533,26 +255,11 @@ def step_segment(doc: dict, ratio: str, build: Path, base_dir: Path, cfg: dict,
         cmd += ["-t", f"{take_s:.3f}",
                 "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
                 "-r", str(fps), "-video_track_timescale", "15360", str(tmp)]
-        if probe_args:
-            cmd += probe_args          # 第二输出(必须跟在主输出之后;选项按输出生效)
-        p = run(cmd, timeout=1800, cwd=str(cache_dir))
+        p = run(cmd, timeout=int(__import__('os').environ.get('CUTFLOW_SEG_TIMEOUT', '1800')), cwd=str(cache_dir))
         if p.returncode != 0:
             die(4, "SEGMENT_FAIL", f"段 {i} 提取失败:{(p.stderr or '')[-400:]}")
         tmp.replace(cached)
         prune_seg_cache(cache_dir)
-        # v0.11 R1 matte 探针(ADR-0022 修订的护栏):色度链改动的语义错误(如 geq
-        # 字节域事故=全片人物透明)字符串测试测不出来;第二输出在 alpha 消费点前
-        # 采样,占比异常直接进 warnings —— 事故从"人看成片"提前到"渲染期"。
-        if bg:
-            pf = cache_dir / probe_name
-            ratio = parse_matte_log(pf.read_text(encoding="utf-8", errors="replace")
-                                    if pf.is_file() else "")
-            reports[-1]["matteFgRatio"] = ratio
-            pf.unlink(missing_ok=True)
-            if ratio is not None and (ratio < 0.01 or ratio > 0.70):
-                warnings.append(
-                    f"seg[{i}]:matte_suspect 前景占比 {ratio:.1%}(正常 10%~60%)——"
-                    "疑似抠像失效/键带过宽,先查 chroma 参数与 L1 目测,不要直接交付")
         print(f"  seg[{i+1}/{len(base_clips)}] {out_ms/1000:.2f}s"
               f"{' 缓存命中' if hit else ''}", file=sys.stderr)
     return seg_files, reports, seg_keys
@@ -756,22 +463,6 @@ def step_compose(doc: dict, ratio: str, base: Path, build: Path, base_dir: Path,
                 cmd += ["-ss", f"{clip.get('sourceInMs', 0)/1000:.3f}",
                         "-t", f"{dur_s:.3f}", "-i", pr["path"]]
             chain = []
-            if pr["type"] != "image" and clip.get("chroma"):
-                c = clip["chroma"]
-                if c.get("cropTopPct"):
-                    pct = float(c["cropTopPct"])
-                    chain.append(f"crop=iw:ih*{1-pct:.4f}:0:ih*{pct:.4f}")
-                if c.get("keyMode", "v2") == "legacy":
-                    hexc = chroma_hex(c, Path(pr["path"]), cfg)
-                    # chromakey alpha 坏 → colorkey(见 step_segment 内注释)
-                    chain.append(f"colorkey={hexc}:{c.get('similarity', CHROMA_DEFAULTS['similarity'])}:"
-                                 f"{c.get('blend', CHROMA_DEFAULTS['blend'])}")
-                    if c.get("despill", True):
-                        chain.append("despill=type=green")
-                    chain += _chroma_fg_chain(c)      # v0.10:overlay 层同样吃边缘精修
-                else:
-                    chain += _chroma_key_v2_chain(c, Path(pr["path"]), cfg)
-                warnings.append(f"compose[{idx}]:chroma 已应用({hexc},效果需自评确认)")
             # v0.10(ADR-0025):支持 clip.overlay={x,y,w,h,opacity} 绝对像素定位
             # (rs_brand 变体轨的产出;v0.9 该字段无人消费,Logo 会以 scale 默认值贴满画布)。
             # scale/position(相对画幅)仍是通用路径,overlay 存在时优先。
@@ -1025,7 +716,7 @@ def render(doc: dict, project_path: Path, ratio: str, profile: str, *,
             fp = media_fingerprint(cp) if cp.is_file() else "missing"
             overlay_def.append([str(cp), fp, {k: c.get(k) for k in
                                               ("startMs", "durationMs", "sourceInMs", "scale",
-                                               "position", "motion", "chroma",
+                                               "position", "motion",
                                                "overlay", "opacity")}])
     k_compose = step_key("compose", k_concat, {"overlays": overlay_def})
     composed = build / "composed.mp4"

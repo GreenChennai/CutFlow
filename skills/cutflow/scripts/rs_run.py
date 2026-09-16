@@ -317,9 +317,9 @@ sys.exit(subprocess.run(
 '''
 
 # B8(BUGREPORT-20260913):05_ir 的级联起点是 S3 —— 会重新生成 project.json,
-# 手注的 chroma/背景/单 clip 音频全被冲掉。必须在脚本头部写明正确出路。
+# 手注的单 clip 音频/转场修正全被冲掉。必须在脚本头部写明正确出路。
 REBUILD_EXTRA_NOTES = {
-    "05_ir": """⚠ 例外:若你**手改过 05_ir/project.json**(手注 chroma/背景/单 clip 音频/
+    "05_ir": """⚠ 例外:若你**手改过 05_ir/project.json**(手注单 clip 音频/
    转场修正等),不要跑本脚本 —— S3 会重新生成 IR 把手注冲掉。
    正确做法:改跑 `06_output/rebuild.py`(S8:只用现有 ass 重烧录导出,不碰 IR)。
    (rs_ir build 也会检测手注痕迹并拒绝覆盖,除非显式 --force。)""",

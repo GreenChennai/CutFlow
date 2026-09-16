@@ -371,18 +371,19 @@ def _event_from_content_range(ca: int, cb: int, chars: list[dict], idx: list[int
         return None
     first = idx[ca]
     last = idx[cb - 1]
-    if last + 1 < len(chars):
-        nxt = chars[last + 1]["ch"]
+    content_last = last   # 终点锚 = 最后一个内容字(卡尾可带标点显示,但标点在重映射后
+    if last + 1 < len(chars):   # 可能吸收停顿宽度,不能当终点锚;否则 rs_sync 的
+        nxt = chars[last + 1]["ch"]   # 「滞留过久」闸必炸 — 2026-09-15 NCLM1605 实测)
         if not nxt.strip() or nxt in segmentation.PUNCT_WS:
             last += 1          # 卡尾标点至多带一个
     cleaned = textopt._clean_card("".join(c["ch"] for c in chars[first:last + 1]))
     if not cleaned:
         return None
     return {"start": max(0.0, (chars[first]["startMs"] - RELEASE_MS) / 1000.0),
-            "end": (chars[last]["endMs"] + RELEASE_MS) / 1000.0,
+            "end": (chars[content_last]["endMs"] + RELEASE_MS) / 1000.0,
             "text": cleaned,
             "anchorStart": chars[first]["startMs"] / 1000.0,
-            "anchorEnd": chars[last]["endMs"] / 1000.0,
+            "anchorEnd": chars[content_last]["endMs"] / 1000.0,
             "charSpan": [first, last + 1]}
 
 

@@ -175,13 +175,35 @@ def test_cards_json_matches_ass(tmp_path):
 
 def test_override_text_anchor_full():
     """B7:text 锚定模式全量重建(去标点顺序定位,不受标点索引偏移影响)。"""
-    text = "店群运营嘛，不是拆分收入，线上是虚拟空间。"
+    text = "店群运营干货嘛，不是拆分收入来源，线上是虚拟空间布局。"
     wl = _wordline(text)
-    ov = {"cards": [{"text": "店群运营嘛，"}, {"text": "不是拆分收入，"},
-                    {"text": "线上是虚拟空间。"}]}
+    ov = {"cards": [{"text": "店群运营干货嘛，"}, {"text": "不是拆分收入来源，"},
+                    {"text": "线上是虚拟空间布局。"}]}
     events, meta = sub.events_from_override(wl, ov, 12)
     assert meta["overrideMode"] == "full"
-    assert [e["text"] for e in events] == ["店群运营嘛", "不是拆分收入", "线上是虚拟空间"], events
+    assert [e["text"] for e in events] == ["店群运营干货嘛", "不是拆分收入来源", "线上是虚拟空间布局"], events
+
+
+def test_override_end_anchor_excludes_trailing_punct():
+    """NCLM1605 回归(2026-09-15):卡尾标点在重映射后可能吸收停顿宽度,不能当**终点锚**,
+    否则 rs_sync 的「滞留过久」闸(>350ms)必炸。end/anchorEnd 取最后一个**内容字**。"""
+    seq = "店群运营干货嘛，好的没问题吧"
+    t = 0
+    chars = []
+    for i, ch in enumerate(seq):
+        if ch == "，":
+            t += 580                      # 标点吸收一大段停顿(1600→1900)
+        chars.append({"i": i, "ch": ch, "startMs": t, "endMs": t + 120})
+        t += 150
+    wl = {"chars": chars}
+    ov = {"cards": [{"text": "店群运营干货嘛，"}, {"text": "好的没问题吧"}]}
+    events, meta = sub.events_from_override(wl, ov, 12)
+    assert meta["overrideMode"] == "full"
+    by_text = {e["text"]: e for e in events}
+    assert "店群运营干货嘛" in by_text, events
+    # 末内容字「嘛」:start 900 end 1020;尾标点 end 1900 不得进终点锚
+    assert abs(by_text["店群运营干货嘛"]["anchorEnd"] * 1000 - 1020) < 1, by_text
+    assert abs(by_text["店群运营干货嘛"]["end"] * 1000 - 1040) < 1, by_text
 
 
 def test_override_prefix_suffix_anchor():

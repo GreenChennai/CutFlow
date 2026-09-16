@@ -329,6 +329,7 @@ def test_assign_card_groups_merges_adjacent_same_card():
             {"card": "c16", "match": "优势"}])
 
 
+@pytest.mark.skipif(not Path(FFMPEG).is_file(), reason="ffmpeg 不可用")
 def test_build_from_cards_end_to_end(tmp_path):
     """I7 验收:3 卡 + 3 段旁白最小工程,一条 build_from_cards 出 IR 且 validate 全绿;
     卡时间 = 停顿中点边界,字幕两字段写全。"""
@@ -363,6 +364,7 @@ def test_build_from_cards_end_to_end(tmp_path):
     assert all(not Path(c["src"]).is_absolute() for c in clips)
 
 
+@pytest.mark.skipif(not Path(FFMPEG).is_file(), reason="ffmpeg 不可用")
 def test_freeze_frame_extends_segment(tmp_path):
     """I7 渲染端:freezeMs → 段长 = durationMs(-t 在输入侧,B8 教训)。
     CACHE_VER 已 +1:freezeMs 必须进 seg 缓存键。"""

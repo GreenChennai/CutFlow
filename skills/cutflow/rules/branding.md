@@ -92,7 +92,7 @@ python skills/cutflow/scripts/rs_brand.py 05_ir/project.json --variants 05_ir/va
 `matrix[].backends` 声明该变体支持的渲染后端;`rs_brand.py` 会:
 
 1. 只对声明支持的后端执行;
-2. 剪映 5.9 无对应字段的特性(如 `chroma`)自动**降级**并在 `deliverables.md` 中标注「本变体的 X 特性在剪映版缺失」;
+2. 剪映 5.9 无对应字段的特性自动**降级**并在 `deliverables.md` 中标注「本变体的 X 特性在剪映版缺失」;
 3. 交付说明里列出「特性 × 后端」对照表(对应 BACKLOG 的 IDEA)。
 
 ## 7. 门禁与验收

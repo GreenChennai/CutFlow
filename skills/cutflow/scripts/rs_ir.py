@@ -29,51 +29,19 @@ MOTION_IN = {"none", "fadeIn", "slideInLeft", "slideInRight", "scaleIn", "zoomIn
 MOTION_OUT = {"none", "fadeOut", "slideOutLeft", "slideOutRight"}
 TRANSITIONS = {"fade", "wipeleft", "wipeup", "slideleft", "circleopen"}
 KINDS = {"video", "audio", "text"}
-BG_TYPES = {"color", "image", "video", "gradient"}
 PUNCH_MIN_GAP_MS = 15000               # R3 punch-in 最小间隔(经验值,ITERATION-GUIDE §5.3)
-CHROMA_PRESET = {"green", "blue", "auto"}
-HEX_PREFIX = "0x"
+REMOVED_CLIP_FIELDS = ("chroma", "background")   # v0.14(ADR-0031):抠像/背景合成已移除
 
 
-def _validate_chroma_bg(where: str, clip: dict, base_dir: Path, errs: list[str]) -> None:
-    """v0.6.0:clip.chroma(抠像)+ clip.background(背景替换)校验。"""
-    chroma = clip.get("chroma")
-    bg = clip.get("background")
-    if chroma:
-        col = chroma.get("color", "auto")
-        if col not in CHROMA_PRESET and not (isinstance(col, str) and col.startswith(HEX_PREFIX)):
-            errs.append(f"{where}.chroma.color 非法:{col}(green/blue/auto/0xRRGGBB)")
-        for k in ("similarity", "blend"):
-            v = chroma.get(k)
-            if v is not None and not (isinstance(v, (int, float)) and 0 <= v <= 1):
-                errs.append(f"{where}.chroma.{k} 应在 0..1:{v}")
-        for k in ("cropTopPct", "cropBottomPct"):
-            v = chroma.get(k)
-            if v is not None and not (isinstance(v, (int, float)) and 0 <= v <= 0.9):
-                errs.append(f"{where}.chroma.{k} 应在 0..0.9:{v}")
-        eb = chroma.get("edgeBlur")
-        if eb is not None and not (isinstance(eb, (int, float)) and 0 <= eb <= 5):
-            errs.append(f"{where}.chroma.edgeBlur 应在 0..5:{eb}")
-        for i, r in enumerate(chroma.get("killRects") or []):
-            try:
-                x0, y0, x1, y1 = (float(v) for v in r)
-            except (TypeError, ValueError):
-                errs.append(f"{where}.chroma.killRects[{i}] 应为 4 个数字:{r}")
-                continue
-            if not (0 <= x0 < x1 <= 1 and 0 <= y0 < y1 <= 1):
-                errs.append(f"{where}.chroma.killRects[{i}] 应满足 0≤x0<x1≤1 / 0≤y0<y1≤1:{r}")
-    if bg:
-        t = bg.get("type")
-        if t not in BG_TYPES:
-            errs.append(f"{where}.background.type 非法:{t}(可选 {sorted(BG_TYPES)})")
-        if t in ("image", "video"):
-            src = bg.get("src", "")
-            pp = Path(src)
-            exists = pp.is_absolute() and pp.is_file() or (base_dir / src).is_file() if src else False
-            if not exists:
-                errs.append(f"{where}.background.src 不存在:{src}")
-        if not chroma:
-            errs.append(f"{where}:background 必须与 chroma 同用(没有抠像就没有换背景)")
+def _validate_removed_fields(where: str, clip: dict, errs: list[str]) -> None:
+    """v0.14(ADR-0031):IR 不再支持 chroma/background —— 抠像与背景合成由用户在交付前完成。
+
+    旧工程 IR 若仍带这两个字段,明确报错并给出迁移指引,而不是静默忽略(否则用户会
+    以为抠像仍在生效)。"""
+    for f in REMOVED_CLIP_FIELDS:
+        if f in clip:
+            errs.append(f"{where}.{f} 已移除(ADR-0031):CutFlow 不再抠像 —— "
+                        "请先在外部完成抠像+背景合成,再把成片素材交付剪辑")
 
 
 def validate(doc: dict, base_dir: Path) -> list[str]:
@@ -136,7 +104,7 @@ def validate(doc: dict, base_dir: Path) -> list[str]:
                 if "durMs" in tr and not isinstance(tr["durMs"], (int, float)):
                     errs.append(f"{where}.transition.durMs 应为数字:{tr.get('durMs')}")
             if kind == "video":
-                _validate_chroma_bg(where, clip, base_dir, errs)
+                _validate_removed_fields(where, clip, errs)
         spans.sort()
         for a, b in zip(spans, spans[1:]):
             if b[0] < a[1] - 1:

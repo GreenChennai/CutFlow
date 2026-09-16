@@ -13,4 +13,4 @@ safe_area:
 transitions: [fade]
 intro_outro: null
 bgm_gain_db: -18
-notes: 大字幕居中偏下;关键词可用 accent 色块高亮(v1.5);绿幕背景替换后加强对比。
+notes: 大字幕居中偏下;关键词可用 accent 色块高亮(v1.5);人物已抠像合成背景后加强对比。

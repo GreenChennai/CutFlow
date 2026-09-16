@@ -1,4 +1,4 @@
-"""v0.11 迭代回归:R1 QA 闭环(黑帧/冻结/VFR/响度双 pass + matte 探针)。
+"""v0.11 迭代回归:R1 QA 闭环(黑帧/冻结/VFR/响度双 pass)。
 
 对账:docs/ITERATION-GUIDE-v0.11.md §8/§9-R1;响度口径 = EBU R128 对齐值 -14 LUFS / -1 dBTP。
 ffmpeg 实机用例沿用 test_v8/test_v10 的 skipif 体例;只测公开 seam。
@@ -57,42 +57,8 @@ def test_measure_loudness_returns_plausible_values(tmp_path):
     assert rs_render.measure_loudness(silent, CFG) is None, "静音地板 = 无有效音轨"
 
 
-# ---------------------------------------------------------------- R1 matte 探针
-
-@pytest.mark.skipif(not Path(FFMPEG).is_file(), reason="ffmpeg 不可用")
-def test_matte_probe_detects_wipe_and_ok(tmp_path):
-    """第二输出探针(colorkey 抠绿后):正常链占比 ≈ 红块面积(0.02~0.70);
-    旧 v0.10 坏表达式(归一化假设 → alpha 恒 1)→ 占比 <1%,必须被识别。"""
-    from rs_common import ffmpeg_bin
-
-    def probe(chain_suffix: str, tag: str) -> float | None:
-        fc = (f"[0][1]overlay=54:96,colorkey=0x00FF00:0.15:0.12{chain_suffix}[fg0];"
-              f"[fg0]format=yuva444p,split=2[fgv][fgs];"
-              f"[fgv]format=yuv420p[vout];"
-              f"[fgs]alphaextract,signalstats,"
-              f"metadata=print:file=matte_{tag}.txt[fgp]")
-        p = subprocess.run(
-            [ffmpeg_bin(CFG), "-v", "error", "-y",
-             "-f", "lavfi", "-i", "color=c=0x00FF00:s=162x288:r=30:d=2",
-             "-f", "lavfi", "-i", "color=c=red:s=54x96:d=2",
-             "-filter_complex", fc,
-             "-map", "[vout]", "-frames:v", "10", "-c:v", "libx264",
-             "-preset", "ultrafast", str(tmp_path / f"{tag}.mp4"),
-             "-map", "[fgp]", "-frames:v", "2", "-f", "null", "-"],
-            cwd=str(tmp_path), capture_output=True, text=True)
-        if p.returncode != 0:
-            pytest.skip(f"lavfi 不可用:{p.stderr[-160:]}".encode("ascii", "replace").decode())
-        return rs_render.parse_matte_log((tmp_path / f"matte_{tag}.txt").read_text(
-            encoding="utf-8", errors="replace"))
-
-    ratio = probe("", "ok")
-    assert ratio is not None and 0.02 <= ratio <= 0.70, f"正常 matte 占比应居中,实测 {ratio}"
-
-    ratio_bad = probe(
-        ",format=yuva444p,geq=lum='p(X,Y)':cb='p(X,Y)':cr='p(X,Y)':"
-        "a='clip((alpha(X,Y)-0.55)/0.45,0,1)'", "bad")
-    assert ratio_bad is not None and ratio_bad < 0.01, \
-        f"geq 字节域事故形态必须被探针识别,实测 {ratio_bad}"
+# v0.14(ADR-0031):matte 探针随抠像功能一并移除(见 test_v10
+# test_removed_chroma_helpers_are_gone 的移除断言)。
 
 
 # ---------------------------------------------------------------- R1 rs_sync QC

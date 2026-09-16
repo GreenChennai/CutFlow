@@ -43,8 +43,9 @@ ffmpeg -t 7.88 -i card.mp4 -vf "tpad=stop_mode=clone:stop_duration=5.6" out.mp4 
 
 ## 抠像
 
-`colorkey=0x00FF00:0.12:0.08,despill=type=green,format=yuva420p`(叠加前)。
-**不要用 `chromakey`**:alpha 在部分构建上全坏(v0.10 实测人物区域 α≈0),已全链改用 `colorkey`(RGB 距离键控)+ 几何腐蚀;详见 rules/archive.md。
+v0.14(ADR-0031)起 CutFlow **不再抠像** —— 抠像与背景合成由用户在交付前自行完成
+(剪映/Pr/AE 导出已合成好的成片)。若需在手工作业里参考历史键控实现,见 ADR-0029
+(已作废)与 git 历史(v0.13 及以前);S0 会检测未处理的幕布并阻断(见 `rules/intake.md`)。
 
 ## 字幕烧录
 

@@ -1,11 +1,14 @@
-"""S0 素材摄取 + 交付清单(OPTIMIZATION-v7 #9)。
+"""S0 素材摄取 + 交付清单(OPTIMIZATION-v7 #9)+ 绿幕门禁(ADR-0031)。
 
 用法:
   rs_ingest.py scan <工程根> [--slug X] [--ratio 9x16]   # 01_materials → manifest + IR 骨架
   rs_ingest.py deliverables <工程根>                      # 汇总 → 06_output/deliverables.md
+  rs_ingest.py green-ok <工程根> --reason "误判说明"       # 绿幕误判放行(写 override 留痕)
 
 设计:机械动作全脚本化,Agent 只补"内容摘要"。
   · probe 失败**不静默**:写进 manifest 的 `probe: failed/unavailable` 并在报告里点名;
+  · v0.14 起 CutFlow 不做抠像:scan 会对每条视频跑幕布检测(rs_greenscreen),命中且未放行
+    时**阻断** S0(GREEN_SCREEN_INPUT),提示用户先自行抠像+合成背景再重跑;
   · 不覆盖已有 `05_ir/project.json`(只生成 `project.skeleton.json`);
   · 输出统一 `{ok, code, message, data}`,退出码 0/2/3/4。
 """
@@ -18,12 +21,15 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 import rs_common  # noqa: E402
+import rs_greenscreen  # noqa: E402
 from rs_common import RATIOS, canvas_for, emit  # noqa: E402
 
 MANIFEST_JSON = "manifest.json"
 MANIFEST_MD = "MANIFEST.md"
 SKELETON = "project.skeleton.json"
-SKIP_NAMES = {MANIFEST_JSON, MANIFEST_MD}
+SKIP_NAMES = {MANIFEST_JSON, MANIFEST_MD, "GREENSCREEN.md"}
+VIDEO_EXTS = {".mp4", ".mov", ".mkv", ".avi", ".webm", ".m4v", ".flv", ".wmv",
+              ".ts", ".mts", ".m2ts", ".mpg", ".mpeg", ".3gp", ".mxf"}
 
 
 # ---------------------------------------------------------------- scan
@@ -75,11 +81,23 @@ def scan(root: Path, slug: str = "project", ratio: str = "9x16") -> dict:
     for p in files:
         item = {"file": p.name, "sizeBytes": p.stat().st_size}
         item.update(probe_media(p))
+        if item.get("probe") == "ok" and p.suffix.lower() in VIDEO_EXTS:
+            item["greenScreen"] = rs_greenscreen.detect_media(p)
         items.append(item)
-    doc = {"version": 1, "materials": str(mat.name), "items": items}
+
+    # v0.14(ADR-0031):绿幕门禁 —— 命中且未放行则阻断。放行说明写在
+    # 00_brief/greenscreen-override.txt(或 brief.md 的「绿幕检测:误判…」行)。
+    override = rs_greenscreen.read_override(root)
+    flagged = [i for i in items if (i.get("greenScreen") or {}).get("detected")]
+    if override:
+        for i in flagged:
+            i["greenScreen"]["overridden"] = True
+
+    doc = {"version": 1, "materials": str(mat.name), "items": items,
+           "greenOverride": override}
     mat.joinpath(MANIFEST_JSON).write_text(json.dumps(doc, ensure_ascii=False, indent=1),
                                            encoding="utf-8")
-    mat.joinpath(MANIFEST_MD).write_text(_manifest_md(items), encoding="utf-8")
+    mat.joinpath(MANIFEST_MD).write_text(_manifest_md(items, override), encoding="utf-8")
 
     ir_dir = root / "05_ir"
     ir_dir.mkdir(parents=True, exist_ok=True)
@@ -90,25 +108,53 @@ def scan(root: Path, slug: str = "project", ratio: str = "9x16") -> dict:
                                              encoding="utf-8")
         wrote_skeleton = True
     failed = [i["file"] for i in items if i.get("probe") != "ok"]
+    if flagged and not override:
+        gpath = rs_greenscreen.guidance_md(root, flagged)
+        names = ",".join(i["file"] for i in flagged[:3])
+        return {"ok": False, "code": "GREEN_SCREEN_INPUT",
+                "message": f"检测到 {len(flagged)} 条素材仍含绿幕/蓝幕({names});"
+                           "CutFlow v0.14 起不再抠像 —— 请先自行抠像并合成背景,替换原素材后重跑 "
+                           "scan;若为误判,运行 `rs_ingest.py green-ok <工程根> --reason \"…\"`。"
+                           f"处理指引见 {gpath.relative_to(root).as_posix()}",
+                "items": items, "flagged": [i["file"] for i in flagged],
+                "guidance": str(gpath), "failed": failed,
+                "manifest": str(mat / MANIFEST_JSON), "report": str(mat / MANIFEST_MD)}
     return {"ok": True, "code": "INGEST_OK", "items": items, "failed": failed,
+            "flagged": [i["file"] for i in flagged],
             "skeletonWritten": wrote_skeleton,
             "manifest": str(mat / MANIFEST_JSON), "report": str(mat / MANIFEST_MD)}
 
 
-def _manifest_md(items: list[dict]) -> str:
+def _manifest_md(items: list[dict], green_override: str | None = None) -> str:
     lines = ["# 素材清单(rs_ingest 生成)", "",
-             "| 文件 | 大小 | 时长 | 分辨率 | 帧率 | 音轨 | probe | 内容摘要(待 Agent 补) |",
-             "|---|---|---|---|---|---|---|---|"]
+             "| 文件 | 大小 | 时长 | 分辨率 | 帧率 | 音轨 | 幕布 | probe | 内容摘要(待 Agent 补) |",
+             "|---|---|---|---|---|---|---|---|---|"]
     for i in items:
         res = f"{i['width']}x{i['height']}" if i.get("width") else "—"
         dur = f"{i['durationMs'] / 1000:.1f}s" if i.get("durationMs") else "—"
+        gs = i.get("greenScreen") or {}
+        if gs.get("detected"):
+            kind = {"green": "绿幕", "blue": "蓝幕"}.get(gs.get("kind"), "幕布")
+            screen = f"⚠ {kind}({gs.get('confidence', 0):.0%})"
+            if gs.get("overridden"):
+                screen += " 已放行"
+        else:
+            screen = "—"
         lines.append(f"| {i['file']} | {i['sizeBytes'] / 1e6:.1f}MB | {dur} | {res} | "
                      f"{i.get('fps') or '—'} | {'有' if i.get('hasAudio') else '无'} | "
-                     f"{i.get('probe')} |  |")
+                     f"{screen} | {i.get('probe')} |  |")
     bad = [i for i in items if i.get("probe") != "ok"]
     if bad:
         lines += ["", "## ⚠ probe 未通过(不阻塞,但需人工确认)", ""]
         lines += [f"- {i['file']}: {i.get('error', i.get('probe'))}" for i in bad]
+    flagged = [i for i in items if (i.get("greenScreen") or {}).get("detected")]
+    if flagged:
+        lines += ["", "## 幕布检测(ADR-0031)", ""]
+        if green_override:
+            lines += [f"- 检测到 {len(flagged)} 条幕布素材,已按用户说明**放行**:{green_override}"]
+        else:
+            lines += [f"- ⛔ 检测到 {len(flagged)} 条幕布素材,**未放行** —— 请先自行抠像+合成背景"
+                      "(见 `01_materials/GREENSCREEN.md`)或运行 `rs_ingest.py green-ok`。"]
     lines += ["", "> 类型/videoType、比例、风格、声音方案请在 `00_brief/brief.md` 声明。", ""]
     return "\n".join(lines)
 
@@ -126,7 +172,7 @@ def _skeleton(items: list[dict], slug: str, ratio: str) -> dict:
     return {"version": 1, "slug": slug, "fps": 30, "canvas": {"width": w, "height": h},
             "tracks": [{"kind": "video", "name": "main", "clips": clips}],
             "outputs": [ratio], "_skeleton": True,
-            "_note": "rs_ingest 生成的原样拼接骨架;请按 brief 用 rs_ir/artboard 补齐背景/卡片/音效"}
+            "_note": "rs_ingest 生成的原样拼接骨架;请按 brief 用 rs_ir/artboard 补齐卡片/音效(素材背景由用户预处理)"}
 
 
 # ---------------------------------------------------------------- deliverables
@@ -197,10 +243,12 @@ def build_deliverables(root: Path) -> dict:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("command", nargs="?", default="scan", choices=["scan", "deliverables"])
+    ap.add_argument("command", nargs="?", default="scan",
+                    choices=["scan", "deliverables", "green-ok"])
     ap.add_argument("root", help="工程根目录")
     ap.add_argument("--slug", default=None)
     ap.add_argument("--ratio", default="9x16", choices=list(RATIOS))
+    ap.add_argument("--reason", default="", help="green-ok:用户对误判的说明(必填)")
     a = ap.parse_args()
     root = Path(a.root)
     if not root.is_dir():
@@ -209,17 +257,28 @@ def main() -> int:
         res = build_deliverables(root)
         return emit(True, res["code"], f"交付清单 → {res['path']}",
                     {k: v for k, v in res.items() if k != "code"})
+    if a.command == "green-ok":
+        if not a.reason.strip():
+            return emit(False, "NEED_REASON", "green-ok 必须提供 --reason(用户对误判的说明)",
+                        exit_code=2)
+        p = rs_greenscreen.write_override(root, a.reason.strip())
+        return emit(True, "GREEN_OVERRIDE", f"已记录绿幕误判放行:{p}", {"path": str(p)})
     res = scan(root, a.slug or root.name, a.ratio)
     if not res.get("ok"):
-        return emit(False, res["code"], res["message"], exit_code=2)
+        return emit(False, res["code"], res["message"],
+                    {k: v for k, v in res.items()
+                     if k not in ("ok", "code", "message")}, exit_code=2)
     msg = f"摄取 {len(res['items'])} 条素材"
     if res["failed"]:
         msg += f";⚠ {len(res['failed'])} 条 probe 未通过({','.join(res['failed'][:3])})"
+    if res.get("flagged"):
+        msg += f";幕布素材已放行({','.join(res['flagged'][:3])})"
     if not res["skeletonWritten"]:
         msg += ";已有 project.json,未覆盖骨架"
     return emit(True, res["code"], msg,
                 {"manifest": res["manifest"], "report": res["report"],
                  "count": len(res["items"]), "failed": res["failed"],
+                 "flagged": res.get("flagged", []),
                  "skeletonWritten": res["skeletonWritten"], "items": res["items"]})
 
 

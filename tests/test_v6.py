@@ -383,7 +383,7 @@ def test_seg_key_excludes_index_and_tracks_params():
     assert k1 == rs_render.seg_key(dict(clip, startMs=2000), doc, 1080, 1920, "fp"), \
         "键不含时间轴位置:重排 clip 仍命中"
     assert rs_render.seg_key(dict(clip, src="b.mp4"), doc, 1080, 1920, "fp") != k1
-    assert rs_render.seg_key(dict(clip, chroma={"color": "0x00FF00"}),
+    assert rs_render.seg_key(dict(clip, punchIn={"factor": 1.4}),
                              doc, 1080, 1920, "fp") != k1
     assert rs_render.seg_key(clip, {"fps": 60}, 1080, 1920, "fp") != k1
     assert rs_render.seg_key(clip, doc, 1920, 1080, "fp") != k1
@@ -397,19 +397,7 @@ def test_step_key_chain():
     assert rs_render.step_key("concat", "u1", {"x": 2}) != k
 
 
-def test_chroma_hex_explicit_and_auto(tmp_path, monkeypatch):
-    assert rs_render.chroma_hex({"color": "0x2AA81E"}, tmp_path, {}) == "0x2AA81E"
-    assert rs_render.chroma_hex({"color": "green"}, tmp_path, {}) == "0x00FF00"
-    assert rs_render.chroma_hex({"color": "blue"}, tmp_path, {}) == "0x0000FF"
-    monkeypatch.setattr(rs_render, "sample_chroma", lambda src, cfg: "0x123456")
-    assert rs_render.chroma_hex({"color": "auto"}, tmp_path, {}) == "0x123456"
-    assert rs_render.chroma_hex({}, tmp_path, {}) == "0x123456"      # 缺省 = auto
-
-
-def test_crop_pct_chain_and_cover_crop():
-    ch = rs_render._crop_pct_chain({"cropTopPct": 0.09, "cropBottomPct": 0.10})
-    assert ch == ["crop=iw:ih*0.9100:0:ih*0.0900", "crop=iw:ih*0.9000:0:0"]
-    assert rs_render._crop_pct_chain({}) == []
+def test_cover_crop_geometry():
     cc = rs_render.cover_crop(1920, 1080, 1080, 1920, 0.3)
     assert "scale=1080:1920:force_original_aspect_ratio=increase" in cc
     assert "crop=1080:1920:(iw-1080)/2:(ih-1920)*0.3" in cc
@@ -453,52 +441,27 @@ def test_s1_wordline_is_registry_source_of_truth():
     assert "wordline.json" in " ".join(s1["cmd"])
 
 
-# ================================================================ R6 rs_ir 绿幕校验
+# ================================================================ R6 rs_ir 已移除字段(ADR-0031)
 
-def test_ir_chroma_bg_validation_unit(tmp_path):
-    errs: list[str] = []
-    good = {"chroma": {"color": "0x2AA81E", "similarity": 0.24, "blend": 0.12,
-                       "cropTopPct": 0.09, "cropBottomPct": 0.10},
-            "background": {"type": "gradient", "from": "0x0F2027", "to": "0x2C5364"}}
-    rs_ir._validate_chroma_bg("t", good, tmp_path, errs)
-    assert errs == []
-
-    bad_cases = [
-        ({"chroma": {"color": "red"}}, "chroma.color"),
-        ({"chroma": {"similarity": 1.5}}, "chroma.similarity"),
-        ({"chroma": {"blend": -0.1}}, "chroma.blend"),
-        ({"chroma": {"cropTopPct": 0.95}}, "cropTopPct"),
-        ({"background": {"type": "holo"}}, "background.type"),
-        ({"background": {"type": "color"}}, "必须与 chroma"),
-    ]
-    for clip, frag in bad_cases:
-        errs = []
-        rs_ir._validate_chroma_bg("t", clip, tmp_path, errs)
-        assert any(frag in e for e in errs), (clip, errs)
+def test_ir_rejects_removed_chroma_background_fields(tmp_path):
+    """v0.14(ADR-0031):抠像/背景合成已移除 —— 旧 IR 带 chroma/background 必须显式报错。"""
+    for clip in ({"chroma": {"color": "green"}}, {"background": {"type": "color"}},
+                 {"chroma": {"color": "0x2AA81E"}, "background": {"type": "gradient"}}):
+        errs: list[str] = []
+        rs_ir._validate_removed_fields("tracks[0].clips[0]", clip, errs)
+        assert errs and "ADR-0031" in errs[0], (clip, errs)
 
 
-def test_ir_bg_image_src_resolution(tmp_path):
-    (tmp_path / "bg.png").write_bytes(b"x")
-    errs: list[str] = []
-    rs_ir._validate_chroma_bg("t", {"chroma": {"color": "auto"},
-                                    "background": {"type": "image", "src": "bg.png"}},
-                              tmp_path, errs)
-    assert errs == []
-
-
-def test_ir_validate_end_to_end_with_chroma(tmp_path):
+def test_ir_validate_end_to_end_plain_clip(tmp_path):
     (tmp_path / "a.mp4").write_bytes(b"x")
     doc = {"version": 1, "slug": "t", "fps": 30, "canvas": {"width": 1080, "height": 1920},
            "tracks": [{"kind": "video", "clips": [{
-               "src": "a.mp4", "startMs": 0, "durationMs": 2000,
-               "chroma": {"color": "auto", "similarity": 0.24, "blend": 0.12,
-                          "cropTopPct": 0.09, "cropBottomPct": 0.10},
-               "background": {"type": "gradient", "from": "0x0F2027", "to": "0x2C5364"}}]}],
+               "src": "a.mp4", "startMs": 0, "durationMs": 2000}]}],
            "subtitle": {}}
     assert rs_ir.validate(doc, tmp_path) == []
     bad = json.loads(json.dumps(doc))
-    bad["tracks"][0]["clips"][0]["background"] = {"type": "image", "src": "ghost.png"}
-    assert any("background.src" in e for e in rs_ir.validate(bad, tmp_path))
+    bad["tracks"][0]["clips"][0]["chroma"] = {"color": "green"}
+    assert any("chroma" in e for e in rs_ir.validate(bad, tmp_path))
 
 
 # ================================================================ R7 rs_asr 兼容薄壳
@@ -530,16 +493,13 @@ def test_rs_asr_no_runner(tmp_path, monkeypatch, capsys):
 # ================================================================ R8 问题#5 回归:段命令输出侧 -t
 
 def test_seg_cmd_has_output_t_clamp(tmp_path, monkeypatch):
-    """ffmpeg git-master(2026-07-30)回归:filter_complex 含 overlay 且视频输入
-    -ss 为 0/缺省时,输入 -t 被按"帧数 = t × time_base_den"解释(tb=1/600 膨胀 20×,
-    tb=1/15360 膨胀 512×;单输入 -vf 或 -ss>0 不触发)。段命令必须带输出侧 -t 钳制。"""
+    """输出侧 -t 钳制:ffmpeg git-master(2026-07-30)回归下输入 -t 会被按 time_base
+    误读(tb=1/600 膨胀 20×,tb=1/15360 膨胀 512×)。v0.14 起基轨段走单输入 -vf,
+    这里锁输出侧钳制仍在。"""
     src = tmp_path / "fake.mp4"
     src.write_bytes(b"0" * 64)
     doc = {"fps": 30, "tracks": [{"kind": "video", "clips": [{
-        "src": str(src), "durationMs": 4260, "sourceInMs": 0,
-        "chroma": {"color": "0x2AA81E", "similarity": 0.24, "blend": 0.12},
-        "background": {"type": "gradient", "from": "0x0F2027", "to": "0x2C5364"},
-    }]}]}
+        "src": str(src), "durationMs": 4260, "sourceInMs": 0}]}]}
     monkeypatch.setattr(rs_render, "probe_clip", lambda clip, base_dir, cfg: {
         "type": "video", "path": str(src),
         "width": 1920, "height": 1080, "has_audio": True})
@@ -552,21 +512,18 @@ def test_seg_cmd_has_output_t_clamp(tmp_path, monkeypatch):
     def fake_run(cmd, timeout=None, **kwargs):
         captured["cmd"] = cmd
         mp4s = [Path(x) for x in cmd if str(x).endswith(".mp4")]
-        mp4s[-1].write_bytes(b"x")  # 供 tmp.replace(cached);v0.11 起命令尾是 matte 探针的 null 输出
+        mp4s[-1].write_bytes(b"x")  # 供 tmp.replace(cached)
         return _P()
 
     monkeypatch.setattr(rs_render, "run", fake_run)
     rs_render.step_segment(doc, "9x16", tmp_path / "build", tmp_path, {}, [])
     cmd = captured["cmd"]
-    # 输入侧应有 2 个 -t(视频 + gradient 背景),输出侧 1 个
-    assert cmd.count("-t") == 3
+    # 输入侧 1 个 -t(视频)、输出侧 1 个
+    assert cmd.count("-t") == 2
     idx_out = max(i for i, x in enumerate(cmd) if x == "-t")
-    assert cmd[idx_out + 1] == "4.267"          # = take_s(v0.10 帧量化:round(4.26s×30)=128帧 → 4.2667s)
-    # 输出侧 -t 必须位于 filter_complex/map 之后、输出文件之前
-    assert idx_out > cmd.index("-filter_complex")
-    assert idx_out > cmd.index("-map")
-    # v0.11:输出路径后追加 matte 探针第二输出(-map/-frames:v/-f/null/- 共 7 项)
-    assert idx_out == len(cmd) - 20             # -t + 值 + 10 个编码参数 + 输出路径 + 7 探针项
+    assert cmd[idx_out + 1] == "4.267"          # take_s(v0.10 帧量化:round(4.26s×30)=128帧)
+    assert cmd[-1].endswith(".mp4")
+    assert "-filter_complex" not in cmd, "v0.14 基轨无 overlay,应走单输入 -vf"
 
 
 # ================================================================ R9 问题#7/#8 回归:标点领头卡

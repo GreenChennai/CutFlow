@@ -3,7 +3,7 @@
 用法:python rs_jy_draft.py <project.json> [--name 草稿名] [--open]
 产出:<draft_root>/<name>/draft_content.json + draft_meta_info.json,并注册进 root_meta_info.json。
 安全:写前检测剪映进程;模板已脱敏(device_id/mac 置空)。
-限制:chroma 绿幕叠加无 5.9 对应(跳过并警告);视觉淡入淡出 v1 不写关键帧(音频淡入淡出写入)。
+限制:视觉淡入淡出 v1 不写关键帧(音频淡入淡出写入)。
 """
 from __future__ import annotations
 
@@ -179,8 +179,6 @@ def build_draft(doc: dict, project_path: Path, name: str, cfg: dict, warnings: l
         tname = f"V{ti + 2}"
         script.add_track(TrackType.video, tname)
         for clip in track["clips"]:
-            if clip.get("chroma"):
-                warnings.append(f"{tname}:chroma 绿幕无 5.9 草稿对应,该叠加请走 FFmpeg 直出版本")
             mat = VideoMaterial(str(cp(clip)))
             src_in = clip.get("sourceInMs", 0)
             take = int(clip["durationMs"] / clip.get("speed", 1.0) * 1000)

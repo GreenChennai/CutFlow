@@ -483,7 +483,7 @@ def check_card_overlap(events: list[dict], ir: dict | None,
     """字幕卡 ↔ artboard 动画卡 时间窗重叠(动画压字幕)。
 
     只看**卡片类**片段(artboard 产物):src 含 `artboard`、或 clip 标了 `card`/名字以 `card_` 开头。
-    普通素材轨(口播/绿幕)本就该有字幕压在上面,不算重叠。
+    普通素材轨(口播等)本就该有字幕压在上面,不算重叠。
     """
     if not ir:
         return []

@@ -272,8 +272,45 @@ def check_qc(root: Path) -> dict:
             "video": videos[-1].name, "checks": qc.get("checks")}
 
 
-L0_CHECKS = (check_ir, check_wordline, check_cutlist, check_subtitles, check_alignment,
-             check_artifacts, check_qc)
+def check_greenscreen(root: Path) -> dict:
+    """ADR-0031:v0.14 起 CutFlow 不做抠像,素材不得仍含未处理的绿幕/蓝幕。
+
+    读 S0 的 `01_materials/manifest.json`(rs_ingest 已逐条检测),命中且无用户放行说明
+    → 硬失败 —— 交付前的最后一处闸,防止"用户忘了预处理"的绿幕素材被剪进成片。
+    旧工程 manifest 无 `greenScreen` 字段 → skipped(不误伤历史工程)。
+    """
+    name = "素材无未处理的绿幕/蓝幕(ADR-0031)"
+    man = root / "01_materials" / "manifest.json"
+    if not man.is_file():
+        return {"name": name, "ok": True, "skipped": "尚无 01_materials/manifest.json(S0 未跑)"}
+    try:
+        doc = json.loads(man.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        return {"name": name, "ok": False, "detail": f"manifest 解析失败:{exc}"}
+    items = doc.get("items") or []
+    if not any("greenScreen" in i for i in items):
+        return {"name": name, "ok": True, "skipped": "素材未做幕布检测(旧工程,跳过)"}
+    flagged = [i for i in items if (i.get("greenScreen") or {}).get("detected")]
+    if not flagged:
+        return {"name": name, "ok": True, "detail": "未检出幕布素材"}
+    override = doc.get("greenOverride")
+    if not override:
+        try:
+            import rs_greenscreen
+            override = rs_greenscreen.read_override(root)
+        except Exception:  # noqa: BLE001 — 放行文件读失败按未放行处理(宁可拦)
+            override = None
+    ok = bool(override)
+    return {"name": name, "ok": ok,
+            "detail": (f"已按用户说明放行:{str(override)[:60]}" if ok
+                       else f"{len(flagged)} 条素材仍含幕布:"
+                            f"{','.join(i['file'] for i in flagged[:3])}"
+                            "(请先自行抠像+合成背景,或 `rs_ingest.py green-ok` 放行)"),
+            "flagged": [i["file"] for i in flagged]}
+
+
+L0_CHECKS = (check_ir, check_wordline, check_cutlist, check_greenscreen, check_subtitles,
+             check_alignment, check_artifacts, check_qc)
 
 
 def collect_l0(root: Path) -> dict:
@@ -328,38 +365,6 @@ def write_report(res: dict, path: Path, l1: dict | None = None) -> None:
 
 
 # ---------------------------------------------------------------- CLI
-
-def chroma_edge_probe(seg: Path, cfg: dict) -> dict | None:
-    """v0.13 绿幕边缘探针:对已渲染段抽 3 帧,检查背景暗场残留。
-
-    原理:背景应被完全抠掉;若合成背景是深色且残留了"抠不掉的暗绿",
-    表明键控失败。取画面四角 48x48 窗 + 中心带,统计"疑似残留"像素占比。
-    仅对带 chroma 的 IR 有意义;由调用方按 IR 判断是否调用。
-    """
-    try:
-        import rs_render
-    except Exception:
-        return None
-    probe_cmd = [rs_render.ffmpeg_bin(cfg), "-v", "error", "-ss", "1",
-                 "-i", str(seg), "-frames:v", "3",
-                 "-vf", "scale=160:90", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]
-    p = rs_render.run(probe_cmd, timeout=120)
-    if p.returncode != 0 or not p.stdout:
-        return None
-    raw = p.stdout
-    n_px = len(raw) // 3
-    if n_px < 160 * 90:
-        return None
-    # 只统计第 1 帧,足够诊断
-    frame = raw[:160 * 90 * 3]
-    arr = [frame[i * 3:i * 3 + 3] for i in range(160 * 90)]
-    # 简化诊断:全帧最暗 10% 像素的平均亮度(暗场指示)与最绿像素占比(残绿指示)
-    lumas = sorted((0.299 * f[0] + 0.587 * f[1] + 0.114 * f[2], i) for i, f in enumerate(arr))
-    darkest = [l for l, _ in lumas[:n_px // 10]]
-    greenish = sum(1 for f in arr if f[1] > f[0] + 40 and f[1] > f[2] + 40)
-    return {"dark10Avg": round(sum(darkest) / max(1, len(darkest)), 1),
-            "greenLeakPct": round(greenish / max(1, n_px) * 100, 3)}
-
 
 def main() -> int:
     ap = argparse.ArgumentParser()
