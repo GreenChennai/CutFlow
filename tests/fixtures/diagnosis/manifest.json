@@ -1,0 +1,44 @@
+[
+ {
+  "name": "baseline",
+  "video": "E:\\平日资料\\GitHub\\CutFlow\\tests\\fixtures\\diagnosis\\baseline.mp4",
+  "ass": "E:\\平日资料\\GitHub\\CutFlow\\tests\\fixtures\\diagnosis\\baseline.ass",
+  "expect": {
+   "verdict": "pass",
+   "D1": "pass",
+   "D2": "pass"
+  }
+ },
+ {
+  "name": "fix1-subtitle-shift",
+  "video": "E:\\平日资料\\GitHub\\CutFlow\\tests\\fixtures\\diagnosis\\fix1_subtitle_shift.mp4",
+  "ass": "E:\\平日资料\\GitHub\\CutFlow\\tests\\fixtures\\diagnosis\\fix1_subtitle_shift.ass",
+  "expect": {
+   "verdict": "issues",
+   "D1": "fail"
+  },
+  "note": "字幕整体 +0.5s(单卡偏移 500ms 触 D1 硬线)"
+ },
+ {
+  "name": "fix2-audio-shift",
+  "video": "E:\\平日资料\\GitHub\\CutFlow\\tests\\fixtures\\diagnosis\\fix2_audio_shift.mp4",
+  "ass": "E:\\平日资料\\GitHub\\CutFlow\\tests\\fixtures\\diagnosis\\fix2_audio_shift.ass",
+  "expect": {
+   "verdict": "issues",
+   "D2": "fail",
+   "D1": "pass"
+  },
+  "note": "音轨+字幕同延 0.45s,画面不动 → 口型错位;D2 应检出整体偏移"
+ },
+ {
+  "name": "fix3-bad-cut",
+  "video": "E:\\平日资料\\GitHub\\CutFlow\\tests\\fixtures\\diagnosis\\fix3_bad_cut.mp4",
+  "ass": "E:\\平日资料\\GitHub\\CutFlow\\tests\\fixtures\\diagnosis\\fix3_bad_cut.ass",
+  "expect": {
+   "verdict": "issues",
+   "D3b": "fail",
+   "D1": "pass"
+  },
+  "note": "第 2 句句中腰斩硬接;字幕卡为完整句'遇到蓝屏先不要慌',成片语音只剩'遇到蓝屏' → 卡完整性核对(truncated-card)应检出"
+ }
+]

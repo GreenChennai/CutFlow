@@ -317,7 +317,11 @@ def collect_l0(root: Path) -> dict:
     checks = [fn(root) for fn in L0_CHECKS]
     hard = [c for c in checks if not c.get("skipped")]
     failed = [c for c in hard if not c["ok"]]
-    return {"level": "L0", "checks": checks,
+    # REVIEW-20260916 根因 5:L0 是机械自检,只保证产物自洽,不保证内容正确。
+    # scope 显式写出,防"通过=没问题"的表述漂移。
+    return {"level": "L0", "scope": "mechanical",
+            "scopeNote": "L0=机械自检(产物自洽);内容正确性需 rs_diagnose(contentVerdict)",
+            "checks": checks,
             "pass": not failed,
             "failed": [c["name"] for c in failed],
             "skipped": [c["name"] for c in checks if c.get("skipped")],
@@ -347,9 +351,15 @@ def l1_payload(root: Path) -> dict:
 
 
 def write_report(res: dict, path: Path, l1: dict | None = None) -> None:
+    scope_note = ("L0 通过 = 机械自检通过(产物自洽),**不等于内容正确**;"
+                  "内容正确性请跑 rs_diagnose 或 rs_verify --content"
+                  if res.get("scope") == "mechanical" and res["pass"] else "")
     lines = [f"# 自检报告({res['level']})", "",
-             f"- 时间:{res['at']}", f"- 判定:**{'通过' if res['pass'] else '未通过'}**", "",
-             "| 检查项 | 结果 | 说明 |", "|---|---|---|"]
+             f"- 时间:{res['at']}", f"- 判定:**{'通过' if res['pass'] else '未通过'}**"]
+    if scope_note:
+        lines.append(f"- 边界:{scope_note}")
+    lines.append("")
+    lines += ["", "| 检查项 | 结果 | 说明 |", "|---|---|---|"]
     for c in res["checks"]:
         mark = "— 未涉及" if c.get("skipped") else ("✓" if c["ok"] else "✗")
         lines.append(f"| {c['name']} | {mark} | {c.get('detail') or c.get('skipped') or ''} |")
@@ -370,10 +380,15 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("root", nargs="?", default=".")
     ap.add_argument("--level", default="L0", choices=["L0", "L1"])
+    ap.add_argument("--content", dest="content", action="store_true",
+                    help="追加成片内容诊断(ADR-0031 rs_diagnose):字幕↔语音时间轴/"
+                         "音画同步/错剪语义;需要成片;结果记入 contentVerdict 与诊断台账")
     ap.add_argument("--out", default="06_output")
     ap.add_argument("--status", action="store_true")
     ap.add_argument("--mark-first", dest="mark_first", action="store_true")
     ap.add_argument("--result", default="pass", choices=["pass", "fail"])
+    ap.add_argument("--content-budget", dest="content_budget", type=float, default=900.0,
+                    help="--content 诊断预算秒(默认 900;超时输出阶段性结论)")
     ap.add_argument("--json", action="store_true")
     a = ap.parse_args()
 
@@ -399,6 +414,37 @@ def main() -> int:
                     f"首次检查已记录({a.result})", {"firstCheckDone": True})
 
     res = collect_l0(root)
+    content_verdict = None
+    if a.content:
+        videos = sorted((root / "06_output").glob("*.mp4"), key=lambda p: p.stat().st_mtime) \
+            if (root / "06_output").is_dir() else []
+        if not videos:
+            content_verdict = {"verdict": "indetermined", "note": "无成片,内容诊断未运行"}
+        else:
+            import rs_diagnose
+            cfg_path = Path(__file__).resolve().parents[3] / "config.json"
+            cfg = {}
+            if cfg_path.is_file():
+                try:
+                    cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+                except json.JSONDecodeError:
+                    cfg = {}
+            budget = float(a.content_budget) if a.content_budget else 900.0
+            diag = rs_diagnose.diagnose(videos[-1], root, None, None, None, budget,
+                                        False, root / "06_output", cfg)
+            if "verdict" not in diag:
+                content_verdict = {"verdict": "indetermined",
+                                   "note": str(diag.get("message", ""))[:200]}
+            else:
+                content_verdict = {"verdict": diag["verdict"],
+                                   "suspiciousSpans": diag.get("suspiciousSpans") or [],
+                                   "report": diag.get("report"),
+                                   "ledger": diag.get("ledger"),
+                                   "elapsedS": diag.get("elapsedS")}
+                res["contentVerdict"] = content_verdict
+                if diag["verdict"] == "issues":
+                    res["pass"] = False
+                    res["failed"].append("内容诊断(rs_diagnose)")
     l1 = l1_payload(root) if a.level == "L1" else None
     out = root / a.out
     out.mkdir(parents=True, exist_ok=True)
@@ -414,6 +460,10 @@ def main() -> int:
     msg = f"L0 {'通过' if res['pass'] else '未通过'}({len(res['checks']) - len(res['skipped'])} 项)"
     if res["failed"]:
         msg += f";未过:{','.join(res['failed'][:3])}"
+    if content_verdict is not None:
+        msg += f";内容诊断 {content_verdict['verdict']}" + (
+            f"({len(content_verdict.get('suspiciousSpans') or [])} 处疑点)"
+            if content_verdict.get("suspiciousSpans") else "")
     if l1:
         msg += ";已生成 L1 待目测清单(判定权在 Agent/用户)"
     data = {"verifyLevel": "L1" if l1 else "L0", "firstCheckDone": first_done,

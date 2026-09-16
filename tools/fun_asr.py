@@ -52,6 +52,10 @@ EXIT_OK, EXIT_INPUT, EXIT_DEP, EXIT_EXEC = 0, 2, 3, 4
 # ---------------------------------------------------------------- 基础设施
 
 def emit(ok: bool, code: str, message: str, data=None, exit_code: int = EXIT_OK) -> int:
+    # Windows 控制台默认 GBK:中文 JSON 经 stdout 会变乱码,调用方按 utf-8 读全废。
+    # 强制 utf-8(REVIEW-20260916 根因 4)。
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
     print(json.dumps({"ok": ok, "code": code, "message": message, "data": data},
                      ensure_ascii=False, default=str))
     return exit_code

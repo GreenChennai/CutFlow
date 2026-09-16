@@ -1,0 +1,15 @@
+[Script Info]
+ScriptType: v4.00+
+PlayResX: 1080
+PlayResY: 1920
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Main,Microsoft YaHei,54,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,0,2,60,60,60,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:00.50,0:00:02.80,Main,,0,0,0,,今天我们讲桌面运维的第一课
+Dialogue: 0,0:00:03.10,0:00:05.40,Main,,0,0,0,,遇到蓝屏先不要慌
+Dialogue: 0,0:00:05.70,0:00:08.00,Main,,0,0,0,,第一步检查内存条
+Dialogue: 0,0:00:08.30,0:00:10.60,Main,,0,0,0,,然后重新插拔再开机
