@@ -135,6 +135,10 @@
      "type": "string",
      "description": "ASS 文件路径;由 rs_subtitle.py 先生成"
     },
+    "source": {
+     "type": "string",
+     "description": "字幕源文件路径(tts manifest / transcript json);rs_jy_draft 经它回读 wordline 的 sentences/segments 求卡时间(v0.15 起纳入 schema,此前实现已读写但契约缺失)"
+    },
     "style": {
      "type": "string"
     }

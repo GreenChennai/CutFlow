@@ -27,7 +27,7 @@
 | **DP 字幕断句** | "滚滚长/江东逝水"式断错 | 约束最优 DP + 词边界硬约束(两字词不跨卡)+ 禁切表,竖屏 10–12 字/卡,CPS ≤9,Netflix 时长规范 |
 | **品牌变体矩阵** | 一条视频要多平台多 Logo 版 | Logo 真实尺寸(alpha 内容包围盒,透明 padding 不算)+ 6 锚点排版,自动避开字幕带;`Logo × 比例` 共享上游缓存 |
 
-设计决策见 [docs/adr/](docs/adr/)(0001–0031);剪辑水平迭代总纲见
+设计决策见 [docs/adr/](docs/adr/)(0001–0038);剪辑水平迭代总纲见
 [docs/ITERATION-GUIDE-v0.11.md](docs/ITERATION-GUIDE-v0.11.md)(权威数值出处索引也在那里);
 实测战报见 `skills/cutflow/rules/compose.md`。
 

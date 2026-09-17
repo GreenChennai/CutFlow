@@ -381,7 +381,7 @@ def main() -> int:
     ap.add_argument("root", nargs="?", default=".")
     ap.add_argument("--level", default="L0", choices=["L0", "L1"])
     ap.add_argument("--content", dest="content", action="store_true",
-                    help="追加成片内容诊断(ADR-0031 rs_diagnose):字幕↔语音时间轴/"
+                    help="追加成片内容诊断(ADR-0032 rs_diagnose):字幕↔语音时间轴/"
                          "音画同步/错剪语义;需要成片;结果记入 contentVerdict 与诊断台账")
     ap.add_argument("--out", default="06_output")
     ap.add_argument("--status", action="store_true")

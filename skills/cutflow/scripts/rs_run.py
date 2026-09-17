@@ -38,7 +38,7 @@ S13 = "all"
 
 
 def spec() -> list[dict]:
-    """S0–S10 阶段注册表(rules/incremental.md §2 / SKILL.md §1)。"""
+    """S0–S11 阶段注册表(rules/incremental.md §2 / SKILL.md §1)。"""
     return [
         {"id": "S0", "name": "基础素材", "manual": True,
          "inputs": ["00_brief/brief.md", "01_materials/*"],

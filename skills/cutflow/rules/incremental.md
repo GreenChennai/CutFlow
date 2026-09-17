@@ -72,7 +72,7 @@ key(stage) = sha1(
 
 | 命令 | 语义 |
 |---|---|
-| `rs_run.py --status` | 打印 S0–S10 状态灯:✓ done / ✗ missing / ⚠ stale(附 staleReason) |
+| `rs_run.py --status` | 打印 S0–S11 状态灯:✓ done / ✗ missing / ⚠ stale(附 staleReason) |
 | `rs_run.py --from S3` | 从 S3 起重跑,之前阶段 hash 命中即跳过 |
 | `rs_run.py --only S7` | 只跑 S7(前提:其输入 hash 未变,否则报错并提示用 `--from`) |
 | `rs_run.py --dirty` | 只重跑 stale 的阶段 |
@@ -154,7 +154,7 @@ python skills/cutflow/scripts/rs_run.py --root <工程> --rollback --at 20260910
 | 缓存幂等 | 无改动重跑 `--from S3`,全程命中,墙钟 ≤ **2s** |
 | 单卡改字 | 端到端 ≤ **10s**(对照:改造前 20min+) |
 | stale 可解释 | `--explain` 能指出具体变化的输入(含脚本 hash) |
-| 状态完整 | `--status` 覆盖 S0–S10,无未知阶段 |
+| 状态完整 | `--status` 覆盖 S0–S11,无未知阶段 |
 
 ## 8. 反模式
 
