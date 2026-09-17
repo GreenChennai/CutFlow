@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.15.1 (2026-09-18) — 许可变更(仅本版本及之后生效)· CutForge M4 桥脚本
+
+- **许可变更**:自本版本起原创部分由 MIT 改为 **ARL-1.0**(弱传染,见 `LICENSE` / `NOTICE.md`)。
+  **已发布版本(v0.1.0–v0.12 等 tag)的 MIT 授权继续有效、不可撤回**;变更仅对 v0.15.1 及之后的新版本生效。
+- 新增 CutForge 桥脚本四件套(`rs_editor/rs_notes/rs_oplog/rs_gate`)+ rs_doctor「CutForge 桥」体检组 + README 速查表登记。
+
 ## v0.15 (2026-09-17) — CutForge 融合 M0+M1:合规立项 · 契约固化(计划书落地第一批)
 
 来源:《CutForge × CutFlow 融合迭代计划书 v1.0》M0(立项与合规)与 M1(契约固化)。CutFlow 侧改动全部向后兼容,**测试 300 通过 / 0 失败**。
