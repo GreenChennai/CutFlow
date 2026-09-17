@@ -1,5 +1,28 @@
 # Changelog
 
+## v0.15 (2026-09-17) — CutForge 融合 M0+M1:合规立项 · 契约固化(计划书落地第一批)
+
+来源:《CutForge × CutFlow 融合迭代计划书 v1.0》M0(立项与合规)与 M1(契约固化)。CutFlow 侧改动全部向后兼容,**测试 300 通过 / 0 失败**。
+
+### M0 · 立项与合规
+
+- **仓库瘦身**:12 个未跟踪 probe 脚本归置 `tests/probes/`(标注"调试用,不参与门禁",`tests/README.md` 新建);`.cluster/` 实验残留(131M,gitignored)备份至 `E:\_backup\cutflow-m0-20260917\` 后移出工作区。`git clone --depth 1` 实测 **26.5 MB**(门槛 ≤300 MB)。
+- 新仓 `cutforge`(本地 `E:\平日资料\GitHub\cutforge`,commit 4cd522b 起):ARL-1.0 混合授权三件套(LICENSE / LICENSE-OPENCUT.MIT 上游原文逐字 1,060B / NOTICE.md)、命名核查存档(docs/NAMING.md,crates.io 四名 FREE、`@cutforge` npm 作用域被占改用 `@cutforge-app`、组织 `cutforge-app` FREE)、工具链 pin(rust 1.97.0 / moon 2.3.3 / bun 1.3.11,edition 2024,与上游一致)、统一门禁入口 `tools/gates/gate.py`、CI 骨架。
+
+### M1 · 契约固化
+
+1. **口径修正**(3.10 清单):`rules/incremental.md` 与 `rs_run.py` 的 "S0–S10" → **S0–S11**(命中归零);`project.schema.json` 补录 `subtitle.source`(`rs_jy_draft.py` 实际读写但契约缺失的既有口径缺陷)。
+2. **ADR-0031 撞车重编号**:`0031-成片内容诊断.md` → **`0032-成片内容诊断.md`**(绿幕门禁保留 0031);同步 `rs_diagnose.py`、`rs_verify.py`、`docs/REVIEW-20260916` 引用;38 个编号唯一、引用无悬挂。
+3. **新增 ADR-0033~0038**(文件真相源+OpLog 合并 / 五份 schema 唯一契约 / OpenCut 只读策略 / ARL-1.0 混合授权 / N 后端注册表 / 剪映能力对等边界),README 编号范围更新 0001–0038。
+4. **CONTEXT.md**:「时间线与渲染」改 N 后端注册表表述;「平台与画幅」补常量生成词条;新增「CutForge 与同步」分区(工程真相源/OpLog/冲突/锚点/标注/孤儿标注/无头运行/N 后端注册表八词条)。
+
+### CutForge 侧 M1 交付(新仓)
+
+- `schemas/` 五份契约:project(**v2**:schemaVersion/backends/notes/轨道与片段稳定 id/clip.sourceHash;`version` 恒 1 兼容旧读法)、wordline(按 rs_align 代码考古建模,含 calibration/smooth/retext/dub/asr 全块与 degraded 语义)、cutlist(guard 七键+reason 九枚举;自定义 `x-removeRequiresGuardOk`/`x-keepCoversTimeline` 跨字段断言)、notes、oplog;`constants.ratios.json`(由 `tools/gen_constants.py` 从 rs_common.RATIOS + platforms.json 生成,零漂移门禁)、`mcp-tools.json`(5.2 全表 27 工具骨架)。
+- 双端校验:`tools/schema_gen.py` 生成纯标准库校验器 `tools/_generated/cf_validate.py`;Rust `cutforge-schema` crate(draft-07 子集引擎+迁移器);**双端对拍逐样本一致、迁移幂等字节级一致**(cargo test 7 项全绿)。
+- 回归集:`tests/regression/` 三类 videoType 样本各 5 文件(talking-head / talking-head+animation / pure-animation;因 9-14 磁盘清理本机已无现网工程,按生产者代码考古构造,**观察项**:待下一真实工程用真实产物替换复跑)。`tools/validate_regression.py` **16/16 通过**。
+- 门禁实测:`gate.py M0 --json` 与 `gate.py M1 --json` 全部阻断项通过。
+
 ## v0.14 (2026-09-16) — 抠像/背景合成移交用户 · S0 幕布检测门禁(ADR-0031)
 
 来源:用户要求「删除绿幕抠像功能,改为让用户自己抠像然后合成背景,之后再对处理完的原始素材进行剪辑;并增加检测,若是绿幕视频提醒用户处理,误判可说明后放行」。**测试 286 通过 / 8 跳过**(删除旧键控用例,新增 `tests/test_v14.py` 15 用例)。
