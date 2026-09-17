@@ -4,6 +4,12 @@
 
 来源:《CutForge × CutFlow 融合迭代计划书 v1.0》M0(立项与合规)与 M1(契约固化)。CutFlow 侧改动全部向后兼容,**测试 300 通过 / 0 失败**。
 
+### M4 · MCP 与脚本(2026-09-18 补充,计划书落地第二批)
+
+- 新增四个 CutForge 桥脚本(纯标准库+结果协议,均带 `--probe` 自检):`rs_editor.py`(工程只读视图/时间线/结构体检)、`rs_notes.py`(标注 list/stats+孤儿统计)、`rs_oplog.py`(OpLog tail/report,回答"AI 改了什么")、`rs_gate.py`(透传 cutforge 侧 M0–M4 门禁退出码)。
+- `rs_doctor.py` 新增「CutForge 桥」检查组(四桥 --probe 全过);README 常用命令速查表登记 4 行。
+- 配套 cutforge 侧:MCP 28 工具双通道 + 脚本沙箱(commit 546b01c);门禁 M4-6 实测通过。
+
 ### M0 · 立项与合规
 
 - **仓库瘦身**:12 个未跟踪 probe 脚本归置 `tests/probes/`(标注"调试用,不参与门禁",`tests/README.md` 新建);`.cluster/` 实验残留(131M,gitignored)备份至 `E:\_backup\cutflow-m0-20260917\` 后移出工作区。`git clone --depth 1` 实测 **26.5 MB**(门槛 ≤300 MB)。

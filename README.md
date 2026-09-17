@@ -191,6 +191,10 @@ CutFlow 的"剪得好"不是玄学,每条数值都有出处(完整索引见 [ITE
 | 封面文案(S10) | `rs_meta.py --wordline ... --brief 00_brief\brief.md --platform douyin,bili` |
 | 剪映草稿 | `rs_jy_draft.py 05_ir\project.json --name <名>` |
 | 清理 | `rs_cleanup.py <工程> [--apply]` |
+| CutForge 桥:编辑器视图 | `rs_editor.py view/timeline/check <工程>`(只读;写走 cutforge-cli/mcp) |
+| CutForge 桥:标注 | `rs_notes.py list/stats <工程> [--state open]`(含孤儿统计) |
+| CutForge 桥:OpLog 审计 | `rs_oplog.py tail/report <工程> [--actor agent]`(AI 改了什么) |
+| CutForge 桥:门禁 | `rs_gate.py M0…M3 --json`(透传 cutforge 侧门禁退出码) |
 
 全部脚本支持 `--json` 协议输出(`{"ok","code","message","data"}`),便于 Agent 消费。
 

@@ -125,6 +125,27 @@ def main() -> int:
     checks.append(_check("artboard 桥", bool(wpi and wpi.is_dir()), str(wpi or "(未配置 artboard_dir)"),
                          fatal=False, group="趣味素材"))
 
+    # CutForge 桥脚本(v0.15,计划书 M4):四个桥 --probe 自检必须全过
+    forge_scripts = Path(__file__).parent
+    for name in ("rs_editor.py", "rs_notes.py", "rs_oplog.py", "rs_gate.py"):
+        script = forge_scripts / name
+        ok, detail = False, f"{script}"
+        if script.is_file():
+            try:
+                p = subprocess.run([sys.executable, str(script), "--probe"],
+                                   capture_output=True, text=True, encoding="utf-8",
+                                   errors="replace", timeout=30)
+                ok = p.returncode == 0
+                lines = (p.stdout or "").strip().splitlines()
+                detail = lines[-1] if lines else f"exit={p.returncode}"
+            except Exception as exc:  # noqa: BLE001 — 自检本身绝不致命
+                detail = f"探测失败({type(exc).__name__})"
+        else:
+            detail = "脚本缺失"
+        checks.append(_check(f"CutForge 桥:{name}", ok, detail, fatal=False,
+                             group="CutForge 桥",
+                             hint="缺失则重拉 CutFlow 仓库 skills/cutflow/scripts/"))
+
     fatal_bad = [c for c in checks if c["fatal"] and not c["ok"]]
     all_ok = not fatal_bad
 
