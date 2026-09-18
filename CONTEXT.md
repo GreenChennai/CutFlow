@@ -76,3 +76,5 @@
 - **孤儿标注(orphan)**:锚点无法重定位时的标注状态;显式保留、编辑器可见,**不得静默丢弃**。
 - **无头运行(headless)**:不经 UI、由命令/MCP/脚本驱动的查询、渲染与导出。
 - **N 后端注册表**:IR 的消费者集合开放注册(`backendId`:`ffmpeg` / `jianying` / `cutforge` …),工程在 project.json 的 `backends` 字段声明启用了哪些后端;新增后端只登记,不改契约。
+- **文件级 Op**:target 不是 project.json 而是 notes.json / cutlist.json 等真相源的 Op;其撤销语义 = 对应文件逆写回 before,不得误写进工程文档(见 cutforge docs/ITERATION-PLAN-v2.0.md P0-1)。
+- **基线快照**:某 rev 落盘时保存的祖先态(diff 形式,存 `.cutforge/bases/`);三路合并用它作共同祖先——没有它,"本地修改"对合并器不可见,冲突检测退化为磁盘全胜。
