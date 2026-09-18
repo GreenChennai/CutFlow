@@ -181,6 +181,25 @@ def params_of(root: Path) -> dict:
     return {"maxChars": dict(segmentation.MAX_CHARS), "cpsMax": 9}
 
 
+def outputs_hash(root: Path, st: dict) -> str | None:
+    """阶段产物内容指纹(M9-3):识别带外改写——产物被 rs_run 之外的工具
+    (如 CutForge 编辑器)改过时,parts(输入/参数 hash)依旧全等,只有它能发现。"""
+    outs = expand(root, st["outputs"])
+    if not outs:
+        return None
+    h = hashlib.sha256()
+    for pth in sorted(outs):
+        try:
+            h.update(str(pth.relative_to(root)).encode("utf-8"))
+        except ValueError:
+            h.update(str(pth).encode("utf-8"))
+        try:
+            h.update(pth.read_bytes())
+        except OSError:
+            h.update(b"<missing>")
+    return h.hexdigest()[:16]
+
+
 def evaluate(root: Path, st: dict) -> dict:
     """返回 {"status": done|stale|missing|manual, "staleReason": [...]}"""
     rec = read_state(root, st["id"])
@@ -189,6 +208,12 @@ def evaluate(root: Path, st: dict) -> dict:
         return {"status": "done" if outs else "missing", "staleReason": [], "manual": True}
     if not rec:
         return {"status": "missing", "staleReason": ["从未记录状态"], "outs": len(outs)}
+    oh = outputs_hash(root, st)
+    if st["outputs"] and rec.get("outHash") and oh and rec["outHash"] != oh:
+        return {"status": "stale",
+                "staleReason": [f"产物带外改写(outHash {rec['outHash']} → {oh};"
+                                "rs_run 之外的工具改过产物)"],
+                "outs": len(outs)}
     cur = stage_parts(root, st, rec.get("parts", {}).get("params", {}),
                       rec.get("parts", {}).get("external", {}))
     diff = diff_parts(rec.get("parts") or {}, cur)
@@ -319,6 +344,10 @@ sys.exit(subprocess.run(
 # B8(BUGREPORT-20260913):05_ir 的级联起点是 S3 —— 会重新生成 project.json,
 # 手注的单 clip 音频/转场修正全被冲掉。必须在脚本头部写明正确出路。
 REBUILD_EXTRA_NOTES = {
+    "04_cut": """⚠ 例外:若你只改了 cuts[].action(删/留决策),不要跑本脚本 ——
+   S2 会从 wordline 重新 detect 并**重写 cutlist.json**,把触发重建的那次编辑冲掉。
+   正确做法:`python <scripts>/rs_cut.py --apply 04_cut/cutlist.json`(只重算 keep/removedMs)。
+   CutForge 侧的编辑同理:cut_apply 已服务端重算 keep,无需重跑 S2。""",
     "05_ir": """⚠ 例外:若你**手改过 05_ir/project.json**(手注单 clip 音频/
    转场修正等),不要跑本脚本 —— S3 会重新生成 IR 把手注冲掉。
    正确做法:改跑 `06_output/rebuild.py`(S8:只用现有 ass 重烧录导出,不碰 IR)。
@@ -387,7 +416,7 @@ def init_rebuild(root: Path) -> list[str]:
               "| 你改了什么 | 运行哪个脚本 |", "|---|---|",
               "| 字幕(06_output/subtitles.ass) | `python 06_output/rebuild.py` |",
               "| IR 或 wordline(05_ir/) | `python 05_ir/rebuild.py` |",
-              "| 粗剪决策(04_cut/cutlist*.json) | `python 04_cut/rebuild.py` |",
+              "| 粗剪决策 action 改动(04_cut/cutlist.json) | `python <scripts>/rs_cut.py --apply 04_cut/cutlist.json`(重算 keep;**不要**重跑 S2 detect——会冲掉 action 编辑) |",
               "| artboard 卡片(03_assets/artboard/) | `python 03_assets/artboard/rebuild.py` |",
               "| 拿不准 | `python rebuild.py`(全量) |", "",
               "每个脚本都会**先备份**再重跑,跑砸了可以 `--rollback` 还原。"]
@@ -510,6 +539,7 @@ def run_stage(root: Path, st: dict) -> tuple[bool, str]:
         return False, f"{st['id']} 失败(exit {p.returncode}):{(p.stderr or p.stdout or '')[-300:]}"
     parts = stage_parts(root, st, params_of(root), external_versions())
     write_state(root, st["id"], {"status": "done", "key": key_of(parts), "parts": parts,
+                                 "outHash": outputs_hash(root, st),
                                  "ts": datetime.now(CST).isoformat(timespec="seconds")})
     return True, f"{st['id']} ✓ {st['name']}"
 
@@ -601,6 +631,7 @@ def main() -> int:
             return emit(False, "BAD_STAGE", f"未知阶段:{a.mark}", exit_code=2)
         parts = stage_parts(root, st, params_of(root), external_versions())
         write_state(root, st["id"], {"status": "done", "key": key_of(parts), "parts": parts,
+                                     "outHash": outputs_hash(root, st),
                                      "manual": True,
                                      "ts": datetime.now(CST).isoformat(timespec="seconds")})
         return emit(True, "MARK_OK", f"{a.mark} 已标记完成", {"stage": a.mark})

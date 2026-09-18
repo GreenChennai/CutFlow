@@ -1,0 +1,26 @@
+name: gate
+on: [push, pull_request]
+
+jobs:
+  bridge-smoke:
+    runs-on: windows-latest
+    env:
+      PYTHONUTF8: "1"
+      CUTFORGE_REPO: ${{ github.workspace }}/../cutforge
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Clone cutforge (shallow) for bridge smoke
+        run: git clone --depth 1 https://github.com/GreenChennai/cutforge.git ../cutforge
+      - name: Bridge probes (四桥自检必须真绿)
+        run: |
+          python skills/cutflow/scripts/rs_editor.py --probe --json
+          python skills/cutflow/scripts/rs_notes.py --probe --json
+          python skills/cutflow/scripts/rs_oplog.py --probe --json
+          python skills/cutflow/scripts/rs_gate.py --probe --json
+      - name: Bridge smoke (cutforge 契约烟测在本仓环境跑一遍)
+        run: |
+          pip install pytest -q
+          python -m pytest ../cutforge/tests -q

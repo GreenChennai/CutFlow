@@ -33,7 +33,9 @@ def load_ops(root: Path) -> list[dict]:
                 try:
                     ops.append(json.loads(ln))
                 except json.JSONDecodeError:
-                    continue  # 半行(上次写入中断)跳过,rev 以文件为准
+                    # 半行(上次写入中断):截断处之后不再可信,与 cutforge-io 同口径,
+                    # 停止加载本文件(此前 continue 续读会造成两侧 OpLog 视图分叉)
+                    break
     ops.sort(key=lambda o: o.get("rev") or 0)
     return ops
 

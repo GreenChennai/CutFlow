@@ -354,6 +354,11 @@ def _manual_edits(out: Path) -> list[str]:
     hits: list[str] = []
     if (old.get("_meta") or {}).get("manualEdit"):
         hits.append("_meta.manualEdit")
+    # M9 桥升版:CutForge 编辑痕迹(schemaVersion 由 cutforge open/persist 写入,
+    # fresh build 永不产生)——编辑器的改动同样是手改,S3 重建覆盖前必须显式 --force
+    if old.get("schemaVersion"):
+        hits.append(f"CutForge 编辑痕迹(schemaVersion={old['schemaVersion']};"
+                    "编辑器改动须走 cutforge,重建请 --force)")
     for ti, t in enumerate(old.get("tracks", [])):
         for ci, c in enumerate(t.get("clips", [])):
             if c.get("chroma"):

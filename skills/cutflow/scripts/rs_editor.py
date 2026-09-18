@@ -30,12 +30,28 @@ def _load(path: Path) -> dict:
 
 
 def timeline(project: dict) -> list[dict]:
+    """M9 桥升版:CutFlow 原生 IR(轨道/片段无稳定 id)不再输出 null——
+    确定性回退 `V1` / `V1#2` 形态,并以 idSource=native|fallback 显式标注,
+    消费者可据 idSource 判断该 id 是否可作锚点。"""
     rows: list[dict] = []
-    for t in project.get("tracks", []):
-        for c in t.get("clips", []):
+    letters = {"video": "V", "audio": "A", "text": "T"}
+    for ti, t in enumerate(project.get("tracks", [])):
+        if t.get("id"):
+            tid, t_src = t["id"], "native"
+        else:
+            tid = f"{letters.get(t.get('kind'), 'X')}{ti + 1}"
+            t_src = "fallback"
+        for ci, c in enumerate(t.get("clips", [])):
+            if c.get("id"):
+                cid, c_src = c["id"], "native"
+            else:
+                cid = f"{tid}#{ci + 1}"
+                c_src = "fallback"
             rows.append({
-                "id": c.get("id"),
-                "track": t.get("id"),
+                "id": cid,
+                "idSource": c_src,
+                "track": tid,
+                "trackIdSource": t_src,
                 "startMs": c.get("startMs"),
                 "endMs": (c.get("startMs") or 0) + (c.get("durationMs") or 0),
             })
