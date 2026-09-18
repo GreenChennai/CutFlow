@@ -153,6 +153,22 @@ S0 素材 ─► S1 转写+字级对齐 ─► S2 粗剪 ─► S3 基础合成 
 | **配音强制对齐** | `rs_dub.py align --wordline 05_ir/wordline.json --audio 03_assets/tts/all.wav --write`（TTS 句内估算 → 真实字级） |
 | 清理 | `rs_cleanup.py <工程> [--apply]` |
 
+### 4.1 CutForge 编辑器桥(四桥;人与 AI 在同一条时间线上)
+
+CutForge(github.com/GreenChennai/cutforge)是同伴项目:Op 级可审计编辑器。
+工程被 CutForge 打开/编辑后,`05_ir/project.json` 会带 `schemaVersion` 与稳定 id
+(B8 护栏会识别为编辑痕迹)。四桥(均在 `skills/cutflow/scripts/`):
+
+| 桥 | 命令 | 用途 |
+|---|---|---|
+| editor | `rs_editor.py timeline <工程>` / `view <工程>` / `check <工程>` | 时间线/视图投影(原生 IR 无 id 时回退 `V1#2` 并标 `idSource=fallback`) |
+| notes | `rs_notes.py tail <工程>` / `--probe` | 标注(notes.json)只读审计桥 |
+| oplog | `rs_oplog.py tail <工程> [--rev N] [--actor agent]` / `report` | OpLog 审计桥(半行截断语义与 cutforge-io 一致) |
+| gate | `rs_gate.py M0 [--check X] --json` / `--probe` | 门禁透传桥(probe 真检 gate.py 在位) |
+
+MCP 编排工具(stage_run/render/export_jianying 等)由 CutForge 侧封装同一批脚本;
+两侧 CI 互跑桥冒烟。
+
 ---
 
 ## 5. 改了东西怎么办(手工编辑工作流)
@@ -163,7 +179,7 @@ S0 素材 ─► S1 转写+字级对齐 ─► S2 粗剪 ─► S3 基础合成 
 |---|---|
 | 字幕 `06_output/subtitles.ass` | `python 06_output/rebuild.py` |
 | IR / Wordline `05_ir/` | `python 05_ir/rebuild.py`;⚠ **手改过 `05_ir/project.json`**(手注单 clip 音频/转场)→ 改跑 `python 06_output/rebuild.py`(S8 只用现有 ass,不碰 IR) |
-| 粗剪决策 `04_cut/cutlist*.json` | `python 04_cut/rebuild.py` |
+| 粗剪决策 action 改动 `04_cut/cutlist.json` | `python <scripts>/rs_cut.py --apply 04_cut/cutlist.json`(重算 keep;**不要**重跑 S2 detect——会冲掉 action 编辑) |
 | artboard 卡片 `03_assets/artboard/` | `python 03_assets/artboard/rebuild.py` |
 | 拿不准 | `python rebuild.py`(全量) |
 

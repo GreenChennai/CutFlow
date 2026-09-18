@@ -29,8 +29,14 @@ def forge_root() -> Path:
 
 def main() -> int:
     if "--probe" in sys.argv:
-        return emit(True, "OK", "rs_gate 桥自检通过(CUTFORGE_REPO=%s)" % forge_root(),
-                    {"bridge": "gate", "forgeRoot": str(forge_root())}, exit_code=0)
+        # M9 桥升版:probe 必须真检 gate.py 存在(此前无条件报 OK,doctor 体检假绿)
+        gate = forge_root() / "tools" / "gates" / "gate.py"
+        if not gate.is_file():
+            return emit(False, "NO_ENV",
+                        f"rs_gate 桥自检失败:CutForge 门禁不存在: {gate}(设 CUTFORGE_REPO)",
+                        {"bridge": "gate", "forgeRoot": str(forge_root())}, exit_code=3)
+        return emit(True, "OK", "rs_gate 桥自检通过(gate.py 在位:%s)" % gate,
+                    {"bridge": "gate", "forgeRoot": str(gate)}, exit_code=0)
     ap = argparse.ArgumentParser(description="CutForge 门禁桥(退出码透传)")
     ap.add_argument("milestone", nargs="?", help="里程碑,如 M0")
     ap.add_argument("--check", help="只跑指定检查项")
