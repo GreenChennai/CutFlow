@@ -81,8 +81,8 @@ S0 素材 ─► S1 转写+字级对齐 ─► S2 粗剪 ─► S3 基础合成 
 | **S2** | 粗剪处理 | `rs_cut` | `04_cut/cutlist.json` | remove 刀 guard 全过 |
 | **S3** | 基础合成 | `rs_ir build` + `rs_render` | `seg_*/base/` | IR validate |
 | **S4** | 动画/信息卡 | artboard 桥(`rs_artboard`) | `composed/` | 卡片过安全区 |
-| **S5** | 品牌(Logo 变体) | `rs_brand` | `branded/<id>/` | 不压字幕带 |
-| **S6** | 音效 | `rs_sfx` | `mixed/` | ≤2 个 / 15s |
+| **S5** | 品牌(Logo 变体) | `rs_brand` | `06_output/成片_*.mp4` | 不压字幕带 |
+| **S6** | 音效 | `rs_sfx` | `05_ir/sfx_draft.json` | ≤2 个 / 15s |
 | **S7** | 字幕 | `rs_subtitle` | `06_output/subtitles.ass` | 回归集全绿、CPS ≤9 |
 | **S8** | **烧录导出** | `rs_render` | `06_output/final_*.mp4` | 用**现有 ass**,不重新生成字幕 |
 | **S9** | 自评与对齐断言 | `rs_sync` + `rs_verify` | `sync_report.md` | 偏移中位数 ≤40ms;**成片音频内容闸**;**QC 体检**(黑帧/冻结/VFR/响度,v0.11) |

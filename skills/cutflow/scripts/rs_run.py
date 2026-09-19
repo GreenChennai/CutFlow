@@ -65,12 +65,15 @@ def spec() -> list[dict]:
          "scripts": []},
         {"id": "S5", "name": "品牌(Logo 变体)",
          "inputs": ["05_ir/project.json", "05_ir/variants.json"],
-         "outputs": ["06_output/final_*.mp4"], "scripts": ["rs_brand.py"],
+         # BUGREPORT P10:rs_brand 实际产 `成片_<ratio>_<logo>_<profile>.mp4`,
+         # 声明须与之一致;此前误写 final_*.mp4,与 S8 同 glob 互相打脏、--dirty 永不收敛。
+         "outputs": ["06_output/成片_*.mp4"], "scripts": ["rs_brand.py"],
          "cmd": ["rs_brand.py", "05_ir/project.json", "--variants", "05_ir/variants.json",
                  "--out", "06_output"]},
         {"id": "S6", "name": "音效",
-         "inputs": ["05_ir/project.json"], "outputs": ["_state/sfx.applied.json"],
-         "scripts": ["rs_sfx.py"],
+         "inputs": ["05_ir/project.json"],
+         # BUGREPORT P10:命令落点是 05_ir/sfx_draft.json,声明必须同点。
+         "outputs": ["05_ir/sfx_draft.json"], "scripts": ["rs_sfx.py"],
          "cmd": ["rs_sfx.py", "05_ir/project.json", "--auto", "--out", "05_ir/sfx_draft.json"]},
         {"id": "S7", "name": "字幕",
          "inputs": ["05_ir/wordline.json"], "outputs": ["06_output/subtitles.ass"],
@@ -528,9 +531,10 @@ def run_stage(root: Path, st: dict) -> tuple[bool, str]:
         return False, f"{st['id']} 是人工阶段(Agent 介入),完成后用 --mark {st['id']}"
     p = subprocess.run(cmd, cwd=str(root), capture_output=True, text=True)
     if p.returncode == 0 and st.get("post"):
-        # v0.13:主命令成功后的附加步骤(如 S1 的能量校准);任一失败即阶段失败
-        post_argv = [st["cmd"][0]] + st["post"]
-        post_cmd = build_cmd_from_argv(root, post_argv)
+        # v0.13:主命令成功后的附加步骤(如 S1 的能量校准);任一失败即阶段失败。
+        # st["post"] 与 st["cmd"] 同构(首元素是脚本名)——BUGREPORT P9:
+        # 此前置过 st["cmd"][0],曾拼出 "rs_align.py rs_align.py calibrate" 令 S1 永远失败。
+        post_cmd = build_cmd_from_argv(root, st["post"])
         if post_cmd is not None:
             pp = subprocess.run(post_cmd, cwd=str(root), capture_output=True, text=True)
             if pp.returncode != 0:

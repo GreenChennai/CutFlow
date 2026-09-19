@@ -7,6 +7,7 @@
   必删: 06_output/_build、dev-*、*_probe*、99_试算、*.tmp、_asr_16k.wav、preview_*/draft_*
   必留(06_output 顶层,BUGREPORT B4 修订):final_*.mp4、subtitles.ass、master.srt、
         metadata.*、*report*.md、cards.json、deliverables、中文命名产物、bench_*.png;
+        rebuild.py、REBUILD.md(P16:一键重建脚本与其说明书)、_variants/ 目录(P16);
         只删 `_`-前缀探针件与非交付物 —— 旧版会把成片/字幕/报告全列进删除名单。
 """
 from __future__ import annotations
@@ -24,7 +25,12 @@ DELETE_GLOBS = ["dev-*", "*_probe*", "*.log", "*.tmp", "**/_asr_16k.wav", "**/*.
                 "v_b_*.png", "check_*.png"]
 KEEP_PREFIX = ("成片", "封面", "字幕", "配音稿", "master.srt")
 OUT_KEEP_EXACT = {"subtitles.ass", "master.srt", "cards.json", "sync_rows.json",
-                  "segments_candidates.json", "deliverables.md"}
+                  "segments_candidates.json", "deliverables.md",
+                  # BUGREPORT P16:rebuild.py 由 rs_run --init 种下、SKILL.md 手册让用户跑,
+                  # REBUILD.md 是它的说明书 —— 清掉会让"改字幕→一键重建"必然 FileNotFoundError。
+                  "rebuild.py", "REBUILD.md", "verify_report.md"}
+# 06_output 下保留的目录前缀:sub_*(字幕 ASS,重渲依赖)、_variants(rs_brand 变体 IR,同 P16)
+KEEP_DIR_PREFIX = ("sub_", "_variants")
 
 
 def _out_keep(name: str) -> bool:
@@ -63,11 +69,11 @@ def classify(root: Path) -> tuple[list[Path], list[Path]]:
             if p.resolve() in delete_set:
                 continue
             if p.is_dir():
-                # sub_*/ 是字幕 ASS(重渲依赖),保留
-                if not p.name.startswith("sub_"):
-                    delete.append(p)
-                else:
+                # sub_*/ 是字幕 ASS(重渲依赖);_variants/ 是品牌变体 IR(P16),均保留
+                if p.name.startswith(KEEP_DIR_PREFIX):
                     keep.append(p)
+                else:
+                    delete.append(p)
             elif _out_keep(p.name):
                 keep.append(p)
             else:

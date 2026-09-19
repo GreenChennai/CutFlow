@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.15.2 (2026-09-20) — P0 流水线修复(P9/P10/P16;来源:《20260920-CutFlow×CutForge 迭代更新笔记》)
+
+- **P9(高)**:`rs_run.py` S1 附加步骤脚本名拼重修复(post 与 cmd 同构,不再前置 `st["cmd"][0]`)——
+  "S1 之后自动执行能量校准"(v0.13 宣称)首次在生产路径真正生效,S1 不再永远失败、ASR 不再因此整体重跑。
+- **P10(高)**:S5/S6 阶段 outputs 声明对齐真实产物(`06_output/成片_*.mp4` / `05_ir/sfx_draft.json`),
+  S5↔S8 的 `final_*.mp4` glob 交叠消除——`--dirty` 互打脏、永不收敛的根因移除;SKILL.md 阶段产物表同步。
+- **P16(高)**:`rs_cleanup` 保留清单补 `06_output/rebuild.py`、`REBUILD.md`、`_variants/` 目录——
+  按手册"清理→手改字幕→`rebuild.py` 重建"的链路不再被清理自断。
+- **测试**:新增 `tests/test_v16_iteration.py` 9 项对拍(P9 argv 行为断言/P10 收敛性/P16 清理保留),
+  全量 **309 通过 / 0 失败**。
+
 ## v0.15.1 (2026-09-18) — 许可变更(仅本版本及之后生效)· CutForge M4 桥脚本
 
 - **许可变更**:自本版本起原创部分由 MIT 改为 **ARL-1.0**(弱传染,见 `LICENSE` / `NOTICE.md`)。
