@@ -79,6 +79,21 @@ _fake_mod.MediaInfo = _FakeMediaInfo
 sys.modules["pymediainfo"] = _fake_mod
 import pymediainfo  # noqa: E402,F401  (shim 生效)
 
+# ---- uiautomation 惰性桩:vendor 包的 jianying_controller 顶层 import 它,
+# 但本脚本的剪映进程检测走 tasklist,从不调 GUI 自动化。CI/无剪映机器没装
+# uiautomation,不能让草稿生成主路径被「import 即崩」绑架;真调到再报错。
+try:
+    import uiautomation  # noqa: F401
+except ImportError:
+    _uia_stub = _types.ModuleType("uiautomation")
+
+    def _uia_missing(name: str):
+        raise AttributeError(
+            "uiautomation 未安装:剪映 GUI 自动化不可用(草稿生成/导出不依赖它)")
+
+    _uia_stub.__getattr__ = _uia_missing  # type: ignore[method-assign]
+    sys.modules["uiautomation"] = _uia_stub
+
 # ---- Python 3.14 兼容补丁:PEP 649 懒注解使 cls.__dict__['__annotations__'] 为空 ----
 import typing as _typing  # noqa: E402
 from pyJianYingDraft import util as _jy_util  # noqa: E402

@@ -15,7 +15,7 @@ jobs:
         run: choco install ffmpeg -y --no-progress
       - name: Python tests(本仓全量:断句片尾/状态机/意图编译/能力目录/剪映出口)
         run: |
-          pip install pytest -q
+          pip install pytest numpy -q
           python -m pytest tests -q
 
   bridge-smoke:
