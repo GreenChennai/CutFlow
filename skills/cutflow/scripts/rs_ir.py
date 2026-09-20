@@ -4,10 +4,14 @@
       python rs_ir.py build --from-cards 03_assets/artboard/manifest.json \\
              --anchors 00_brief/cards.json --wordline 05_ir/wordline.json \\
              --voice 03_assets/vo/voice.wav --slug X --ratio 16x9 --out 05_ir/project.json
+      python rs_ir.py add-overlay 05_ir/project.json --manifest 03_assets/artboard/manifest.json \\
+             --plan 00_brief/cards.json [--track-name overlay] [--replace]
 
 build 把 CutList 的 keep 区间转成 IR 主轨——**消灭「Agent 手写毫秒」这一整类误差**(rules/compose.md)。
 build --from-cards(ADR-0027,I7):纯动画工程一条命令组装 IR——卡片↔旁白字符级锚点
 分组、停顿中点切卡、冻结帧补长(freezeMs),此前每个工程要重写一遍脚本(安信德 GEO)。
+add-overlay(T1-1 升格,原 _apply_overlay.py / 上一版 O2):口播+动画工程的 S4 官方装配入口——
+按卡片时间窗表挂 overlay 轨 + 回写 manifest usedIn + 标 _meta.manualEdit,不再手写轨 JSON。
 """
 from __future__ import annotations
 
@@ -17,7 +21,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from rs_common import emit  # noqa: E402
+from rs_common import emit, write_text_atomic  # noqa: E402
 from rs_align import keep_to_segments, map_src_to_final  # noqa: E402
 from rs_common import RATIOS, content_text  # noqa: E402
 import segmentation  # noqa: E402  — 标点口径与断句/字幕全链一致
@@ -368,9 +372,163 @@ def _manual_edits(out: Path) -> list[str]:
     return hits
 
 
+# ---------------------------------------------------------------- T1-1:add-overlay(原 _apply_overlay.py)
+
+_OVERLAY_MOTION_KEYS = {"in", "inMs", "out", "outMs"}   # P8 教训:只写 schema 允许的字段
+
+
+def parse_overlay_plan(plan: object) -> list[dict]:
+    """卡片时间窗表 → 规范化条目 [{card, startMs, durationMs, motion, freezeMs?}]。
+
+    兼容两种键名:O2 原始口径的 `card` 与 gen-cards 计划的 `id`;与 rs_artboard
+    gen-cards **共用同一份 cards.json** —— 内容字段(id/title/lines/…)在此放行不消费
+    (归 gen-cards),白名单外字段仍硬报错(P8:静默吞字段 = 幽灵键一路漏到 schema 才炸);
+    按 startMs 升序稳定排序。
+    """
+    from rs_artboard import PLAN_CONTENT_KEYS  # noqa: PLC0415 — 白名单单一来源
+    known = PLAN_CONTENT_KEYS | {"card", "id", "startMs", "durationMs", "motion", "freezeMs"}
+    if not isinstance(plan, list) or not plan:
+        raise ValueError("计划必须是数组且非空:[{card|id, startMs, durationMs, motion?}]")
+    out: list[dict] = []
+    for i, raw in enumerate(plan):
+        where = f"plan[{i}]"
+        if not isinstance(raw, dict):
+            raise ValueError(f"{where} 不是对象")
+        unknown = sorted(set(raw) - known)
+        if unknown:
+            raise ValueError(f"{where} 有白名单外字段 {unknown}"
+                             "(P8:overlay 轨只写 schema 允许的字段)")
+        card = str(raw.get("card") or raw.get("id") or "").strip()
+        if not card:
+            raise ValueError(f"{where} 缺 card/id")
+        for k in ("startMs", "durationMs"):
+            v = raw.get(k)
+            if not isinstance(v, (int, float)) or isinstance(v, bool) or v < 0:
+                raise ValueError(f"{where}.{k} 非法:{v!r}(须为非负毫秒数)")
+        if raw["durationMs"] <= 0:
+            raise ValueError(f"{where}.durationMs 必须为正:{raw['durationMs']}")
+        motion = raw.get("motion") or {}
+        if not isinstance(motion, dict):
+            raise ValueError(f"{where}.motion 必须是对象")
+        bad = sorted(set(motion) - _OVERLAY_MOTION_KEYS)
+        if bad:
+            raise ValueError(f"{where}.motion 有白名单外字段 {bad}(合法:{sorted(_OVERLAY_MOTION_KEYS)})")
+        entry = {"card": card, "startMs": int(raw["startMs"]),
+                 "durationMs": int(raw["durationMs"]), "motion": dict(motion)}
+        if raw.get("freezeMs") is not None:
+            fz = raw["freezeMs"]
+            if not isinstance(fz, (int, float)) or isinstance(fz, bool) or fz <= 0:
+                raise ValueError(f"{where}.freezeMs 非法:{fz!r}(须为正毫秒数)")
+            entry["freezeMs"] = int(fz)
+        out.append(entry)
+    out.sort(key=lambda c: c["startMs"])
+    return out
+
+
+def resolve_card_srcs(plan: list[dict], manifest: dict, root: Path,
+                      manifest_dir: Path) -> tuple[dict[str, str], list[str]]:
+    """卡片 id → IR 产物路径(工程根相对)。两种清单口径都归一:
+    工程根相对(test_v5/实工程手登记)直接用;artboard 目录相对(scan 原生)补前缀。
+    判定唯一依据 = 该路径从工程根出发真实存在;两处都不存在 = 硬问题。
+    """
+    items = {str(it.get("id")): it for it in (manifest.get("items") or [])}
+    rel_prefix = manifest_dir.relative_to(root).as_posix() if manifest_dir.is_relative_to(root) else ""
+    srcs: dict[str, str] = {}
+    issues: list[str] = []
+    for p in plan:
+        cid = p["card"]
+        item = items.get(cid)
+        if item is None:
+            issues.append(f"{cid}:不在 manifest(先 rs_artboard --scan 或 gen-cards)")
+            continue
+        out = str(item.get("output", ""))
+        cands = [out, f"{rel_prefix}/{out}"] if rel_prefix and not out.startswith(f"{rel_prefix}/") else [out]
+        for c in cands:
+            if (root / c).is_file():
+                srcs[cid] = c
+                break
+        else:
+            issues.append(f"{cid}:产物不存在,先跑 rs_artboard --export / export-fallback(试过 {cands})")
+    return srcs, issues
+
+
+def build_overlay_track(plan: list[dict], srcs: dict[str, str]) -> tuple[list[tuple[str, dict]], list[str]]:
+    """时间窗表 → [(卡片id, clip)](按 startMs 升序;返回 (挂轨对, issues))。"""
+    pairs: list[tuple[str, dict]] = []
+    issues: list[str] = []
+    for p in plan:
+        if p["card"] not in srcs:
+            continue
+        clip: dict = {"src": srcs[p["card"]], "startMs": p["startMs"],
+                      "durationMs": p["durationMs"]}
+        if p["motion"]:
+            clip["motion"] = p["motion"]
+        if p.get("freezeMs"):
+            clip["freezeMs"] = p["freezeMs"]
+        pairs.append((p["card"], clip))
+    spans = sorted((c["startMs"], c["startMs"] + c["durationMs"]) for _, c in pairs)
+    for a, b in zip(spans, spans[1:]):
+        if b[0] < a[1]:
+            issues.append(f"卡片时间窗重叠:{a} 与 {b}(同一时间只够铺一层)")
+    return pairs, issues
+
+
+def add_overlay(doc: dict, manifest: dict, plan: list[dict], *, root: Path,
+                manifest_dir: Path, track_name: str = "overlay",
+                replace: bool = False) -> tuple[dict, dict, list[str]]:
+    """把卡片时间窗表挂成 IR overlay 轨(返回 (新 IR, 摘要, issues))。
+
+    · 挂轨:同名 video 轨已存在时,未 --replace 即报错(防重复挂轨);
+      --replace 先清掉旧轨 clips 在各 manifest 卡片上的 usedIn 痕迹再换;
+    · 写 usedIn:track/clipIndex/startMs/durationMs,按 (track, clipIndex) 去重;
+    · 标 manualEdit:这是官方手改入口,重建护栏(_manual_edits)必须认得它。
+    """
+    srcs, issues = resolve_card_srcs(plan, manifest, root, manifest_dir)
+    pairs, ov_issues = build_overlay_track(plan, srcs)
+    issues.extend(ov_issues)
+    if issues:
+        return doc, {}, issues
+    clips = [c for _, c in pairs]
+
+    tracks = doc.setdefault("tracks", [])
+    existing = [i for i, t in enumerate(tracks)
+                if t.get("kind") == "video" and t.get("name") == track_name]
+    by_id = {str(it.get("id")): it for it in (manifest.get("items") or [])}
+
+    if existing:
+        if not replace:
+            return doc, {}, [f"轨「{track_name}」已存在(确认替换请加 --replace,"
+                             "或换 --track-name 另挂一层)"]
+        ti = existing[0]
+        # 换轨先清旧挂点:旧轨占用的 track 下标在所有卡片上的 usedIn 一并撤下,防陈旧残留
+        for it in manifest.get("items", []):
+            it["usedIn"] = [u for u in it.get("usedIn", []) if u.get("track") != ti]
+        tracks[ti]["clips"] = clips
+    else:
+        tracks.append({"kind": "video", "name": track_name, "clips": clips})
+        ti = len(tracks) - 1
+
+    used_cards: list[str] = []
+    for ci, (cid, c) in enumerate(pairs):
+        item = by_id.get(cid)
+        if item is None:
+            continue
+        item.setdefault("usedIn", [])
+        if not any(u.get("track") == ti and u.get("clipIndex") == ci for u in item["usedIn"]):
+            item["usedIn"].append({"track": ti, "clipIndex": ci,
+                                   "startMs": c["startMs"], "durationMs": c["durationMs"]})
+        used_cards.append(cid)
+    meta = doc.setdefault("_meta", {})
+    meta["manualEdit"] = True
+    meta["manualEditNote"] = f"add-overlay:{len(clips)} 卡挂轨「{track_name}」"
+    summary = {"track": ti, "trackName": track_name, "clipCount": len(clips),
+               "cards": used_cards, "replaced": bool(existing)}
+    return doc, summary, issues
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("command", choices=["validate", "build"])
+    ap.add_argument("command", choices=["validate", "build", "add-overlay"])
     ap.add_argument("project", nargs="?")
     ap.add_argument("--from-cutlist")
     ap.add_argument("--from-cards", dest="from_cards",
@@ -393,6 +551,13 @@ def main() -> int:
     ap.add_argument("--no-audio", action="store_true")
     ap.add_argument("--force", action="store_true",
                     help="检测到手注痕迹时仍覆盖(放弃手注;BUGREPORT B8)")
+    ap.add_argument("--manifest", help="add-overlay:artboard manifest.json(卡片 id → 产物路径)")
+    ap.add_argument("--plan", help="add-overlay:卡片时间窗表 JSON:[{card|id, startMs, durationMs, motion}]"
+                                  "(与 rs_artboard gen-cards 共用一份 cards.json)")
+    ap.add_argument("--track-name", dest="track_name", default="overlay",
+                    help="add-overlay:overlay 轨名(默认 overlay;同名轨已存在须 --replace)")
+    ap.add_argument("--replace", action="store_true",
+                    help="add-overlay:同名轨已存在时替换其 clips(默认报错,防重复挂轨)")
     ap.add_argument("--out")
     a = ap.parse_args()
 
@@ -435,7 +600,8 @@ def main() -> int:
         if not cl_path.is_file():
             return emit(False, "NO_CUTLIST", f"cutlist 不存在:{cl_path}", exit_code=2)
         try:
-            doc = build_from_cutlist(json.loads(cl_path.read_text(encoding="utf-8")),
+            cl_doc = json.loads(cl_path.read_text(encoding="utf-8"))
+            doc = build_from_cutlist(cl_doc,
                                      slug=a.slug, ratio=a.ratio, xfade_ms=a.xfade,
                                      with_audio=not a.no_audio,
                                      punch_in_auto=a.punch_in_auto)
@@ -443,6 +609,31 @@ def main() -> int:
             return emit(False, "BUILD_FAIL", f"生成失败:{exc}", exit_code=2)
         out = Path(a.out or "05_ir/project.json")
         out.parent.mkdir(parents=True, exist_ok=True)
+        # P27-3(副文档 07):「改 keep 但 wordline 时长字段未同步」在 S3 入口就报错,
+        # 不等 rs_sync 事后挂红叉。给出修复命令而非静默继续。
+        wl_path = out.parent / "wordline.json"
+        if wl_path.is_file() and (cl_doc.get("srcTotalMs") or 0) > 0:
+            try:
+                wl_doc = json.loads(wl_path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                wl_doc = None
+            if isinstance(wl_doc, dict) and wl_doc.get("srcDurationMs") is not None:
+                from rs_common import duration_ledger_error
+                if abs(int(wl_doc["srcDurationMs"]) - int(cl_doc["srcTotalMs"])) > 1:
+                    ledger = (f"wordline.srcDurationMs({wl_doc['srcDurationMs']}) 与 "
+                              f"cutlist.srcTotalMs({cl_doc['srcTotalMs']}) 不一致")
+                else:
+                    ledger = duration_ledger_error({
+                        "srcDurationMs": cl_doc["srcTotalMs"],
+                        "removedMs": cl_doc.get("removedMs") or 0,
+                        "finalDurationMs": wl_doc.get("finalDurationMs"),
+                    })
+                if ledger:
+                    return emit(False, "DURATION_LEDGER",
+                                f"{ledger}。先平账再建 IR:python <scripts>/rs_cut.py --apply "
+                                f"{cl_path}(自动同步 wordline 三个时长字段),"
+                                "或 rs_align.py refresh-durations <wordline> --media <素材>",
+                                exit_code=2)
         manual = _manual_edits(out)
         if manual and not a.force:
             return emit(False, "IR_MANUAL_EDITS",
@@ -456,6 +647,47 @@ def main() -> int:
         if errs:
             msg += f"(校验 {len(errs)} 个提示:src 文件可能尚未就位)"
         return emit(True, "IR_BUILT", msg, {"path": str(out), **doc["_meta"], "validateErrors": errs})
+
+    if a.command == "add-overlay":
+        if not a.project or not a.manifest or not a.plan:
+            return emit(False, "NO_INPUT",
+                        "add-overlay 需要:<project.json> --manifest <artboard manifest> "
+                        "--plan <cards.json>(O2 升格:挂轨+usedIn+manualEdit 一条命令)", exit_code=2)
+        root = Path(a.root).resolve()
+        ir_path = Path(a.project)
+        if not ir_path.is_file():
+            return emit(False, "NO_PROJECT", f"IR 不存在:{ir_path}", exit_code=2)
+        mpath = Path(a.manifest)
+        if not mpath.is_file():
+            return emit(False, "NO_MANIFEST",
+                        f"artboard 清单不存在:{mpath}(先 rs_artboard --scan / gen-cards)", exit_code=2)
+        try:
+            doc = json.loads(ir_path.read_text(encoding="utf-8"))
+            manifest = json.loads(mpath.read_text(encoding="utf-8"))
+            plan = parse_overlay_plan(json.loads(Path(a.plan).read_text(encoding="utf-8")))
+        except (json.JSONDecodeError, ValueError) as exc:
+            return emit(False, "BAD_PLAN", f"计划或文件解析失败:{exc}", exit_code=2)
+        if doc.get("schemaVersion") and not a.force:
+            return emit(False, "IR_MANUAL_EDITS",
+                        f"IR 带 CutForge 编辑痕迹(schemaVersion={doc['schemaVersion']});"
+                        "编辑器工程请走 cutforge 挂轨;确认绕过请 --force", exit_code=2)
+        doc, summary, issues = add_overlay(doc, manifest, plan, root=root,
+                                           manifest_dir=mpath.resolve().parent,
+                                           track_name=a.track_name, replace=a.replace)
+        if issues:
+            return emit(False, "OVERLAY_ISSUES",
+                        f"{len(issues)} 个问题,已停止(不带着坏输入往下跑)",
+                        {"issues": issues}, exit_code=2)
+        errs = validate(doc, root)
+        if errs:
+            return emit(False, "IR_INVALID", f"挂轨后 IR 校验 {len(errs)} 个问题",
+                        {"errors": errs}, exit_code=2)
+        write_text_atomic(ir_path, json.dumps(doc, ensure_ascii=False, indent=1))
+        write_text_atomic(mpath, json.dumps(manifest, ensure_ascii=False, indent=1))
+        return emit(True, "OVERLAY_OK",
+                    f"{summary['clipCount']} 卡挂入轨「{summary['trackName']}」(track {summary['track']});"
+                    "usedIn 已回写 manifest;_meta.manualEdit 已标(重建护栏认得这次手改)",
+                    {**summary, "staleStages": ["S4", "S5", "S8"], "ir": str(ir_path)})
 
     p = Path(a.project or "")
     if not p.is_file():

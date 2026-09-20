@@ -27,7 +27,7 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from rs_common import emit, ffmpeg_bin, p95, run  # noqa: E402
+from rs_common import emit, ffmpeg_bin, media_duration_s, p95, run  # noqa: E402
 
 MEDIAN_MAX, P95_MAX = 40, 80          # ms(起点偏移)
 END_MEDIAN_MAX, END_P95_MAX = 60, 120  # ms(终点偏移;允许可读性延长,故放宽)
@@ -514,6 +514,31 @@ def check_card_overlap(events: list[dict], ir: dict | None,
     return out
 
 
+def expected_duration_s(wl: dict, cfg: dict | None = None) -> tuple[float, dict]:
+    """P26-4:成片总时长断言的期望值,以 **ffprobe 实测媒体**为基准。
+
+    期望 = 实测源媒体时长 − removedMs(粗剪裁掉量,wordline.removedMs);
+    探测不可用(无源路径/无 ffprobe)时退回 wordline 记录值(旧行为),并把
+    基准来源显式写进返回的 basis(基准缺席必须可见,不静默)。
+    """
+    from pathlib import Path as _P
+    removed_ms = int(wl.get("removedMs") or 0)
+    src = str(wl.get("source") or "")
+    if src:
+        p = _P(src)
+        if p.is_file():
+            try:
+                base = media_duration_s(p, cfg)
+                if base > 0:
+                    return base - removed_ms / 1000.0, {
+                        "basis": "ffprobe", "media": src,
+                        "measuredS": round(base, 3), "removedMs": removed_ms}
+            except Exception:  # noqa: BLE001 — SystemExit/无 ffprobe:显式退回记录值
+                pass
+    fallback = (wl.get("finalDurationMs") or wl.get("srcDurationMs") or 0) / 1000.0
+    return fallback, {"basis": "wordline", "removedMs": removed_ms}
+
+
 def write_report(res: dict, path: Path, video_check: dict | None) -> None:
     lines = ["# 三对齐自检报告(sync_report)", "",
              "| 检查 | 结果 | 通过线 | 判定 |", "|---|---|---|---|",
@@ -543,8 +568,12 @@ def write_report(res: dict, path: Path, video_check: dict | None) -> None:
                   f"(或检查 Wordline 与成片是否同源)。", ""]
     if video_check:
         lines += ["## 成片总时长", "",
-                  f"- ffprobe 实测 {video_check['actual']:.2f}s / Wordline 推算 "
-                  f"{video_check['expected']:.2f}s(差 {video_check['diff']:+.2f}s)",
+                  f"- ffprobe 实测 {video_check['actual']:.2f}s / 期望 "
+                  f"{video_check['expected']:.2f}s(差 {video_check['diff']:+.2f}s;"
+                  f"基准 {video_check.get('basis', 'wordline')}"
+                  + (f" = 实测源媒体 {video_check['measuredS']:.2f}s − removedMs"
+                     f" {video_check.get('removedMs', 0)}ms" if video_check.get("basis") == "ffprobe" else ""
+                     ) + ")",
                   f"- 判定:{'✓' if video_check['pass'] else '✗'} (±0.5s)", ""]
     ac = res.get("audioCheck")
     if ac:
@@ -655,13 +684,14 @@ def main() -> int:
 
     video_check = None
     if a.video:
-        from rs_common import media_duration_s
         try:
+            # P26-4:期望值以 ffprobe 实测源媒体为基准(− removedMs),不再信任
+            # wordline 记录值(ASR 链路的记录时长可能比真实媒体短——片尾截断根因)。
+            expected, basis = expected_duration_s(wl)
             actual = media_duration_s(a.video)
-            expected = (wl.get("finalDurationMs") or wl.get("srcDurationMs") or 0) / 1000.0
             diff = actual - expected
             video_check = {"actual": round(actual, 3), "expected": round(expected, 3),
-                           "diff": round(diff, 3), "pass": abs(diff) <= 0.5}
+                           "diff": round(diff, 3), "pass": abs(diff) <= 0.5, **basis}
         except SystemExit:
             video_check = None
 

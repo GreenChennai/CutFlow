@@ -7,9 +7,16 @@
   rs_align.py build --media a.mp4 --hotwords "安信德 GEO优化" --out 05_ir/wordline.json
   rs_align.py smooth 05_ir/wordline.json --out 05_ir/wordline.final.json
   rs_align.py remap 05_ir/wordline.json --cutlist 04_cut/cutlist.json --out 05_ir/wordline.final.json
+  rs_align.py remap … --force-remap            # P29-1:越过 final 域防护(慎用)
+  rs_align.py prune-ghost 05_ir/wordline.final.json --cutlist 04_cut/cutlist.applied.json
+  rs_align.py refresh-durations 05_ir/wordline.final.json --media 01_materials/a.mp4
 
 三条入口统一落到同一数据结构;取不到字级时间戳时降级为「句级均分」并**显式标注 degraded**。
 本模块同时导出 map_src_to_final():全部下游唯一允许的时间换算函数。
+P26(副文档 07):build 的 srcDurationMs 以 **ffprobe 实测媒体**为准,并内置
+「末字 endMs==记录总时长」的钳制检测(只标疑似不改数)。
+P28:remap 本体丢弃 src 区间完全落在删除区间内的幽灵字符,重建 span、重排 chars[].i。
+P29:对已重映射(space=final)的 wordline 拒绝二次 remap;只改时长走 refresh-durations。
 """
 from __future__ import annotations
 
@@ -21,12 +28,58 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from rs_common import die, emit, load_config  # noqa: E402
+from rs_common import die, emit, load_config, duration_ledger_error, sync_wordline_durations  # noqa: E402
 import segmentation  # noqa: E402  — PUNCT_WS 与断句/字幕同一标点口径
 
 VERSION = 1
 GAP_MIN_MS = 150          # 相邻字间隔超过此值记为一个 gap(供断句用)
 MIN_COVERAGE = 0.99       # 门禁:时间跨度覆盖率(见 time_coverage)
+
+
+def probe_media_duration_ms(media, cfg: dict | None = None) -> int | None:
+    """P26-1:ffprobe 实测媒体时长(ms)。
+
+    凡是「总时长/末段边界」一律以实测为准,不信任上游记录值(20260920 NCLM1605
+    教训:wordline.srcDurationMs 继承自 ASR 链路,比真实媒体短 789ms,粗剪把
+    keep 终点钉在错误总时长上 → 片尾戛然而止)。工具不可用/解码失败返回 None,
+    由调用方退回记录值并留痕(探测缺席必须显式,不静默)。
+    """
+    from rs_common import ffprobe_json
+    try:
+        info = ffprobe_json(media, cfg)
+        dur = float(info.get("format", {}).get("duration") or 0)
+        if dur <= 0:                       # format 缺 duration 时取流级最大值
+            for s in info.get("streams") or []:
+                try:
+                    dur = max(dur, float(s.get("duration") or 0))
+                except (TypeError, ValueError):
+                    continue
+        return int(round(dur * 1000)) if dur > 0 else None
+    except SystemExit:
+        return None
+    except Exception:  # noqa: BLE001 — 无 ffprobe/坏文件:返回 None,调用方降级
+        return None
+
+
+def detect_end_clamp(chars: list[dict], recorded_dur_ms: int, fps: int = 30) -> dict | None:
+    """P26-2 钳制检测:末字 endMs 恰与记录总时长重合(误差 <1 帧)→ 疑似被钳制。
+
+    「字尾 endMs == 总时长」几乎必然意味着「音频被按错误长度喂给 ASR」或
+    「时长字段被字尾钳制」—— 只标疑似并给复核提示(RMS 曲线验证结尾是
+    说完收静还是说一半被切),**不改任何数**(经验贴:只标疑似不改数)。
+    """
+    hard = [c for c in chars if str(c.get("ch", "")).strip()]
+    if not hard or recorded_dur_ms <= 0:
+        return None
+    last_end = max(int(c["srcEndMs"]) if "srcEndMs" in c else int(c["endMs"]) for c in hard)
+    tol = int(round(1000.0 / max(1, fps)))
+    if abs(last_end - recorded_dur_ms) < tol:
+        return {"suspect": True, "lastCharEndMs": last_end,
+                "recordedDurationMs": int(recorded_dur_ms), "toleranceMs": tol,
+                "hint": "末字 endMs 与记录总时长重合(误差 <1 帧):疑似按错误长度喂给 ASR;"
+                        "请用 ffprobe 实测媒体时长复核,并按 50ms 步长看 RMS 曲线确认"
+                        "结尾是「说完收静」还是「说一半被切」"}
+    return None
 
 
 def time_coverage(chars: list[dict], src_dur: int) -> float:
@@ -83,10 +136,13 @@ def _strip_speaker(text: str) -> str:
 
 
 def build_wordline(segments: list[dict], source: str, *, fps: int = 30,
-                   degraded: str | None = None, space: str = "source") -> dict:
+                   degraded: str | None = None, space: str = "source",
+                   media_duration_ms: int | None = None) -> dict:
     """segments: [{start, end, text, timestamp?}] → wordline。
 
     有 char-level timestamp(每字 [start_ms, end_ms])时用真值;否则句内均分并标 degraded。
+    P26-1:`media_duration_ms`(ffprobe 实测)给出时 `srcDurationMs` 直接取实测值,
+    **不再**取 max(末字 endMs, 转写段终点)—— 那正是片尾被截断的根因。
     """
     chars: list[dict] = []
     sentences: list[dict] = []
@@ -143,8 +199,12 @@ def build_wordline(segments: list[dict], source: str, *, fps: int = 30,
             seg_end = max(seg_end, int(round(float(s.get("end", s.get("end_s", 0)) or 0) * 1000)))
         except (TypeError, ValueError):
             pass
-    src_dur = max(max((c["srcEndMs"] for c in chars), default=0), seg_end)
+    recorded_dur = max(max((c["srcEndMs"] for c in chars), default=0), seg_end)
+    # P26-1:总时长以 ffprobe 实测为唯一真相;测不到才退回 ASR 链路记录值(留痕)
+    measured = int(media_duration_ms) if media_duration_ms and int(media_duration_ms) > 0 else 0
+    src_dur = measured or recorded_dur
     coverage = time_coverage(hard, src_dur)
+    clamp = detect_end_clamp(chars, recorded_dur, fps)
 
     return {
         "version": VERSION,
@@ -157,12 +217,17 @@ def build_wordline(segments: list[dict], source: str, *, fps: int = 30,
         "speakers": sorted({s.get("speaker") for s in segments if s.get("speaker")}),
         "srcDurationMs": src_dur,
         "finalDurationMs": src_dur,
+        "removedMs": 0,
         "stats": {"charCount": len(hard), "coverage": round(coverage, 4),
                   "confMedian": round(statistics.median(confs), 3)},
         "degraded": bool(degrade_reasons),
         "degradeReasons": sorted(set(degrade_reasons)),
         # 字级时间是"句内均分估算"而非真实时间戳 → 下游只能按句级用,不得细分到字
         "charTimingEstimated": char_timing_estimated,
+        # P26-1/2 时长来源留痕 + 钳制检测(只标疑似,不改数)
+        "durationProvenance": "ffprobe" if measured else "asr-chain",
+        "recordedDurationMs": recorded_dur,
+        **({"endClampSuspect": clamp} if clamp else {}),
     }
 
 
@@ -353,19 +418,80 @@ def calibrate_wordline(wl: dict, media: Path, cfg: dict | None = None, *,
 
 # ---------------------------------------------------------------- 重映射
 
+def _removed_spans(keep: list[list[int]], total: int) -> list[list[int]]:
+    """keep 区间的补集 = 被删除区间(供幽灵字符判定)。"""
+    spans: list[list[int]] = []
+    cursor = 0
+    for a, b in sorted((int(x), int(y)) for x, y in keep):
+        if a > cursor:
+            spans.append([cursor, a])
+        cursor = max(cursor, b)
+    if cursor < total:
+        spans.append([cursor, total])
+    return spans
+
+
 def remap_wordline(wl: dict, keep: list[list[int]], cutlist: dict | None = None) -> dict:
-    """按 CutList 的 keep 区间把 wordline 从 source 域重映射到 final 域。"""
+    """按 CutList 的 keep 区间把 wordline 从 source 域重映射到 final 域。
+
+    P28-1(副文档 07):src 区间**完全落在 remove 区间内**的字符(幽灵字符,
+    整句复录/口误被删)在本体直接丢弃,并重建 `sentences.span`、重排 `chars[].i`
+    —— 下游契约要求 i 连续、span 自洽;此前靠临时脚本 _drop_ghost_chars.py 补救,
+    现升格为本体行为(整句被删的工程 remap 后 S9 直接全绿)。
+    """
     segs = keep_to_segments(keep)
     out = json.loads(json.dumps(wl))
-    for c in out["chars"]:
+    chars = out.get("chars") or []
+    total_src = int(out.get("srcDurationMs") or 0)
+    if chars:
+        total_src = max(total_src, max(int(c.get("srcEndMs", c["endMs"])) for c in chars))
+    removed = _removed_spans(keep, total_src)
+
+    def _is_ghost(c: dict) -> bool:
+        s = int(c.get("srcStartMs", c["startMs"]))
+        e = int(c.get("srcEndMs", c["endMs"]))
+        return any(ra <= s and e <= rb for ra, rb in removed)
+
+    new_chars: list[dict] = []
+    old_to_new: dict[int, int] = {}
+    dropped = 0
+    for c in chars:
+        if _is_ghost(c):
+            dropped += 1
+            continue                       # 幽灵字符:src 区间完全落在被删区间内
+        old_to_new[int(c["i"])] = len(new_chars)
+        c = dict(c)
         c["srcStartMs"] = c["startMs"]
         c["srcEndMs"] = c["endMs"]
         s = map_src_to_final(c["startMs"], segs)
         e = map_src_to_final(c["endMs"], segs)
         c["startMs"], c["endMs"] = int(round(s)), int(round(max(e, s + 20)))
+        new_chars.append(c)
+    # 重排 chars[].i(下游契约:i 必须连续)
+    for k, c in enumerate(new_chars):
+        c["i"] = k
+    out["chars"] = new_chars
+
+    # 重建 sentences.span(整句被删 → 句一并丢弃;句内部分被删 → span 收缩、文本重拼)
+    new_sents: list[dict] = []
+    dropped_sents = 0
+    for s in out.get("sentences") or []:
+        a, b = s.get("span") or [0, 0]
+        kept_idx = [old_to_new[i] for i in range(int(a), int(b)) if i in old_to_new]
+        if not kept_idx:
+            dropped_sents += 1
+            continue
+        text = "".join(new_chars[k]["ch"] for k in kept_idx)
+        punc = s.get("punc") or ""
+        if punc and punc not in text:
+            punc = ""                       # 原句尾标点已被删,不能继承
+        new_sents.append({"id": len(new_sents), "span": [min(kept_idx), max(kept_idx) + 1],
+                          "punc": punc, "text": text})
+    out["sentences"] = new_sents
+
     # 保证单调
     prev = 0
-    for c in out["chars"]:
+    for c in new_chars:
         if c["startMs"] < prev:
             c["startMs"] = prev
         if c["endMs"] <= c["startMs"]:
@@ -373,11 +499,18 @@ def remap_wordline(wl: dict, keep: list[list[int]], cutlist: dict | None = None)
         prev = c["startMs"]
     out["space"] = "final"
     out["finalDurationMs"] = sum(int(b) - int(a) for a, b in keep)
-    out["gaps"] = compute_gaps(out["chars"])
+    out["removedMs"] = int((cutlist or {}).get("removedMs") or 0) or \
+        sum(rb - ra for ra, rb in removed)
+    out["gaps"] = compute_gaps(new_chars)
     if cutlist:
         out["cutlist"] = cutlist.get("source") or cutlist.get("version")
+    hard_n = len([c for c in new_chars if str(c.get("ch", "")).strip()])
     out["stats"] = dict(out.get("stats") or {}, monotonic=True,
+                        charCount=hard_n,
                         finalDurationMs=out["finalDurationMs"])
+    # P28-1 留痕:丢弃规模可审计(temporary-script 时代的补救从此可见)
+    out["pruned"] = {"ghostChars": dropped, "ghostSentences": dropped_sents,
+                     "chars": f"{len(chars)}->{len(new_chars)}"}
     return out
 
 
@@ -628,8 +761,9 @@ def _from_media(media: Path, cfg: dict, backend: str = "auto",
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("command", nargs="?", default="build",
-                    choices=["build", "remap", "retext", "smooth", "calibrate"])
-    ap.add_argument("source", nargs="?", help="remap/retext/smooth 时为 wordline 路径")
+                    choices=["build", "remap", "retext", "smooth", "calibrate",
+                             "prune-ghost", "refresh-durations"])
+    ap.add_argument("source", nargs="?", help="remap/retext/smooth/prune-ghost/refresh-durations 时为 wordline 路径")
     ap.add_argument("--from-transcript")
     ap.add_argument("--from-tts")
     ap.add_argument("--media")
@@ -651,6 +785,12 @@ def main() -> int:
     ap.add_argument("--max-end-sil", dest="max_end_sil", type=int, default=0,
                     help="VAD 静音切分阈值 ms(0=用工具默认 400)")
     ap.add_argument("--cutlist")
+    ap.add_argument("--force-remap", dest="force_remap", action="store_true",
+                    help="P29-1:wordline 已在 final 域时仍强行二次重映射"
+                         "(会把 current startMs 当源时间整体错位;确知自己在做什么才用)")
+    ap.add_argument("--removed-ms", dest="removed_ms", type=int, default=None,
+                    help="refresh-durations:粗剪裁掉量 ms(缺省取 wordline.removedMs,"
+                         "再缺省取 --cutlist 的 removedMs)")
     ap.add_argument("--src", help="覆盖 wordline.source;--from-transcript 时用它指向真实素材路径"
                                   "(否则下游 IR 会把转写稿当成视频源)")
     ap.add_argument("--text", help="retext:校对后的纯文本文件(标点可有可无)")
@@ -738,11 +878,147 @@ def main() -> int:
         keep = cut.get("keep") or []
         if not keep:
             return emit(False, "NO_KEEP", "cutlist 缺少 keep 区间(先跑 rs_cut.py --apply)", exit_code=2)
+        # P29-1 二次重映射防护:remap 会把当前 startMs 当作新的源时间,对已重映射的
+        # wordline 再跑一次 = 整体错位(20260920 经验贴 ⚠ 教训)。只改时长请走
+        # refresh-durations;确要强行重映射须显式 --force-remap。
+        if wl.get("space") == "final" and not a.force_remap:
+            return emit(False, "ALREADY_FINAL_SPACE",
+                        "该 wordline 已重映射到 final 域(space=final);二次重映射会整体错位。"
+                        "只改时长字段请用:rs_align.py refresh-durations <wordline> --media <素材>;"
+                        "确要强行重映射请加 --force-remap", exit_code=2)
+        ledger = duration_ledger_error({**wl, "srcDurationMs":
+                                        cut.get("srcTotalMs") if cut.get("srcTotalMs") else wl.get("srcDurationMs"),
+                                        "removedMs": cut.get("removedMs") if cut.get("removedMs") is not None else wl.get("removedMs"),
+                                        "finalDurationMs": sum(int(b) - int(a) for a, b in keep)})
         doc = remap_wordline(wl, keep, cut)
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(json.dumps(doc, ensure_ascii=False, indent=1), encoding="utf-8")
-        return emit(True, "REMAP_OK", f"重映射完成:{out}", {"space": doc["space"],
-                    "finalDurationMs": doc["finalDurationMs"], "chars": len(doc["chars"])})
+        pruned = doc.get("pruned") or {}
+        msg = f"重映射完成:{out}"
+        if pruned.get("ghostChars"):
+            msg += (f";丢弃幽灵字符 {pruned['ghostChars']}(整句 "
+                    f"{pruned.get('ghostSentences', 0)} 句),chars {pruned.get('chars')}")
+        if ledger:
+            msg += f" ⚠ {ledger}"
+        return emit(True, "REMAP_OK", msg, {"space": doc["space"],
+                    "finalDurationMs": doc["finalDurationMs"], "chars": len(doc["chars"]),
+                    "pruned": pruned, "ledgerWarning": ledger})
+
+    if a.command == "prune-ghost":
+        # P28-3:_drop_ghost_chars.py 临时脚本升格为官方入口。面向**已重映射**的工程:
+        # 按 cutlist 的 keep 补集把 src 区间完全落在删除区间内的字符丢弃,
+        # 重建 sentences.span 并重排 chars[].i——不做时间重映射(时间已在 final 域)。
+        if not a.source or not a.cutlist:
+            return emit(False, "NO_INPUT",
+                        "prune-ghost 需要:<wordline.final.json> --cutlist <cutlist.applied.json>"
+                        " [--out <path>](无 --out 时原地覆盖)", exit_code=2)
+        wl = json.loads(Path(a.source).read_text(encoding="utf-8"))
+        if wl.get("space") != "final":
+            return emit(False, "NOT_FINAL_SPACE",
+                        "prune-ghost 面向已重映射(space=final)的 wordline;source 域请直接"
+                        " rs_align.py remap(本体已内置幽灵字符丢弃),无需本命令", exit_code=2)
+        cut = json.loads(Path(a.cutlist).read_text(encoding="utf-8"))
+        keep = cut.get("keep") or []
+        if not keep:
+            return emit(False, "NO_KEEP", "cutlist 缺少 keep 区间", exit_code=2)
+        chars = wl.get("chars") or []
+        total_src = int(wl.get("srcDurationMs") or 0)
+        if chars:
+            total_src = max(total_src, max(int(c.get("srcEndMs", c["endMs"])) for c in chars))
+        removed = _removed_spans(keep, total_src)
+
+        def _ghost(c: dict) -> bool:
+            s = int(c.get("srcStartMs", c["startMs"]))
+            e = int(c.get("srcEndMs", c["endMs"]))
+            return any(ra <= s and e <= rb for ra, rb in removed)
+
+        kept: list[dict] = []
+        old_to_new: dict[int, int] = {}
+        for c in chars:
+            if _ghost(c):
+                continue
+            old_to_new[int(c["i"])] = len(kept)
+            kept.append(dict(c))
+        for k, c in enumerate(kept):
+            c["i"] = k
+        new_sents = []
+        for s in wl.get("sentences") or []:
+            lo, hi = s.get("span") or [0, 0]
+            idxs = [old_to_new[i] for i in range(int(lo), int(hi)) if i in old_to_new]
+            if not idxs:
+                continue
+            text = "".join(kept[k]["ch"] for k in idxs)
+            punc = s.get("punc") or ""
+            if punc and punc not in text:
+                punc = ""
+            new_sents.append({"id": len(new_sents), "span": [min(idxs), max(idxs) + 1],
+                              "punc": punc, "text": text})
+        doc = dict(wl)
+        doc["chars"] = kept
+        doc["sentences"] = new_sents
+        doc["gaps"] = compute_gaps(kept)
+        hard_n = len([c for c in kept if str(c.get("ch", "")).strip()])
+        doc["stats"] = dict(doc.get("stats") or {}, charCount=hard_n)
+        doc["pruned"] = {"ghostChars": len(chars) - len(kept),
+                         "ghostSentences": len(wl.get("sentences") or []) - len(new_sents),
+                         "chars": f"{len(chars)}->{len(kept)}"}
+        ledger = duration_ledger_error(doc)
+        dest = out or Path(a.source)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text(json.dumps(doc, ensure_ascii=False, indent=1), encoding="utf-8")
+        pr = doc["pruned"]
+        msg = (f"幽灵字符清理:丢弃 {pr['ghostChars']} 字(整句 {pr['ghostSentences']} 句),"
+               f"chars {pr['chars']},i 已重排 → {dest}")
+        if ledger:
+            msg += f" ⚠ {ledger}"
+        return emit(True, "PRUNE_GHOST_OK", msg, {"path": str(dest), **pr, "ledgerWarning": ledger})
+
+    if a.command == "refresh-durations":
+        # P29-2:只改时长字段、绝不动字符时间——这是「已重映射工程修正总时长」的
+        # 唯一合法入口(对比:remap 会把当前 startMs 当源时间,二次重映射整体错位)。
+        if not a.source or not a.media:
+            return emit(False, "NO_INPUT",
+                        "refresh-durations 需要:<wordline.json> --media <音视频素材>"
+                        " [--cutlist <cutlist>] [--out <path>]", exit_code=2)
+        media = Path(a.media)
+        if not media.is_file():
+            return emit(False, "NO_MEDIA", f"素材不存在:{media}", exit_code=2)
+        wl = json.loads(Path(a.source).read_text(encoding="utf-8"))
+        cfg = load_config()
+        measured = probe_media_duration_ms(media, cfg)
+        if not measured:
+            return emit(False, "PROBE_FAIL",
+                        f"ffprobe 实测失败:{media}(工具不可用或文件损坏;时长账拒绝在无实测时改写)",
+                        exit_code=4)
+        removed = a.removed_ms
+        if removed is None:
+            removed = wl.get("removedMs")
+        if removed is None and a.cutlist:
+            removed = json.loads(Path(a.cutlist).read_text(encoding="utf-8")).get("removedMs")
+        removed = int(removed or 0)
+        old = {"srcDurationMs": wl.get("srcDurationMs"),
+               "removedMs": wl.get("removedMs"),
+               "finalDurationMs": wl.get("finalDurationMs")}
+        doc = sync_wordline_durations(wl, measured, removed)
+        clamp = detect_end_clamp(doc.get("chars") or [], int(old.get("srcDurationMs") or 0),
+                                 int(doc.get("fps") or 30))
+        if clamp:
+            doc["endClampSuspect"] = clamp
+        ledger = duration_ledger_error(doc)
+        dest = out or Path(a.source)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text(json.dumps(doc, ensure_ascii=False, indent=1), encoding="utf-8")
+        msg = (f"时长已按 ffprobe 实测刷新(字符时间未动):srcDurationMs "
+               f"{old['srcDurationMs']} → {doc['srcDurationMs']},removedMs {removed},"
+               f"finalDurationMs {old['finalDurationMs']} → {doc['finalDurationMs']} → {dest}")
+        if clamp:
+            msg += f" ⚠ 疑似钳制:末字 endMs({clamp['lastCharEndMs']})与旧记录总时长重合"
+        return emit(True, "REFRESH_DURATIONS_OK", msg,
+                    {"path": str(dest), "before": old, "after": {
+                        "srcDurationMs": doc["srcDurationMs"],
+                        "removedMs": doc["removedMs"],
+                        "finalDurationMs": doc["finalDurationMs"]},
+                     "endClampSuspect": bool(clamp), "ledgerOk": ledger is None})
 
     source, segments, degraded = "", [], None
     asr_meta: dict = {}
@@ -789,13 +1065,30 @@ def main() -> int:
     if not a.out:
         return emit(False, "NO_INPUT", "build 需要 --out", exit_code=2)
 
-    doc = build_wordline(segments, source, fps=a.fps, degraded=degraded)
+    # P26-1:ffprobe 实测媒体时长为 srcDurationMs 唯一真相(--media 直接给;
+    # --from-transcript 时 --src 指向真实素材同样探测)。测不到退回记录值并留痕。
+    probe_target = a.media or (a.src if (a.from_transcript and a.src) else None)
+    measured_ms = None
+    probe_note = ""
+    if probe_target and Path(probe_target).is_file():
+        measured_ms = probe_media_duration_ms(probe_target, load_config())
+        if not measured_ms:
+            probe_note = "⚠ ffprobe 实测失败,srcDurationMs 退回 ASR 链路记录值(请检查素材/工具)"
+    doc = build_wordline(segments, source, fps=a.fps, degraded=degraded,
+                         media_duration_ms=measured_ms)
     doc["asr"] = asr_meta
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(doc, ensure_ascii=False, indent=1), encoding="utf-8")
     st = doc["stats"]
     msg = (f"Wordline 已生成:{st['charCount']} 字,时间跨度覆盖率 {st['coverage']:.1%},"
-           f"conf 中位数 {st['confMedian']}")
+           f"conf 中位数 {st['confMedian']}"
+           f";srcDurationMs={doc['srcDurationMs']}({doc['durationProvenance']})")
+    if probe_note:
+        msg += f" {probe_note}"
+    clamp = doc.get("endClampSuspect")
+    if clamp:
+        msg += (f" ⚠ 疑似钳制:末字 endMs({clamp['lastCharEndMs']})与记录总时长重合"
+                f"(误差 <{clamp['toleranceMs']} 帧);{clamp['hint']}")
     if st["coverage"] < MIN_COVERAGE:
         msg += (f" ⚠ 覆盖率 {st['coverage']:.1%} < {MIN_COVERAGE:.0%}:"
                 "检查 ASR 是否漏转写开头/结尾(字间停顿不算未覆盖)")

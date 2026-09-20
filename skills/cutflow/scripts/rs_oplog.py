@@ -56,10 +56,12 @@ def main() -> int:
         return emit(True, "OK", "rs_oplog 桥自检通过", {"bridge": "oplog"}, exit_code=0)
 
     if not a.root:
-        return emit(False, "USAGE", "需要工程目录参数", {}, exit_code=2)
+        # P23-1:错误码与 CutForge 5.4 码表对齐 —— 输入错=PRECONDITION_FAILED,
+        # 不再用表外码 USAGE/NO_ENV
+        return emit(False, "PRECONDITION_FAILED", "需要工程目录参数", {}, exit_code=2)
     root = Path(a.root)
     if not root.is_dir():
-        return emit(False, "NO_ENV", f"工程目录不存在: {root}", {}, exit_code=3)
+        return emit(False, "PRECONDITION_FAILED", f"工程目录不存在: {root}", {}, exit_code=2)
 
     ops = load_ops(root)
     if a.cmd == "tail":

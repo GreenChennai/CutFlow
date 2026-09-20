@@ -1,5 +1,139 @@
 # Changelog
 
+## v0.18.1 (2026-09-20) — 附录落地:术语表 9 词条 + ADR-0040~0044(纯文档迭代,无工程改动)
+
+来源:《08-附录-术语表与ADR台账》建议稿落仓库;ADR 状态由"建议"转"已采纳"。
+
+- **CONTEXT.md 新增 9 词条**(只放术语,不放实现):意图编译、风格注册表、能力目录、保护区、
+  变更识别闭环、时长账、钳制迹象、临时脚本、原生草稿;新增「意图与风格」「治理与纪律」两组。
+- **ADR-0040** 意图编译器 + 风格注册表:提示词入口不把语义塞进 SKILL 文案;videoType 为开放注册表,
+  可继续增补新类型(用户已确认)。落地:rs_intent.py、templates/styles/registry.json。
+- **ADR-0041** 临时脚本一律升格为官方子命令,Agent 禁止现写剪辑逻辑(prune-ghost 为第一个样板)。
+- **ADR-0042** wordline 时长以 ffprobe 实测为准,禁止继承上游记录值(P26 组;钳制迹象检测随之入册)。
+- **ADR-0043** 片尾保底:口播结尾保留 0.5–0.8s 自然底噪(--tail-reserve-ms,默认 650ms)。
+- **ADR-0044**(跨仓 X-05)对 jianying-headless 只学其方法与能力、不复制代码(已确认,2026-09-20
+  用户拍板;与 cutforge `docs/adr/0008` 互相引用;合规自查见 rules/jianying-verification.md)。
+
+## v0.18 (2026-09-21) — 副文档 03 · 阶段三:退出码诚实 / 契约与编码 / 变更识别闭环(§4.2 §4.3 §4.4 O8 + RT-2/3/4)
+
+来源:《03-副文档-阶段三-CutFlow管线与一致性清账.md》§4.2/§4.3/O8-1 + 《02-副文档-阶段二》变更识别闭环 CutFlow 侧。
+承接 v0.17(§4.1 状态机可信);测试 362 基线 → 397 全绿(新增 35 项,含手册命令对拍门禁)。
+
+### §4.2 退出码诚实 + 清单对账
+
+- **P17(高)封面名统一 `封面.png`**:rs_common 新增唯一常量 `COVER_PNG`,清理白名单(rs_cleanup)、
+  交付对账(rs_ingest)、SKILL.md S10 产物口径共用;`cover.png` 不再被查成"缺失"或被清理误伤。
+- **P18(高)deliverables 真对账**:缺失即 `DELIVERABLES_INCOMPLETE` **非零退出**(此前永远 ok=true,
+  S11「清单齐全」门禁形同虚设);对账项 = 成片≥1 / `subtitles.ass` / `master.srt` /
+  `metadata.json` 平台条目(platforms 非空)/ `封面.png` / `sync_report.md` /
+  **变体成片 ↔ variants.json 矩阵逐条对账**;缺失项在 deliverables.md 逐条点名。
+- **P20(高)rs_gate 无参不再假绿**:漏传里程碑 → `PRECONDITION_FAILED` 退出 2 + 用法提示;
+  里程碑范围三处文档(README/SKILL/CHANGELOG)统一为「M0–M7,以 gate.py 注册表为准」。
+- **P21(高)doctor 桥探针提为 fatal**:四桥 + artboard 桥 `--probe` 自检失败即 `DOCTOR_FAIL`;
+  `rs_artboard.py` 新增 `--probe`(真检 artboard_dir 配置/目录/导出脚本),"artboard 桥"检查名副其实。
+
+### §4.3 契约与编码(Windows 优先)
+
+- **P19(高)手册命令 ↔ argparse 机械对拍门禁**:SKILL.md 四桥表 notes 桥命令 `tail` 改真实子命令
+  `list/stats`;新增 `tests/check_manual_cmds.py`(AST 重放各脚本 argparse 装配做解析级验收,绝不执行)+
+  `tests/test_v19_manual_gate.py` 门禁;落地时抓出并修正 **17 处**手册/脚本漂移
+  (含 rs_meta 缺 --out、meta.md 幽灵 `--cut-report`、sense.md 陈旧命令口径、subtitles.md 裸 `--karaoke`、
+  rs_brand `--out` 全局 required 挡死 `--analyze/--expand` 示例等)。
+- **P22(高)fallback id 遵守锚点契约(CONTEXT.md:74)**:rs_editor timeline 不再输出数组下标派号
+  `V1#2` 当 id —— 回退 id 改**内容寻址** `cf-<sha1(src|sourceInMs|startMs|durationMs)[:12]>`
+  (重排稳定、可作锚点;线协议 `idSource` 沿用 M9 的 `fallback` 值,同伴仓冒烟保持绿);`V1#2` 降级为 `displayId` 仅人读,每行带
+  `idSource`/`anchorable` 供消费者判定。S3 重建后标注不再可能挂错片段。
+- **P23(高)四桥错误码对齐 CutForge 5.4 码表**:输入错(缺参/工程目录不存在)→ `PRECONDITION_FAILED`,
+  缺依赖(缺 IR/缺 gate.py)→ `DEP_MISSING`;表外码 `USAGE`/`NO_ENV` 退役;
+  对拍测试机械校验「桥码 ⊆ lib.rs CODES」防双向漂移。
+- **P24(高)子进程编码与限时**:全仓排查裸 `text=True`(rs_run 阶段调用/rs_brand/fun_asr/tests)统一
+  `encoding="utf-8", errors="replace"`;阶段子进程可配置超时(默认 3600s,S1 ASR 放宽 4h,
+  `CUTFLOW_STAGE_TIMEOUT_SEC` 环境变量统一调大),超时明确报错记 failed,不静默、不再永久挂起。
+
+### P25 文档=实现(incremental.md 三处)
+
+- `failed` 状态**实现它**(§3 设计决策):阶段失败落盘、--status 可见、下游 blocked、--dirty 先修上游;
+- 段级缓存描述改指真实落点 `06_output/_build/<ratio>/segcache/`(旧 `_state/seg_*.json` 从未存在);
+- rebuild.py 覆盖面(4 文件夹+根)与行为(备份进 run_stage / 级联 / 末端自检)改成实际口径,
+  SKILL.md §5 同步。
+
+### 变更识别闭环(RT-2/3/4,副文档 02)
+
+- **RT-2**:`rs_run --status` 读取 `.cutforge/session-summary.json`(cutforge RT-1 落盘,
+  actor=human 的 Op 清单 + rev 区间),把「编辑器这次改了什么」带进状态输出;文件不存在/损坏静默跳过。
+- **RT-3**:`rs_editor.py diff <工程>` 新增 —— 有会话摘要按 Op 逐条人话;无摘要取 `.cutforge/bases/`
+  最新基线快照对比当前盘面(如「V2 轨新增 1 个 overlay 卡 3.2–5.0s」「V1 第2段被删」),
+  机器可读部分走 JSON(`data.human` + `data.diff`/`data.ops`)。
+- **RT-4**:SKILL.md 新增 §5.5 固化工作流:`--status`(读摘要)→ `rs_editor.py diff` →
+  定向 rebuild / `--from S8 --force` 范围决策 → 重跑 S9 自检;写明何时用哪条。
+
+### §4.4 O8-1
+
+- `docs/BACKLOG.md` 清账:已落地条目(rs_ingest 重复挂账 ×2、seg 级缓存、rs_sync 卡片时间窗、
+  rs_artboard fps/时长、[→] 已并入项等)打勾并附证据;"仍成立"条目补一行当前证据。
+
+## v0.17 (2026-09-21) — 副文档 03 · 阶段三:状态机可信(§4.1 P11–P15/P10b + §4.4 O7-2)
+
+来源:《03-副文档-阶段三-CutFlow管线与一致性清账.md》§4.1 + §4.4 O7-2(本波次不含 §4.2/§4.3 与 O8)。
+
+- **P11(高)S4 真实产物标记**:`rs_artboard --apply` 成功后在 manifest 盖 `appliedAt`;
+  S4 只认它,无标记一律 missing——不再借 S3 的 project.json 自动 done(`--mark S4` 形同虚设的根因);
+  无卡片工程 `--mark S4` 显式记录"无事可做",状态稳定。
+- **P12(高)params 快照激活**:`rs_run` 写状态时把生效参数落进 `05_ir/pipeline.json`(首次回填一次);
+  来源优先级 = brief 显式声明(每卡字数/CPS/画幅/平台)> pipeline 已存值 > 代码默认,
+  `params_of` 仅缺失时回退默认;缓存键按阶段 `paramKeys` 计参(仅声明消费的阶段受参数打脏),
+  S7 命令行经 `{max_chars}` 真正消费——**改 brief 字数,重跑产出的字幕卡就真的不一样**。
+- **P13-1(高)force 语义与备份全程**: `--force` 无 `--from/--only` target 报错
+  (`FORCE_NEEDS_TARGET`,不再静默 no-op);备份从"只覆盖 --force 起点"移进 `run_stage`,
+  每个真正写盘的非 cached 阶段(含 `--dirty` 级联)跑前先备份,备不下就中止;
+  `--dirty` 逐轮重选直到无非 done 阶段——上游重跑打脏的下游同一次调用内收敛。
+- **P13-2(高)删除诚实**:备份清理失败不再 `ignore_errors` 掩盖(失败项上报 `data.pruneFailed`
+  且整体非零退出);`rs_cleanup --apply` 删失败 → `CLEANUP_PARTIAL` 非零退出、失败逐项列出,
+  "已释放 N MB"只计真删掉的。
+- **P14(高)--only 语义**:`--only` 命中已 done → `PRECONDITION_FAILED` 非零退出并提示补
+  `--force`,不再静默 cached 吞掉带外改动。
+- **P15(高)原子写与 corrupt**:状态/记账写盘统一「临时文件 + `os.replace`」;状态文件解析失败
+  区分 `corrupt` 并显式告警(按缺失重跑但绝不静默)。
+- **P10b(高)产物独占子目录**:S5 → `06_output/branded/`、S8 → `06_output/final/`
+  (`rs_render` final 档默认落 `final/` 并新增 `--out` 显式落点,`rs_brand` 显式传递且变体 IR
+  素材路径绝对化——此前被恒 0 退出码掩盖,变体渲染从未真正成功);`{final_video}`、
+  `rs_verify`/`rs_ingest` 成片清单、`rs_cleanup` 白名单新旧落点兼容,历史产物不追改。
+- **O7-2(中)编辑器锁降级**:写状态前探测 `.cutforge/lock`(只做存在性探测,锁协议归 cutforge);
+  编辑器在运行 → 只读降级:阶段照跑、状态不写盘,stderr/消息/`data.stateReadOnly` 明确告警;
+  `--mark` 写不进去 `STATE_READONLY` 非零退出。
+- **测试**:新增 `tests/test_v18_state_machine.py` 25 项(收敛、级联备份、brief 参数闭环、
+  corrupt 恢复、锁降级、子目录兼容);`test_v16` 两处断言随 P10b-1 规格更新(产物落点)。
+  全量 pytest **362 通过 / 0 失败**。
+
+## v0.16 (2026-09-20) — 副文档 07 专项:断句与片尾截断修复(P26–P30)
+
+来源:《07-副文档-专项:断句与片尾截断修复》+《20260920-纯口播字幕断句与片尾截断修复经验-NCLM1605》
+(工程 20260919-慕有枝NCLM1605-纯口播)。把昨日靠手工 + 临时脚本解决的问题升格为机制。
+
+- **P26(高)时长以 ffprobe 实测为准**:`rs_align build` 对 `--media`/`--src` 实测媒体时长写
+  `srcDurationMs`(不再取 `max(末字 endMs, 转写段终点)`),`durationProvenance` 留痕;新增
+  **钳制检测**——末字 endMs 与记录总时长重合(<1 帧)→ 写 `endClampSuspect` 只标疑似不改数;
+  `rs_cut` **keep 末段终点保底** `max(末字 endMs + 尾余量, 实测)`(尾余量默认 650ms,`--tail-reserve-ms`,
+  口播 0.5–0.8s 底噪不截断);`rs_sync` 成片总时长断言改为 **ffprobe 实测源媒体 − removedMs** 为基准。
+- **P27(高)时长账自动同步**:`rs_cut --apply` 作为单一入口自动改平 wordline 三字段
+  (`srcDurationMs/removedMs/finalDurationMs`);恒等式 `src − removed == final` 写盘即校验
+  (`rs_common.duration_ledger_error`);`rs_ir build --from-cutlist` 对「改 keep 但 wordline 未同步」
+  在 S3 入口报 `DURATION_LEDGER` 并给修复命令;wordline 带 `manualEdit` 手改痕迹时拒绝自动改写(B8 同源)。
+- **P28(高)remap 本体丢幽灵字符**:src 区间完全落在 remove 区间内的字符直接丢弃,
+  重建 `sentences.span`、**重排 `chars[].i`**(下游契约),`pruned` 留痕;`rs_subtitle` 加
+  **幽灵卡保险**(内容字有效时长 <100ms 的卡必须并卡或丢弃);官方子命令
+  `rs_align.py prune-ghost` 替代临时脚本 `_drop_ghost_chars.py`(T1 升格样板)。
+- **P29(高)二次 remap 防护**:`space==final` 的 wordline 执行 remap 直接拒绝
+  (`ALREADY_FINAL_SPACE`,显式 `--force-remap` 可越过);新增 `rs_align.py refresh-durations
+  --media <素材>` 只改时长字段、绝不动字符时间。
+- **P30(中)断句系统性收敛**:DP 后处理**末卡回吸**(词内切点整词回吸;字数墙甩出的单字词头
+  回吸进上一卡,永不破坏词边界/超字数);override **余字自动重组**(被压住 DP 卡的剩余内容字
+  自动成卡,治丢字);**用户断句方案预检**(超长卡在空格等自然停顿处编译期自动拆分并留痕,
+  替代 rs_verify 硬失败);**文件引文/动宾保护**(〔…〕/《…》括号内侧、数字+号、
+  `PROTECTED_WORDS` 周转归还/资金往来等)纳入禁切;昨日 4 断句案例固化进 `segmentation.REGRESSION`。
+- **测试**:新增 `tests/test_v17_break_tail.py` 26 项(含 ffmpeg 合成夹具的端到端:片尾保底、
+  时长账自洽、二次 remap 拦截、rs_sync 总时长差 ≤0.05s、rs_verify L0 通过)。
+
 ## v0.15.2 (2026-09-20) — P0 流水线修复(P9/P10/P16;来源:《20260920-CutFlow×CutForge 迭代更新笔记》)
 
 - **P9(高)**:`rs_run.py` S1 附加步骤脚本名拼重修复(post 与 cmd 同构,不再前置 `st["cmd"][0]`)——
@@ -23,7 +157,7 @@
 
 ### M4 · MCP 与脚本(2026-09-18 补充,计划书落地第二批)
 
-- 新增四个 CutForge 桥脚本(纯标准库+结果协议,均带 `--probe` 自检):`rs_editor.py`(工程只读视图/时间线/结构体检)、`rs_notes.py`(标注 list/stats+孤儿统计)、`rs_oplog.py`(OpLog tail/report,回答"AI 改了什么")、`rs_gate.py`(透传 cutforge 侧 M0–M4 门禁退出码)。
+- 新增四个 CutForge 桥脚本(纯标准库+结果协议,均带 `--probe` 自检):`rs_editor.py`(工程只读视图/时间线/结构体检)、`rs_notes.py`(标注 list/stats+孤儿统计)、`rs_oplog.py`(OpLog tail/report,回答"AI 改了什么")、`rs_gate.py`(透传 cutforge 侧门禁退出码;当时注册表 M0–M4,现 M0–M7,一律以 gate.py 注册表为准)。
 - `rs_doctor.py` 新增「CutForge 桥」检查组(四桥 --probe 全过);README 常用命令速查表登记 4 行。
 - 配套 cutforge 侧:MCP 28 工具双通道 + 脚本沙箱(commit 546b01c);门禁 M4-6 实测通过。
 

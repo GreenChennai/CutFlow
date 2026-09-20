@@ -28,7 +28,8 @@ CFG = {"ffmpeg_dir": str(Path(FFMPEG).parent)} if FFMPEG else {}
 
 
 def _gen(path: Path, args: list[str]) -> Path:
-    p = subprocess.run([FFMPEG, "-y", "-v", "error", *args], capture_output=True, text=True)
+    p = subprocess.run([FFMPEG, "-y", "-v", "error", *args], capture_output=True, text=True,
+                       encoding="utf-8", errors="replace", timeout=300)
     if p.returncode != 0:
         pytest.skip(f"lavfi 不可用:{p.stderr[-120:]}".encode("ascii", "replace").decode())
     return path
@@ -207,7 +208,8 @@ def test_concat_no_truncation_with_short_tails(tmp_path):
              "-f", "lavfi", "-i", f"testsrc2=s=80x144:r=30:d={seconds:.3f}",
              "-f", "lavfi", "-i", f"sine=frequency=440:duration={seconds:.3f}",
              "-c:v", "libx264", "-preset", "ultrafast", "-c:a", "aac",
-             "-shortest", str(p)], capture_output=True, text=True)
+             "-shortest", str(p)], capture_output=True, text=True,
+             encoding="utf-8", errors="replace", timeout=300)
         if r.returncode != 0:
             pytest.skip(f"lavfi 不可用:{r.stderr[-120:]}".encode("ascii", "replace").decode())
         return str(p)
@@ -228,6 +230,6 @@ def test_concat_no_truncation_with_short_tails(tmp_path):
     info = subprocess.run(
         [ffprobe, "-v", "error", "-select_streams", "v:0",
          "-show_entries", "stream=duration", "-of", "csv=p=0", str(out)],
-        capture_output=True, text=True)
+        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
     vdur = float(info.stdout.strip() or 0)
     assert vdur >= 5.5, f"xfade 链不得截断下游:实测视频流 {vdur:.2f}s(名义 6.0s)"

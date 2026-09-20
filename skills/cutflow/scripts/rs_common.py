@@ -19,6 +19,11 @@ CONFIG_PATH = REPO_ROOT / "config.json"
 
 EXIT_OK, EXIT_INPUT, EXIT_DEP, EXIT_EXEC = 0, 2, 3, 4
 
+# P17-1:封面文件名唯一真相源(硬规则 15「产物中文命名」)。清理白名单、交付清单、
+# 文档口径(SKILL.md S10 产物 / rules/cover.md)共用此常量;旧 `cover.png` 不再产出、
+# 不再被清成"缺失"。改名只能改这里。
+COVER_PNG = "封面.png"
+
 # 画幅唯一真相源(OPTIMIZATION-v7 #4):新增画幅只改这里 + templates/platforms.json
 RATIOS: dict[str, tuple[int, int]] = {
     "9x16": (1080, 1920),      # 抖音 / 视频号
@@ -81,6 +86,37 @@ def guard_passed(guard: dict | None) -> bool:
     return bool(g.get("okByReason", g.get("ok")))
 
 
+def duration_ledger_error(wl: dict) -> str | None:
+    """P27-2 时长账一致性断言:`srcDurationMs − removedMs == finalDurationMs`。
+
+    任一环节写盘后都必须平账(20260920 教训:改了 keep 边界而 wordline 时长字段
+    不同步,rs_sync 的「成片总时长」断言才挂红叉——正解是把账改平,不是解释红叉)。
+    老工程缺 removedMs 字段时按 0 计;srcDurationMs/finalDurationMs 缺失则不判(无从判起)。
+    """
+    src, fin = wl.get("srcDurationMs"), wl.get("finalDurationMs")
+    if src is None or fin is None:
+        return None
+    removed = int(wl.get("removedMs") or 0)
+    if int(src) - removed != int(fin):
+        return (f"时长账不平:srcDurationMs({int(src)}) − removedMs({removed}) ≠ "
+                f"finalDurationMs({int(fin)});"
+                "修复:rs_cut.py --apply <cutlist>(自动同步),"
+                "或 rs_align.py refresh-durations --media <素材>")
+
+
+def sync_wordline_durations(wl: dict, src_total_ms: int, removed_ms: int) -> dict:
+    """P27-1:按 cutlist 同步 wordline 的三个时长字段(不动任何字符时间)。
+
+    srcDurationMs = 实测/有效源总时长;removedMs = 粗剪裁掉量;
+    finalDurationMs = src − removed(P27-2 账目恒等式由构造保证)。
+    """
+    out = dict(wl)
+    out["srcDurationMs"] = int(src_total_ms)
+    out["removedMs"] = int(removed_ms)
+    out["finalDurationMs"] = int(src_total_ms) - int(removed_ms)
+    return out
+
+
 def canvas_for(ratio: str) -> tuple[int, int]:
     """比例 → (宽, 高);未知比例报错而不是静默猜。"""
     if ratio not in RATIOS:
@@ -118,6 +154,19 @@ def load_config() -> dict:
     if not CONFIG_PATH.is_file():
         die(EXIT_DEP, "NO_CONFIG", f"缺少 config.json,请从 config.example.json 复制并填写:{CONFIG_PATH}")
     return json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+
+
+def write_text_atomic(path: str | Path, text: str) -> None:
+    """UTF-8 原子写:临时文件 + os.replace,中断/掉电不留半个文件(P15-1 同纪律)。
+
+    gen-cards / add-overlay / export-fallback 等生成式写盘一律走这里;
+    同目录已有同名临时残件也会被覆盖,不留垃圾。
+    """
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    tmp = p.with_name(p.name + ".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, p)
 
 
 def emit(ok: bool, code: str, message: str, data=None, exit_code: int = EXIT_OK) -> int:

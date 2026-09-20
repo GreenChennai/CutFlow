@@ -269,11 +269,18 @@ def events_from_wordline(wl: dict, max_chars: int, *, terms=(), top: int = 3,
     events, merged_short = _merge_short(events, max_chars)
     extended = _extend_short(events)
     _enforce_gaps(events)
+    # P28-2 保险:remap 边界上坍缩出的 <100ms 幽灵卡必须并卡或丢弃(不静默出卡)
+    events, ghost_merged, ghost_dropped = _drop_ghost_cards(events, max_chars)
+    if ghost_merged:
+        _enforce_gaps(events)
     # 约束校验必须在**可读性调整之后**做,否则报的是已经不存在的问题
     final_cards = _to_cards(events)
     violations = segmentation.check_constraints(
         final_cards, max_chars, cps_max or segmentation.cps_max_for(max_chars))
     reasons = list(wl.get("degradeReasons", [])) + seg_degrade
+    if ghost_dropped:
+        reasons.append(f"P28-2 幽灵卡保险:丢弃 {len(ghost_dropped)} 张 <{GHOST_MIN_MS}ms 卡"
+                       f"(并卡 {ghost_merged} 张):{'、'.join(ghost_dropped[:3])}")
     estimated = bool(wl.get("charTimingEstimated"))
     if estimated and not any("估算" in r for r in reasons):
         reasons.append("卡内位置为估算(无字级时间戳),建议 rs_dub align 补字级")
@@ -284,6 +291,7 @@ def events_from_wordline(wl: dict, max_chars: int, *, terms=(), top: int = 3,
             "charTimingEstimated": estimated,
             "violations": violations, "candidates": candidates,
             "mergedShort": merged_short, "extendedShort": extended,
+            "ghostCards": {"merged": ghost_merged, "dropped": ghost_dropped},
             "karaokeAttached": kar_attached,
             "wordFallbackSentences": word_fb_count,
             "ambiguous": sum(1 for c in candidates if c["ambiguous"])}
@@ -362,6 +370,74 @@ def _resolve_override_requests(ov: dict, chars: list[dict], s: str, idx: list[in
     return requests
 
 
+# 自然停顿字符(P30-3 拆分建议优先级:空格/顿号/逗号/分号 = 用户文案本就有的停顿)
+_PRECHECK_PAUSE = " \u3000,，、;；:："
+
+
+def _precheck_split_requests(requests: list[dict], chars: list[dict], idx: list[int],
+                             max_chars: int) -> tuple[list[dict], list[dict]]:
+    """P30-3 用户断句方案预检:超长 request 在「文案本就有的停顿处」拆分并留痕。
+
+    用户断句方案也要过 maxChars/CPS——旧流程要到 rs_verify 才硬失败(20260920 坑 #3:
+    「依据财税〔2003〕 158号文件的规定」19 字 > 12,在空格处拆 10+9)。这里把处理前置到
+    回灌时:**只在自然停顿处(空格/顿号/逗号等)下刀**;文案里找不到停顿就不强拆
+    (强拆必破坏词边界,比超长更糟),留痕后仍由 rs_verify 硬闸把关。
+    返回 (新 requests, notes)。
+    """
+    notes: list[dict] = []
+    out: list[dict] = []
+    for r in requests:
+        ca, cb = r["content"]
+        n = cb - ca
+        if n <= max_chars:
+            out.append(r)
+            continue
+        raw_first, raw_last = idx[ca], idx[cb - 1]
+        # 停顿位置:① 内容字本身是停顿符(顿号/逗号);② 相邻内容字之间的 raw 间隙
+        # 里有空格等停顿符(用户的空格不进内容串,但正是"文案本就有的停顿")
+        pauses: set[int] = set()
+        for p in range(ca + 1, cb):
+            prev_ch = str(chars[idx[p - 1]]["ch"])
+            next_ch = str(chars[idx[p]]["ch"])
+            gap_pause = any(str(chars[k]["ch"]) in _PRECHECK_PAUSE
+                            for k in range(idx[p - 1] + 1, idx[p]))
+            if prev_ch in _PRECHECK_PAUSE or next_ch in _PRECHECK_PAUSE or gap_pause:
+                pauses.add(p)
+        text = "".join(chars[idx[p]]["ch"] for p in range(ca, cb))
+        pieces: list[tuple[int, int]] = []
+        start, splittable = ca, True
+        while cb - start > max_chars:
+            limit = start + max_chars
+            cut = max((p for p in pauses if start + segmentation.MIN_CHARS <= p <= limit),
+                      default=None)
+            if cut is None:
+                splittable = False
+                break
+            pieces.append((start, cut))
+            start = cut
+        if not splittable:
+            # 无自然停顿可拆:保持原卡,交 rs_verify 硬闸(拆分建议已无法不破坏词边界)
+            out.append(r)
+            notes.append({"text": text, "chars": n, "maxChars": max_chars,
+                          "splitInto": [], "strategy": "none",
+                          "note": "P30-3 预检:超长卡在文案中未找到自然停顿(空格/顿号/逗号),"
+                                  "不强行拆分(强拆破坏词边界);rs_verify 将按 maxChars 硬失败,"
+                                  "请在停顿处人工拆分"})
+            continue
+        pieces.append((start, cb))
+        for k, (a, b) in enumerate(pieces):
+            piece = {"content": [a, b]}
+            if k == 0 and r.get("note"):
+                piece["note"] = r["note"]
+            out.append(piece)
+        notes.append({"text": text, "chars": n, "maxChars": max_chars,
+                      "splitInto": [b - a for a, b in pieces],
+                      "strategy": "pause",
+                      "note": "P30-3 编译期预检:超长卡已在自然停顿处拆分"
+                              "(与用户原案不完全一致,留痕待复核)"})
+    return out, notes
+
+
 def _event_from_content_range(ca: int, cb: int, chars: list[dict], idx: list[int]) -> dict | None:
     """内容字区间 [ca, cb) → 字幕事件(时间唯一真相源 = wordline 字级锚)。
 
@@ -399,6 +475,12 @@ def events_from_override(wl: dict, override: dict, max_chars: int, *,
       **full** —— override 区间覆盖全部内容字(旧行为):整表重建,不用 DP;
       **partial** —— 只覆盖一部分:以 DP 分组为基底,被 override 区间压住的 DP 卡
       被替换,其余沿用 DP 结果。微调一张卡不再需要重给全部 span(B7)。
+
+    副文档 07 三道配套:
+      P30-3 预检 —— 超长 request 在自然停顿处拆分并留痕(硬失败前置到编译期);
+      P30-2 余字 —— 被压住的 DP 卡中未被覆盖的余字**自动生成重组 request**,
+      不再要求 Agent 手动补(治「挪走科目、剩下按净额填列只有直接消失」式丢字);
+      P28-2 保险 —— 内容字有效时长 <100ms 的幽灵卡必须并卡或丢弃。
     """
     import bisect
     chars = wl.get("chars") or []
@@ -408,20 +490,15 @@ def events_from_override(wl: dict, override: dict, max_chars: int, *,
     requests = _resolve_override_requests(override, chars, s, idx)
     if not requests:
         raise ValueError("override 没有有效卡片")
+    requests, precheck_notes = _precheck_split_requests(requests, chars, idx, max_chars)
 
     covered = 0
     for ca, cb in (r["content"] for r in requests):
         covered += cb - ca
     full_mode = covered >= len(s)
 
-    if full_mode:
-        events = []
-        for r in requests:
-            ev = _event_from_content_range(r["content"][0], r["content"][1], chars, idx)
-            if ev:
-                events.append(ev)
-        override_mode = "full"
-    else:
+    residual_events: list[tuple[int, dict]] = []
+    if not full_mode:
         base, _cand, _deg, _wfb = _dp_events(wl, max_chars)
         if any("charSpan" not in e for e in base):
             raise ValueError("partial override 需要 DP 事件携带 charSpan(降级 wordline 不支持,"
@@ -432,6 +509,24 @@ def events_from_override(wl: dict, override: dict, max_chars: int, *,
             j0, j1 = bisect.bisect_left(idx, ra), bisect.bisect_left(idx, rb)
             if any(not (j1 <= ca or cb <= j0) for ca, cb in
                    (r["content"] for r in requests)):
+                # P30-2 余字重组:被压住的 DP 卡里,未被任何 request 覆盖的内容字
+                # 区间(= 卡区间减去与之相交的 request 区间的差集)自动成卡
+                # (替代 Agent 手动补 request;不补即丢字)
+                cur = j0
+                segs: list[tuple[int, int]] = []
+                for ca, cb in sorted(r["content"] for r in requests):
+                    a, b = max(j0, ca), min(j1, cb)
+                    if b <= a:
+                        continue
+                    if a > cur:
+                        segs.append((cur, a))
+                    cur = max(cur, b)
+                if cur < j1:
+                    segs.append((cur, j1))
+                for a, b in segs:
+                    ev = _event_from_content_range(a, b, chars, idx)
+                    if ev:
+                        residual_events.append((a, ev))
                 continue                        # 被 override 压住的 DP 卡 → 替换
             kept.append((j0, e))
         replaced: list[tuple[int, dict]] = []
@@ -439,14 +534,25 @@ def events_from_override(wl: dict, override: dict, max_chars: int, *,
             ev = _event_from_content_range(r["content"][0], r["content"][1], chars, idx)
             if ev:
                 replaced.append((r["content"][0], ev))
-        events = [e for _, e in sorted(kept + replaced, key=lambda t: t[0])]
+        events = [e for _, e in sorted(kept + replaced + residual_events,
+                                       key=lambda t: t[0])]
         override_mode = "partial"
+    else:
+        events = []
+        for r in requests:
+            ev = _event_from_content_range(r["content"][0], r["content"][1], chars, idx)
+            if ev:
+                events.append(ev)
+        override_mode = "full"
 
     events.sort(key=lambda e: e["start"])
     kar_attached = _apply_karaoke_chars(events, wl) if karaoke else 0
     events, merged = _merge_short(events, max_chars)
     extended = _extend_short(events)
     _enforce_gaps(events)
+    events, ghost_merged, ghost_dropped = _drop_ghost_cards(events, max_chars)
+    if ghost_merged:
+        _enforce_gaps(events)
     final_cards = _to_cards(events)
     violations = segmentation.check_constraints(
         final_cards, max_chars, cps_max or segmentation.cps_max_for(max_chars))
@@ -454,19 +560,103 @@ def events_from_override(wl: dict, override: dict, max_chars: int, *,
               "startMs": int(round(e["start"] * 1000)), "endMs": int(round(e["end"] * 1000)),
               "chars": len(e["text"].replace(" ", ""))}
              for e in events if "charSpan" in e]
+    reasons = list(wl.get("degradeReasons") or [])
+    if residual_events:
+        reasons.append(f"P30-2 余字重组:{len(residual_events)} 段被压住 DP 卡的余字已自动成卡")
+    if ghost_dropped:
+        reasons.append(f"P28-2 幽灵卡保险:丢弃 {len(ghost_dropped)} 张 <{GHOST_MIN_MS}ms 卡"
+                       f"(并卡 {ghost_merged} 张):{'、'.join(ghost_dropped[:3])}")
     meta = {"degraded": bool(wl.get("degraded")),
-            "degradeReasons": list(wl.get("degradeReasons") or []),
+            "degradeReasons": reasons,
             "charTimingEstimated": bool(wl.get("charTimingEstimated")),
             "violations": violations, "candidates": [],
             "mergedShort": merged, "extendedShort": extended,
             "karaokeAttached": kar_attached, "wordFallbackSentences": 0,
             "ambiguous": 0,
             "overrideApplied": True, "overrideCards": len(requests),
-            "overrideMode": override_mode, "audit": audit}
+            "overrideMode": override_mode, "audit": audit,
+            "overridePrecheck": precheck_notes,
+            "residualRegrouped": len(residual_events),
+            "ghostCards": {"merged": ghost_merged, "dropped": ghost_dropped}}
     return events, meta
 
 
 MIN_DUR_S = 0.83
+GHOST_MIN_MS = 100          # P28-2:内容字有效时长低于此值的卡 = 幽灵卡,必须并卡或丢弃
+
+
+def _ghost_span_ms(e: dict) -> float:
+    """卡内**内容字**的有效时长 ms(锚点口径;无锚点退回卡时长)。"""
+    if "anchorStart" in e and "anchorEnd" in e:
+        return max(0.0, (e["anchorEnd"] - e["anchorStart"]) * 1000.0)
+    return max(0.0, (e["end"] - e["start"]) * 1000.0)
+
+
+def _drop_ghost_cards(events: list[dict], max_chars: int,
+                      min_ms: float = GHOST_MIN_MS) -> tuple[list[dict], int, list[str]]:
+    """P28-2 幽灵卡保险(副文档 07):内容字有效时长 <100ms 的卡必须并卡或丢弃。
+
+    remap 后个别字符坍缩到删除边界上会生成 0.06s 级碎卡——绝不静默出卡:
+    ① 先试**并入上一卡**(不超字数);② 放不下则**并入下一卡**(幽灵文本作前缀);
+    ③ 仍放不下 → 丢弃并留痕。根治靠 P28-1 的 remap 本体丢弃 + prune-ghost,
+    这里兜旧工程/漏网路径。返回 (事件表, 并卡数, 丢弃文本列表)。
+    """
+    out: list[dict] = []
+    merged, dropped = 0, []
+    pending: dict | None = None              # 待并入下一卡的幽灵卡(向后吞)
+    # 护栏:若**全部**卡都是幽灵时长(降级/合成时间轴的 pathological 形态),
+    # 一张不丢——保险针对的是"正常卡旁边的零星碎卡",不是清空整句内容
+    if events and all(_ghost_span_ms(e) < min_ms for e in events):
+        return events, 0, []
+    for e in events:
+        if _ghost_span_ms(e) >= min_ms:
+            if pending is not None:          # 幽灵卡作前缀并入下一张正常卡
+                joined = _join(pending.get("text", ""), e["text"])
+                if len(joined.replace(" ", "")) <= max_chars:
+                    e = dict(e)
+                    e["start"] = min(e["start"], pending["start"])
+                    e["text"] = joined
+                    if "anchorStart" in pending:
+                        e["anchorStart"] = min(e.get("anchorStart", 10 ** 9),
+                                               pending["anchorStart"])
+                    if pending.get("chars"):
+                        e["chars"] = pending["chars"] + (e.get("chars") or [])
+                    if "charSpan" in pending:
+                        e["charSpan"] = [min(pending["charSpan"][0], e["charSpan"][0]),
+                                         max(pending["charSpan"][1], e["charSpan"][1])] \
+                            if "charSpan" in e else list(pending["charSpan"])
+                    merged += 1
+                    pending = None
+                else:
+                    dropped.append(pending.get("text") or "(空)")
+                    pending = None
+            out.append(e)
+            continue
+        # e 是幽灵卡:先试向前吞(并入上一张已落卡)
+        text = e.get("text") or ""
+        if out:
+            prev = out[-1]
+            joined = _join(prev.get("text", ""), text)
+            if len(joined.replace(" ", "")) <= max_chars:
+                prev["end"] = max(prev["end"], e["end"])
+                prev["text"] = joined
+                if "anchorEnd" in e:
+                    prev["anchorEnd"] = max(prev.get("anchorEnd", 0.0), e["anchorEnd"])
+                if e.get("chars"):
+                    prev["chars"] = (prev.get("chars") or []) + e["chars"]
+                if "charSpan" in e:
+                    prev["charSpan"] = [min(prev["charSpan"][0], e["charSpan"][0]),
+                                        max(prev["charSpan"][1], e["charSpan"][1])] \
+                        if "charSpan" in prev else list(e["charSpan"])
+                merged += 1
+                continue
+        if not text:                             # 无文本的退化事件直接丢
+            dropped.append("(空)")
+            continue
+        pending = e                              # 向后吞:等下一张正常卡来了作前缀并入
+    if pending is not None:
+        dropped.append(pending.get("text") or "(空)")
+    return out, merged, dropped
 
 
 def _join(a: str, b: str) -> str:
@@ -931,6 +1121,14 @@ def main() -> int:
     msg = f"{len(events)} 条字幕事件(卡切分 {a.segment},每卡 ≤{max_chars} 字)"
     if meta.get("overrideApplied"):
         msg += f";override 重建 {meta['overrideCards']} 卡"
+        if meta.get("residualRegrouped"):
+            msg += f";P30-2 余字自动重组 {meta['residualRegrouped']} 段"
+        if meta.get("overridePrecheck"):
+            msg += (f";P30-3 预检:{len(meta['overridePrecheck'])} 张超长卡已在自然停顿处拆分"
+                    f"({';'.join(str(n['splitInto']) for n in meta['overridePrecheck'])})")
+    gc = meta.get("ghostCards") or {}
+    if gc.get("merged") or gc.get("dropped"):
+        msg += f";P28-2 幽灵卡:并卡 {gc.get('merged', 0)} / 丢弃 {len(gc.get('dropped', []))}"
     if meta["ambiguous"]:
         msg += f";{meta['ambiguous']} 句切分歧义(见 segments_candidates.json)"
     if meta["violations"]:

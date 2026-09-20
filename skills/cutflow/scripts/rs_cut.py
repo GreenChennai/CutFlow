@@ -10,6 +10,14 @@
   0.60–0.90  → review(进审查包)
   < 0.60     → keep(不动)
 guard = 切点在静音区 / 不切断字内音素 / 后留 ≥60ms;任一不过 → 降级 review。
+
+副文档 07(P26/P27):
+  · keep 末段终点保底 = max(末字 endMs + 尾余量, ffprobe 实测时长)——口播结尾
+    0.5–0.8s 自然底噪不截断(尾余量默认 650ms,--tail-reserve-ms;给了 --media
+    就以实测为唯一真相)。
+  · --apply 是时长账同步的单一入口:自动改平 wordline 的 srcDurationMs/removedMs/
+    finalDurationMs(src − removed == final,写盘即校验);wordline 带 manualEdit
+    手改痕迹时拒绝自动改写(--force 显式越过)。
 """
 from __future__ import annotations
 
@@ -63,6 +71,119 @@ MARGIN_IN_MS, MARGIN_OUT_MS = 150, 300   # 后留白 > 前留白,给呼吸感(au
 SMOOTH_MINCUT_MS = 120    # <120ms 的刀整体放弃:亚音素级剪切人耳难辨,只添错删风险
 SMOOTH_MINCLIP_MS = 100   # 相邻刀之间 <100ms 的保留碎片并入刀内(残段只会是爆音)
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
+
+# ---- P26-3(副文档 07):keep 末段终点保底 ----
+# 「口播结尾留 0.5–0.8s 自然底噪,是不割裂的最低要求」(20260920 NCLM1605:
+# keep 末段被钉在 ASR 钳制出的错误总时长上,末字衰减尾音 + 0.7s 底噪全被切掉)。
+TAIL_RESERVE_MS = 650     # 口播尾余量默认 0.65s(建议区间 500–800;--tail-reserve-ms 可调)
+CLAMP_SIGNATURE_TOL_MS = 40   # 「记录总时长 ≈ 末字 endMs」的钳制签名容差(≈1 帧 @24fps)
+
+# ---- J2(副文档 06):protect 保护区 ----
+# 「必须保留发音」的词的有效发音区间(单位与 keep 一致,ms,左闭右开)。
+# guard 加第四条:切点(remove 区间)不得侵入 protect 区;优先级 protect >
+# 既有 guard 三项 —— guard 不过尚可降级 review,protect 冲突**即报错**而非降级
+# (降级 = 留在稿子里等人审,protect 的语义是"审也不许切",故必须显式解决冲突:
+# 要么改刀,要么撤区)。
+PROTECT_CODE = "PROTECT_INTRUDED"
+
+
+def normalize_protect(raw) -> list[dict]:
+    """把 --protect "a-b,c-d" 或 cutlist.protect 归一成 [{"startMs","endMs","note"?}]。
+
+    非法区间(负数/倒置)直接 ValueError —— protect 是硬约束,宁可报错不可猜。
+    """
+    zones: list[dict] = []
+    if not raw:
+        return zones
+    items = raw if isinstance(raw, list) else str(raw).split(",")
+    for it in items:
+        if isinstance(it, dict):
+            a, b = int(it.get("startMs", -1)), int(it.get("endMs", -1))
+            note = str(it.get("note", ""))
+        else:
+            s = str(it).strip()
+            if not s:
+                continue
+            lo, sep, hi = s.partition("-")
+            if not (lo.strip().lstrip("+").isdigit() and hi.strip().lstrip("+").isdigit()):
+                raise ValueError(f"protect 区间非法(应为 起ms-止ms):{s}")
+            a, b = int(lo), int(hi)
+            note = ""
+        if a < 0 or b <= a:
+            raise ValueError(f"protect 区间非法(需 0 ≤ start < end):{a}-{b}")
+        z = {"startMs": a, "endMs": b}
+        if note:
+            z["note"] = note
+        zones.append(z)
+    return zones
+
+
+def protect_violations(cuts: list[dict], protects,
+                       actions: tuple[str, ...] = ("remove", "review")) -> list[str]:
+    """刀区间与 protect 区的冲突清单(半开区间相交判定;触边不算侵入)。
+
+    actions 缺省审 remove+review(构建期:review 正是 guard 的降级去处 —— protect
+    优先级高于 guard,冲突**不许降级**,必须报错);--apply / finalize 传
+    ("remove",) 只审真正会执行的刀(review 此时= 不删,批准后重跑 apply 仍会过闸)。
+    """
+    zones = normalize_protect(protects)
+    if not zones:
+        return []
+    out = []
+    for c in cuts:
+        if c.get("action") not in actions:
+            continue
+        for z in zones:
+            if max(int(c["inMs"]), z["startMs"]) < min(int(c["outMs"]), z["endMs"]):
+                note = z.get("note") or ""
+                out.append(f"{c.get('id', '?')} [{c['inMs']}–{c['outMs']}ms] 侵入 protect 区 "
+                           f"[{z['startMs']}–{z['endMs']}ms]{('（' + note + '）') if note else ''}")
+                break
+    return out
+
+
+def _assert_no_protect_intrusion(cuts: list[dict], protects,
+                                 actions: tuple[str, ...] = ("remove", "review")) -> None:
+    bad = protect_violations(cuts, protects, actions)
+    if bad:
+        raise ValueError(f"{PROTECT_CODE}:切点侵入 protect 区(优先级高于 guard,冲突即报错"
+                         f"而非降级;请改刀或撤区):{'；'.join(bad)}")
+
+
+def probe_duration_ms(media, cfg: dict | None = None) -> int | None:
+    """ffprobe 实测媒体时长 ms;失败返回 None(调用方退回记录值,不阻塞)。"""
+    try:
+        from rs_common import media_duration_s
+        d = float(media_duration_s(media, cfg))
+        return int(round(d * 1000)) if d > 0 else None
+    except SystemExit:
+        return None
+    except Exception:  # noqa: BLE001 — 无 ffprobe/坏文件:显式降级
+        return None
+
+
+def tail_keep_end_ms(chars: list[dict], recorded_total: int, measured_ms: int | None,
+                     reserve_ms: int = TAIL_RESERVE_MS,
+                     recorded_is_measured: bool = False) -> int:
+    """keep 末段终点保底(P26-3):`max(末字 endMs + 尾余量, 实测时长)`。
+
+    - 有 ffprobe 实测 → 实测时长即物理上限与唯一真相(末字衰减 + 底噪完整保留);
+      实测异常地短于末字(坏数据)时至少保住末字。
+    - 无实测、但记录值本就是 ffprobe 产物(`durationProvenance == "ffprobe"`)→
+      信任记录值:真实媒体末尾已含全部尾音,外推反而越界。
+    - 无实测且记录值来自 ASR 链路 → 仅在「钳制疑点形态」(记录总时长与末字 endMs
+      重合,20260920 事故签名)下外推一个尾余量,不在字尾瞬间硬停。
+    """
+    hard = [c for c in chars if str(c.get("ch", "")).strip()]
+    last_end = max((int(c["endMs"]) for c in hard), default=0)
+    floor = last_end + max(0, int(reserve_ms))
+    if measured_ms and int(measured_ms) > 0:
+        return max(int(measured_ms), min(last_end, int(measured_ms)))
+    if recorded_is_measured:
+        return int(recorded_total or 0)
+    if int(recorded_total or 0) - last_end <= CLAMP_SIGNATURE_TOL_MS:
+        return max(int(recorded_total or 0), floor)     # 记录值被字尾钳制的疑点形态
+    return int(recorded_total or 0)
 
 
 def load_lexicon() -> dict:
@@ -556,14 +677,31 @@ def build_cutlist(wl: dict, cuts: list[dict], params: dict | None = None) -> dic
             c["note"] = (c["note"] + " [rhetorical_pause_suspect]").strip()
         # v0.11 R5:每刀带前后 1.2s 文本上下文 —— 审查从「听 30 个 3 秒」变「读 30 行」
         c["text"] = _context_text(chars, c)
+    # J2 guard 第四条:切点不得侵入 protect 区。优先级 protect > guard 三项:
+    # guard 不过会降级 review,protect 冲突**报错**(降级 = 留稿待人审,而 protect
+    # 的语义是"审也不许切")。
+    protects = normalize_protect((params or {}).get("protect"))
+    _assert_no_protect_intrusion(merged, protects)
     removed = [c for c in merged if c["action"] == "remove"]
-    total = int(wl.get("srcDurationMs") or (int(chars[-1]["endMs"]) if chars else 0))
+    total_rec = int(wl.get("srcDurationMs") or (int(chars[-1]["endMs"]) if chars else 0))
+    # P26-3 keep 末段终点保底:总时长以实测/末字+尾余量兜底,不在字尾瞬间硬停
+    reserve = int((params or {}).get("tailReserveMs") or TAIL_RESERVE_MS)
+    measured = int((params or {}).get("measuredMs") or 0)
+    rec_is_probe = bool((params or {}).get("recordedIsMeasured"))
+    total = tail_keep_end_ms(chars, total_rec, measured or None, reserve, rec_is_probe)
     keep = derive_keep(removed, total)
     cl = {"version": 1, "source": wl.get("source", ""),
           "detector": {"version": DETECTOR_VERSION, "params": params or {}},
           "cuts": merged, "keep": keep,
           "removedMs": sum(c["outMs"] - c["inMs"] for c in removed),
           "srcTotalMs": total}
+    if protects:
+        cl["protect"] = protects
+    if total != total_rec:
+        cl["tail"] = {"reserveMs": reserve,
+                      "measuredMs": measured or None,
+                      "recordedTotalMs": total_rec, "keepEndMs": total,
+                      "note": "keep 末段终点保底(P26-3):末字衰减尾音+自然底噪不截断"}
     cl["script"] = _script_marks(chars, merged, total)
     return cl
 
@@ -612,6 +750,16 @@ def derive_keep(remove_cuts: list[dict], total: int) -> list[list[int]]:
     if cursor < total:
         keep.append([cursor, total])
     return [k for k in keep if k[1] - k[0] > 0]
+
+
+def self_wordline_default(cutlist_path: Path) -> Path | None:
+    """P27-1:由 cutlist 路径推断工程 wordline(<root>/04_cut/cutlist.json → <root>/05_ir/wordline.json)。
+
+    cutlist 不在标准工程布局里(无父父目录或无 05_ir)时返回 None,调用方跳过同步。
+    """
+    root = cutlist_path.parent.parent
+    cand = root / "05_ir" / "wordline.json"
+    return cand if cand.parent.is_dir() else None
 
 
 # ---------------------------------------------------------------- I2:按文本裁片(v0.12)
@@ -757,6 +905,8 @@ def _extract_clip(src: Path, dst: Path, in_ms: int, out_ms: int) -> bool:
 
 def finalize_cutlist(cl: dict) -> dict:
     """按当前 action 重算 keep(apply 路径)。"""
+    # J2:protect 是最后一道闸 —— 人工把 review 改成 remove 也逃不过;侵入即报错
+    _assert_no_protect_intrusion(cl.get("cuts", []), cl.get("protect"), actions=("remove",))
     total = int(cl["srcTotalMs"])
     removes = [c for c in cl["cuts"] if c["action"] == "remove"]
     cl["keep"] = derive_keep(removes, total)
@@ -781,6 +931,18 @@ def main() -> int:
     ap.add_argument("--out", default="04_cut")
     ap.add_argument("--review-pack", dest="review_pack")
     ap.add_argument("--apply")
+    ap.add_argument("--wordline", dest="wordline_path", default=None,
+                    help="P27-1:--apply 时要同步时长账的 wordline 路径"
+                         "(缺省自动发现 <cutlist>/../05_ir/wordline.json)")
+    ap.add_argument("--force", dest="force", action="store_true",
+                    help="P27-1:wordline 带手工编辑痕迹(manualEdit)时仍强制同步")
+    ap.add_argument("--tail-reserve-ms", dest="tail_reserve_ms", type=int, default=TAIL_RESERVE_MS,
+                    help="P26-3 口播尾余量 ms(默认 650;建议区间 500–800;"
+                         "keep 末段终点保底 = max(末字 endMs+余量, 实测时长))")
+    ap.add_argument("--protect", dest="protect", default="",
+                    help="J2 保护区:「起ms-止ms,起ms-止ms」(与 keep 同单位,ms)——"
+                         "被明确「必须保留发音」的区间;切点(remove)侵入即报错而非降级"
+                         "(优先级高于 guard 三项,rules/roughcut.md §5.2)")
     ap.add_argument("--render", action="store_true")
     ap.add_argument("--off-topic", dest="off_topic", default="",
                     help="Agent 判定的跑题段落,格式 '起-止,起-止'(chars 下标)")
@@ -843,18 +1005,62 @@ def main() -> int:
                 return emit(False, "BAD_REASON", f"{c.get('id')} 的 reason 非法:{c['reason']}", exit_code=2)
             if src_total and not (0 <= c["inMs"] < c["outMs"] <= src_total):
                 return emit(False, "BAD_RANGE", f"{c.get('id')} 区间越界:{c['inMs']}–{c['outMs']}", exit_code=2)
+        # J2:protect 冲突在此显式报错(不用等 finalize 的 ValueError 才露面),
+        # 让错误码/清单直接可读;此时 review = 不删,故只审真正会执行的 remove;
+        # finalize 内还有同闸兜底防程序化调用绕过。
+        bad_protect = protect_violations(cl["cuts"], cl.get("protect"), actions=("remove",))
+        if bad_protect:
+            return emit(False, PROTECT_CODE,
+                        "切点侵入 protect 区(--apply 拒绝;改刀或撤区,冲突即报错而非降级):"
+                        + "；".join(bad_protect),
+                        {"violations": bad_protect}, exit_code=2)
         try:
             finalize_cutlist(cl)
         except ValueError as exc:
             return emit(False, "KEEP_INCONSISTENT", str(exc), exit_code=4)
         dst = p.with_name("cutlist.applied.json")
         dst.write_text(json.dumps(cl, ensure_ascii=False, indent=1), encoding="utf-8")
+        # P27-1:--apply 是时长账同步的单一入口——改了 keep 边界,wordline 的
+        # srcDurationMs/removedMs/finalDurationMs 在此自动改平,不再需要手改两字段
+        # (20260920 教训:不同步则 rs_sync 总时长断言事后挂红叉)。
+        sync_info: dict = {"wordline": None}
+        wl_path = Path(a.wordline_path) if a.wordline_path else \
+            self_wordline_default(p)
+        if wl_path and wl_path.is_file():
+            wl = json.loads(wl_path.read_text(encoding="utf-8"))
+            if wl.get("manualEdit") and not a.force:
+                return emit(False, "WORDLINE_MANUAL_EDIT",
+                            f"{wl_path} 带手工编辑痕迹(manualEdit),拒绝自动改写时长账;"
+                            "确认放弃手改请加 --force,或只改时长用 "
+                            "rs_align.py refresh-durations <wordline> --media <素材>", exit_code=2)
+            before = {"srcDurationMs": wl.get("srcDurationMs"),
+                      "removedMs": wl.get("removedMs"),
+                      "finalDurationMs": wl.get("finalDurationMs")}
+            from rs_common import duration_ledger_error, sync_wordline_durations
+            wl2 = sync_wordline_durations(wl, int(cl["srcTotalMs"]), int(cl["removedMs"]))
+            ledger = duration_ledger_error(wl2)
+            if ledger:
+                return emit(False, "DURATION_LEDGER", f"同步后校验失败:{ledger}", exit_code=4)
+            wl_path.write_text(json.dumps(wl2, ensure_ascii=False, indent=1), encoding="utf-8")
+            sync_info = {"wordline": str(wl_path), "before": before,
+                         "after": {"srcDurationMs": wl2["srcDurationMs"],
+                                   "removedMs": wl2["removedMs"],
+                                   "finalDurationMs": wl2["finalDurationMs"]},
+                         "changed": before != {"srcDurationMs": wl2["srcDurationMs"],
+                                               "removedMs": wl2["removedMs"],
+                                               "finalDurationMs": wl2["finalDurationMs"]}}
+        elif wl_path:
+            sync_info = {"wordline": None, "note": f"未找到 wordline({wl_path}),时长账未同步"}
         msg = (f"已应用:{len([c for c in cl['cuts'] if c['action'] == 'remove'])} 刀 remove,"
-               f"保留 {len(cl['keep'])} 段 / {(src_total - cl['removedMs']) / 1000:.1f}s")
+               f"保留 {len(cl['keep'])} 段 / {(cl['srcTotalMs'] - cl['removedMs']) / 1000:.1f}s")
+        if sync_info.get("wordline"):
+            msg += f";wordline 时长账已同步({sync_info['wordline']})"
         if a.render:
             msg += ";下一步:rs_align.py remap <wordline> --cutlist " + str(dst)
         return emit(True, "CUT_APPLIED", msg, {"path": str(dst), "keep": cl["keep"],
-                                               "removedMs": cl["removedMs"]})
+                                               "removedMs": cl["removedMs"],
+                                               "srcTotalMs": cl["srcTotalMs"],
+                                               "wordlineSync": sync_info})
 
     if not a.wordline:
         return emit(False, "NO_INPUT", "需要 <wordline.json> 或 --apply/--review-pack", exit_code=2)
@@ -882,9 +1088,23 @@ def main() -> int:
                 spans.append([int(lo), int(hi)])
         cuts.extend(detect_off_topic(wl, spans))
 
+    try:
+        protects = normalize_protect(a.protect)          # J2:先验区间形状,坏区间快速失败
+    except ValueError as exc:
+        return emit(False, "BAD_PROTECT", str(exc), exit_code=2)
     params = {"silenceMinMs": a.min_silence_ms, "tailKeepMs": TAIL_KEEP_MS,
               "retakeRatio": a.retake_ratio, "confRemove": CONF_REMOVE,
-              "confReview": CONF_REVIEW}
+              "confReview": CONF_REVIEW,
+              "tailReserveMs": a.tail_reserve_ms,
+              "recordedIsMeasured": wl.get("durationProvenance") == "ffprobe",
+              "protect": protects}
+    # P26-3:给了 --media 就顺手 ffprobe 实测,keep 末段终点保底以实测为唯一真相
+    if a.media and Path(a.media).is_file():
+        measured = probe_duration_ms(a.media)
+        if measured:
+            params["measuredMs"] = measured
+        else:
+            params["measuredProbeFailed"] = True
     try:
         cl = build_cutlist(wl, cuts, params)
     except ValueError as exc:
@@ -900,11 +1120,16 @@ def main() -> int:
     reviews = [c for c in cl["cuts"] if c["action"] == "review"]
     msg = (f"检出 {len(cl['cuts'])} 刀(remove {len(removes)} / review {len(reviews)}),"
            f"预计裁掉 {cl['removedMs'] / total:.1%}")
+    if cl.get("tail"):
+        t = cl["tail"]
+        msg += (f";keep 末段保底至 {t['keepEndMs']}ms"
+                f"(实测 {t['measuredMs']} / 记录 {t['recordedTotalMs']},尾余量 {t['reserveMs']}ms)")
     return emit(True, "CUT_OK", msg, {"cutlist": str(outdir / "cutlist.json"),
                                       "report": str(outdir / "cut_report.md"),
                                       "detectors": counts, "remove": len(removes),
                                       "review": len(reviews), "removedMs": cl["removedMs"],
-                                      "srcTotalMs": cl["srcTotalMs"], "keep": cl["keep"]})
+                                      "srcTotalMs": cl["srcTotalMs"], "keep": cl["keep"],
+                                      "tail": cl.get("tail")})
 
 
 if __name__ == "__main__":

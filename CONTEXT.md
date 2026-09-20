@@ -10,9 +10,14 @@
 - **分镜表**:含镜头号/画面描述/台词/时长的剧本表格。
 - **原声 / 配音声源**:口播视频自带的真人声音,或 TTS 合成的**音色卡**声音。二者互斥或混用时须在 brief 里声明。
 
+## 意图与风格
+
+- **意图编译(Intent Compile)**:把自然语言提示词编译成结构化 `brief + plan` 的确定性步骤。Agent 只做"读懂提示词"与"写文案"两处语义工作,其余查表编译;全量推断决策留痕,同输入必得同输出(ADR-0040)。
+- **风格注册表(Style Registry)**:`videoType × 平台预设 × 节奏档 × 字幕样式 × 卡片模板 × BGM 库 × 转场语法` 的组合声明;风格以数据条目注册,新风格 = 新增注册表条目(必要时加一册 video-types),不改引擎。
+
 ## 视频类型(videoType)
 
-- **videoType**:一级路由,决定管线分支。封闭枚举:`talking-head`(纯口播)/ `talking-head+animation`(口播+动画)/ `pure-animation`(纯动画)。预留扩展位:`screen-recording` / `interview` / `drama` / `film-commentary`(暂不实现)。分册见 `skills/cutflow/rules/video-types/`,取代原 `rules/genres/` 六册(ADR-0018)。
+- **videoType**:一级路由,决定管线分支。开放注册表(阶段四起持续增补):`talking-head`(纯口播)/ `talking-head+animation`(口播+动画)/ `pure-animation`(纯动画)/ `vlog`(生活记录)/ `混剪`(卡点/音乐驱动)。预留扩展位:`screen-recording` / `interview` / `drama` / `film-commentary`(暂不实现)。分册见 `skills/cutflow/rules/video-types/`,取代原 `rules/genres/` 六册(ADR-0018);新增类型 = 新增一册 + 一条风格注册表条目(`templates/styles/registry.json`),不改引擎。
 - **纯口播**:真人出镜 + 绿幕抠像 + 字幕;动画密度少或零;粗剪必做。
 - **口播+动画**:纯口播 + artboard 卡片;额外要求**流畅性**(缓动/时长)与**贴合性**(卡片时间窗落在所解说句子的时间窗内)。
 - **纯动画**:无真人画面,场景卡串联;声音来源二选一 —— 音色卡 TTS 或视频中人物原声。
@@ -37,6 +42,9 @@
 - **帧量化**:段边界时间吸附到帧网格,消除半帧散差;成片时间轴以帧为最小单位。
 - **尾帧扩展**:渲染段时多取与下一段转场等长的源尾帧,供拼接期交叉溶解重叠消费;重叠只落在扩展帧内,成片时间零漂移。
 - **交叉溶解提升(joinCrossfadeMs)**:亚帧转场意图(柔化衔接)自动提升为溶解;`0` 显式禁用。
+- **保护区(Protect Zone)**:被明确要求"必须保留发音"的词的有效发音区间;粗剪切点不得侵入,冲突即报错而不降级人审(ADR-0044 所学方法之一,自行实现)。
+- **时长账(Duration Ledger)**:wordline 的 `srcDurationMs`(源空间)/ `finalDurationMs`(成片空间)/ `removedMs` 三者必须自洽的记账关系;时长一律以媒体实测为准,不继承上游记录值(ADR-0042)。
+- **钳制迹象(Clamp Signature)**:末字 `endMs` 恰等于记录总时长(误差 <1 帧)——疑似时长字段被字尾钳制、媒体按错误长度喂给识别链路的诊断信号;只标疑似,不改数。
 
 ## 品牌
 
@@ -58,6 +66,7 @@
 ## 剪映
 
 - **剪映后端草稿**:5.9 明文 draft_content.json;6.0+ 已加密,永不写入。
+- **原生草稿(Native Draft)**:剪映可继续编辑的工程(非渲染成片);即「剪映后端草稿」的规范化称呼。
 - **花字感**:用本地风格字体 + 描边/底衬/动画模拟的"剪映花字"效果,不依赖剪映云端素材。
 - **趣味素材**:音效(SFX)、贴图(PNG)、花字的统称,来源约定见 ADR-0005。
 
@@ -78,3 +87,9 @@
 - **N 后端注册表**:IR 的消费者集合开放注册(`backendId`:`ffmpeg` / `jianying` / `cutforge` …),工程在 project.json 的 `backends` 字段声明启用了哪些后端;新增后端只登记,不改契约。
 - **文件级 Op**:target 不是 project.json 而是 notes.json / cutlist.json 等真相源的 Op;其撤销语义 = 对应文件逆写回 before,不得误写进工程文档(见 cutforge docs/ITERATION-PLAN-v2.0.md P0-1)。
 - **基线快照**:某 rev 落盘时保存的祖先态(diff 形式,存 `.cutforge/bases/`);三路合并用它作共同祖先——没有它,"本地修改"对合并器不可见,冲突检测退化为磁盘全胜。
+- **变更识别闭环(Edit Round-trip)**:编辑器改盘面 → CutFlow 标脏 → Agent 读操作日志摘要 → 决定重建范围的最小往返;只重建被改到的阶段,编辑高频轮询不阻塞管线。
+
+## 治理与纪律
+
+- **能力目录(Capability Catalog)**:机器可读的工具/命令/产物/门禁清单;Agent 只读它、不读源码,目录与实现机械对拍防漂移。
+- **临时脚本(Trap Script)**:为完成一次任务而现写、且可能被复用的脚本;按纪律必须升格为官方子命令并进能力目录,Agent 禁止现写剪辑逻辑(ADR-0041)。

@@ -7,9 +7,10 @@
 自适应:**素材里已有的答案不问**。必问清单(缺什么问什么):
 
 0. **videoType**(决定走哪册 `rules/video-types/` 分册,并决定管线分支):
-   `talking-head`(纯口播:真人出镜,素材须**已抠像并合成好背景** + 字幕)/ `talking-head+animation`(口播+部分动画)/ `pure-animation`(纯动画,无真人画面)?
+   `talking-head`(纯口播:真人出镜,素材须**已抠像并合成好背景** + 字幕)/ `talking-head+animation`(口播+部分动画)/ `pure-animation`(纯动画,无真人画面)/ `vlog`(生活记录:素材碎片多,BGM+自由节奏,见该册)/ `混剪`(卡点/音乐驱动:无旁白主线,BGM 是时间轴骨架,见该册)?
    —— 追问式:用户说不清时,给出两三个候选并各配一句示例描述;
    —— **预留扩展位**(暂不实现,勿选):`screen-recording` / `interview` / `drama` / `film-commentary`;
+   —— videoType 是**开放注册表**(阶段四起):新增类型 = 新增一册分册 + 一条 `templates/styles/registry.json` 条目,不改引擎。
 0a. **绿幕预处理确认**(talking-head 系必问):这段素材**是否已经抠好像、合成好背景**?
    v0.14 起 CutFlow **不做抠像/背景合成**。若用户答"还没有"或在绿幕现场 → 先让用户用剪映/Pr/AE 抠像+合成背景后交付处理完的成片,再开工。
    S0 摄取会自动抽帧检测幕布,命中即阻断(`GREEN_SCREEN_INPUT`);确属误判时让用户说明,记录 `绿幕检测:误判(<原因>)` 到 brief 或跑 `rs_ingest.py green-ok <工程> --reason "…"`。
@@ -48,6 +49,19 @@
 ## brief.md 契约(templates/brief.md)
 
 问卷答案 + 素材清单 + 决策记录,落 `00_brief/brief.md`。**此后一切决策只查 brief,不再问人。**
+
+## 提示词驱动(阶段四,rs_intent 编译)
+
+用户给一句提示词时,Agent 只做**语义解析**两件事:把提示词读成 `brief.json + plan.json`、
+写卡片/标题类文案;其余全部确定性编译:
+
+- `rs_intent.py compile --brief <b.json> --plan <p.json> --out <工程>`(`--prompt <file>` 锚定原文)
+  校验必填与枚举 → 补默认(**一切推断显式标 inferred**)→ 查风格注册表
+  (`templates/styles/registry.json`:风格 = videoType × 平台预设 × 画幅 × 节奏档 × 字幕样式
+  × 卡片模板 × BGM 库)→ 落本问卷的既有产物(`00_brief/brief.md`、`terms.txt`)与
+  `intent_decisions.json`;`--dry-run` 只打印「字段 → 推断值 → 来源」对照表,不落盘;
+- 编译是纯函数:同输入必得同一输出;无人值守全程走 `rs_run.py --auto`(决策留痕见
+  `rules/incremental.md` §4.7),L2 验收始终归用户。
 
 ## 双模式
 

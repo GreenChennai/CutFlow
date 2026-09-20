@@ -131,7 +131,9 @@ def ffmpeg_exe() -> str:
 def to_wav16k(src: Path, dst: Path) -> None:
     cmd = [ffmpeg_exe(), "-y", "-v", "error", "-i", str(src),
            "-vn", "-ac", "1", "-ar", "16000", "-acodec", "pcm_s16le", str(dst)]
-    p = subprocess.run(cmd, capture_output=True, text=True)
+    # P24-1:显式 UTF-8 + 限时(简体 Windows 上失败信息不乱码;卡住的 ffmpeg 不拖死 ASR)
+    p = subprocess.run(cmd, capture_output=True, text=True,
+                       encoding="utf-8", errors="replace", timeout=1800)
     if p.returncode != 0 or not dst.is_file():
         raise RuntimeError(f"ffmpeg 抽音频失败:{(p.stderr or '')[-300:]}")
 

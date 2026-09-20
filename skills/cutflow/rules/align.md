@@ -47,6 +47,21 @@
 | `conf` | 字级置信度(Paraformer 提供) | 低置信字在校对时优先展示给 Agent |
 | `gaps[].kind` | `silence` / `breath` / `pause` | 停顿是断句候选边界(见 rules/subtitles.md) |
 | `sentences[].span` | 句 = `chars` 的下标区间 `[起, 止)` | 句边界来自 ASR 标点模型 |
+| `srcDurationMs` | 源素材总时长 | **以 ffprobe 实测为准**(P26-1,`durationProvenance: ffprobe`);记录值只在探测不可用时兜底(`asr-chain`) |
+| `removedMs` | 粗剪裁掉量 | 与 `finalDurationMs` 构成**时长账恒等式**:`srcDurationMs − removedMs == finalDurationMs`(P27-2,任一环节写盘后校验) |
+
+### 2.1 时长以 ffprobe 实测为准(P26,副文档 07)
+
+20260920 NCLM1605 实测:wordline 的 `srcDurationMs` 继承自 ASR/对齐链路(旧公式 `max(末字 endMs, 转写段终点)`),比真实媒体**短 789ms**;粗剪把 keep 终点钉在错误总时长上 → 片尾「视」字戛然而止。因此:
+
+- **凡是「总时长 / 末段边界」,一律 ffprobe 实测媒体,不信任上游记录值**。`rs_align build` 对 `--media`(或 `--src` 指向的真实素材)探测并把 `durationProvenance` 写进 wordline;
+- **钳制检测(P26-2)**:末字 `endMs` 与记录总时长重合(误差 <1 帧)→ 判「疑似按错误长度喂给 ASR」,写 `endClampSuspect`(附 RMS 复核提示),**只标疑似不改数**;
+- 配套:粗剪 keep 末段终点保底 `max(末字 endMs + 尾余量, 实测时长)`(口播尾余量默认 650ms,`rs_cut --tail-reserve-ms`,建议 500–800);`rs_sync` 的成片总时长断言以 ffprobe 实测源媒体 − removedMs 为基准(P26-4)。
+
+### 2.2 已重映射工程的时长修正走 refresh-durations(P29)
+
+- 对 `space == "final"` 的 wordline 再跑 `remap` 会把当前 `startMs` 当作新的源时间,**二次重映射整体错位** → `rs_align remap` 直接拒绝(`ALREADY_FINAL_SPACE`);确要强行须显式 `--force-remap`;
+- 只改时长字段(如粗剪后实测总时长修正)用 `rs_align refresh-durations <wordline> --media <素材>`:ffprobe 实测后只写 `srcDurationMs / removedMs / finalDurationMs`,**字符时间一个不动**,并顺带跑钳制检测。
 
 ## 3. 三条入口路径(统一落到同一结构)
 
@@ -95,6 +110,15 @@ def map_src_to_final(t_src_ms: float, segments: list[dict]) -> float:
 - 落在被删除区间内的 `src` 时间,**吸附**到该删除段对应的 `final` 位置,不得插值穿透;
 - 映射结果必须单调不减;`rs_sync.py` 会抽样断言这一点。
 
+### 4.1 remap 本体丢弃幽灵字符(P28,副文档 07)
+
+`remap_wordline()` 对 **src 区间完全落在 remove 区间内**的字符(整句复录/口误被删)直接丢弃,并:
+
+- **重排 `chars[].i`**(下游契约:i 必须连续)、**重建 `sentences.span`**(整句被删 → 句一并丢弃;部分被删 → span 收缩、句文本重拼);
+- `removedMs` 从 cutlist 落盘,`pruned = {ghostChars, ghostSentences, chars}` 留痕可审计;
+- 已重映射的旧工程不必重新 build:官方入口 `rs_align.py prune-ghost <wordline.final.json> --cutlist <cutlist.applied.json>` 做同一清理(不做时间重映射),**替代临时脚本 `_drop_ghost_chars.py`**;
+- `rs_subtitle` 另有一道幽灵卡保险(P28-2):内容字有效时长 <100ms 的卡必须并卡或丢弃并留痕。
+
 ## 5. 已知坑(必须遵守)
 
 | 坑 | 后果 | 对策 |
@@ -109,6 +133,8 @@ def map_src_to_final(t_src_ms: float, segments: list[dict]) -> float:
 | **无字级时间戳时"卡内位置"是估算的** | 被当成字级用 → 逐字染色/终点校验失去意义 | v0.7.0(#1)起 `build_wordline` 置 `charTimingEstimated=True`、逐字打 `estimated` 标,`degradeReasons` 明写"卡内位置为估算(不可当字级用)";卡拉OK 显式拒绝;正解是 `rs_dub align` 做强制对齐(#10) |
 | **估算时间仍会造成卡内漂移** | 只有句级时间准 → 句内快慢靠运气 | 这是**已知且有意的折中**:句级整句卡会伤长句可读性,所以在 `max_chars` 内出卡并**显式标注**;真正的字级必须走 `rs_dub align`(译文:L1 目测清单会把"卡内位置为估算"列为待确认项) |
 | **wordline 时间病态**(v0.12,B7) | 外部/手写时间轴:标点零宽(endMs≤startMs)撞 rs_verify 单调门禁;相邻字互相重叠 | `rs_align.py smooth <wordline> --out …`:标点零宽 `end=start+1`(严格单调且不占显示时长)、起点单调化、重叠钳制(前字 end 收到后字 start);**平滑只在此入口做,build 路径的 `max(b, a+20)` 保底不动** |
+| **`srcDurationMs` 继承自 ASR 链路**(P26 根因) | 记录值比真实媒体短(20260920:短 789ms)→ 粗剪 keep 钉在错误总时长 → 片尾戛然而止 | build 一律 ffprobe 实测(`durationProvenance` 留痕)+ 钳制检测(`endClampSuspect` 只标疑似不改数)+ rs_cut keep 末段保底 |
+| **对已重映射 wordline 再跑 remap**(P29) | 当前 startMs 被当作新的源时间,二次重映射整体错位 | `space==final` 直接拒绝(`ALREADY_FINAL_SPACE`);只改时长走 `refresh-durations --media` |
 
 ## 6. 门禁与验收
 

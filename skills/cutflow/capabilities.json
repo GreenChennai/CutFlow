@@ -1,0 +1,968 @@
+{
+ "version": 1,
+ "_doc": "能力目录(T2-1,单一真相源):python skills/cutflow/scripts/rs_caps.py generate 从 argparse + rs_run 阶段注册表 + SKILL.md 管线表自动生成;禁止手改,漂移即测试红。查能力先读这里(短、机器可读),细节跑 <script> --help;probe = 最小可用 argv(T3 对拍)。命令粒度 = argparse 可见的子命令(choices/subparsers);旗标式脚本(如 rs_artboard 的 gen-cards/export-fallback)不拆条,能力看 args 与 SKILL.md 命令速查。",
+ "tools": [
+  {
+   "script": "rs_align.py",
+   "purpose": "S1 字级对齐:产出 wordline.json(全片时间的唯一真相源,ADR-0011)。",
+   "stage": [
+    "S1"
+   ],
+   "outputs": [
+    "05_ir/wordline.json"
+   ],
+   "gate": "覆盖率 ≥99%",
+   "args": [
+    "--from-transcript",
+    "--from-tts",
+    "--media",
+    "--backend=auto|pkg|onnx|server",
+    "--hotwords",
+    "--terms-file",
+    "--calib-window=250",
+    "--calib-min-shift=20",
+    "--max-end-sil=0",
+    "--cutlist",
+    "--force-remap",
+    "--removed-ms",
+    "--src",
+    "--text",
+    "--out",
+    "--fps=30",
+    "--dry-run"
+   ],
+   "commands": [
+    {
+     "name": "rs_align.py build",
+     "sub": "build",
+     "probe": [
+      "build"
+     ]
+    },
+    {
+     "name": "rs_align.py remap",
+     "sub": "remap",
+     "probe": [
+      "remap"
+     ]
+    },
+    {
+     "name": "rs_align.py retext",
+     "sub": "retext",
+     "probe": [
+      "retext"
+     ]
+    },
+    {
+     "name": "rs_align.py smooth",
+     "sub": "smooth",
+     "probe": [
+      "smooth"
+     ]
+    },
+    {
+     "name": "rs_align.py calibrate",
+     "sub": "calibrate",
+     "probe": [
+      "calibrate"
+     ]
+    },
+    {
+     "name": "rs_align.py prune-ghost",
+     "sub": "prune-ghost",
+     "probe": [
+      "prune-ghost"
+     ]
+    },
+    {
+     "name": "rs_align.py refresh-durations",
+     "sub": "refresh-durations",
+     "probe": [
+      "refresh-durations"
+     ]
+    }
+   ]
+  },
+  {
+   "script": "rs_artboard.py",
+   "purpose": "artboard 闭环:改完图 → 一键导出 → 回填 IR → 出片(rules/artboard.md)。",
+   "stage": [],
+   "outputs": [],
+   "gate": "卡片过安全区",
+   "args": [
+    "--from",
+    "--root=.",
+    "--scan",
+    "--out",
+    "--ratio=9x16|3x4|16x9",
+    "--export",
+    "--apply",
+    "--only",
+    "--strict",
+    "--force",
+    "--scale=1|2|4",
+    "--transparent",
+    "--probe"
+   ],
+   "commands": [
+    {
+     "name": "rs_artboard.py",
+     "sub": null,
+     "probe": []
+    }
+   ]
+  },
+  {
+   "script": "rs_asr.py",
+   "purpose": "语音转写(v0.6.0 起为兼容薄壳):委托自带 ASR 运行器 tools/fun_asr.py。",
+   "stage": [],
+   "outputs": [],
+   "gate": "",
+   "args": [
+    "<media>(必需)",
+    "--out(必需)",
+    "--backend=auto|pkg|onnx|server"
+   ],
+   "commands": [
+    {
+     "name": "rs_asr.py",
+     "sub": null,
+     "probe": [
+      "P",
+      "--out",
+      "P"
+     ]
+    }
+   ]
+  },
+  {
+   "script": "rs_bench.py",
+   "purpose": "自评抽帧:渲染产物 → 关键点网格图(首2s/尾2s/剪点±1.5s/随机3点),供 Agent 目测。",
+   "stage": [],
+   "outputs": [],
+   "gate": "",
+   "args": [
+    "<video>(必需)",
+    "--ir",
+    "--out(必需)",
+    "--cols=4"
+   ],
+   "commands": [
+    {
+     "name": "rs_bench.py",
+     "sub": null,
+     "probe": [
+      "P",
+      "--out",
+      "P"
+     ]
+    }
+   ]
+  },
+  {
+   "script": "rs_brand.py",
+   "purpose": "S5 品牌层:Logo 变体矩阵(rules/branding.md,ADR-0014/ADR-0025)。",
+   "stage": [
+    "S5"
+   ],
+   "outputs": [
+    "06_output/branded/成片_*.mp4"
+   ],
+   "gate": "不压字幕带",
+   "args": [
+    "--expand",
+    "--analyze",
+    "--logos",
+    "--ratios=9x16",
+    "--durations=full",
+    "--variants",
+    "--out",
+    "--profile=final",
+    "--plan",
+    "--logo-src=03_assets/branding/logos/{id}.png"
+   ],
+   "commands": [
+    {
+     "name": "rs_brand.py",
+     "sub": null,
+     "probe": []
+    }
+   ]
+  },
+  {
+   "script": "rs_caps.py",
+   "purpose": "能力目录生成器(T2-1,副文档 05 §3 T2:Token 与上下文治理)。",
+   "stage": [],
+   "outputs": [],
+   "gate": "",
+   "args": [
+    "--out=E:\\平日资料\\GitHub\\CutFlow\\skills\\cutflow\\capabilities.json"
+   ],
+   "commands": [
+    {
+     "name": "rs_caps.py generate",
+     "sub": "generate",
+     "probe": [
+      "generate"
+     ]
+    },
+    {
+     "name": "rs_caps.py check",
+     "sub": "check",
+     "probe": [
+      "check"
+     ]
+    }
+   ]
+  },
+  {
+   "script": "rs_cleanup.py",
+   "purpose": "工程清理与归档(ADR-0007):完工必跑。默认 dry-run,--apply 才真删。",
+   "stage": [],
+   "outputs": [],
+   "gate": "清单齐全",
+   "args": [
+    "<project>(必需)",
+    "--apply"
+   ],
+   "commands": [
+    {
+     "name": "rs_cleanup.py",
+     "sub": null,
+     "probe": [
+      "P"
+     ]
+    }
+   ]
+  },
+  {
+   "script": "rs_cut.py",
+   "purpose": "S2 粗剪:三路检测器 → CutList(可读可改可审查的决策表,ADR-0012)。",
+   "stage": [
+    "S2"
+   ],
+   "outputs": [
+    "04_cut/cutlist.json"
+   ],
+   "gate": "remove 刀 guard 全过",
+   "args": [
+    "--detect=all",
+    "--out=04_cut",
+    "--review-pack",
+    "--apply",
+    "--wordline",
+    "--force",
+    "--tail-reserve-ms=650",
+    "--protect",
+    "--render",
+    "--off-topic",
+    "--min-silence-ms=600",
+    "--media",
+    "--retake-ratio=0.8",
+    "--from-text",
+    "--from-text-file"
+   ],
+   "commands": [
+    {
+     "name": "rs_cut.py",
+     "sub": null,
+     "probe": []
+    }
+   ]
+  },
+  {
+   "script": "rs_diagnose.py",
+   "purpose": "成片内容诊断(ADR-0032):从成片出发的独立证据链,对照工程产物找三类缺陷。",
+   "stage": [],
+   "outputs": [],
+   "gate": "",
+   "args": [
+    "<video>(必需)",
+    "--project",
+    "--ass",
+    "--cutlist",
+    "--wordline",
+    "--budget=900.0",
+    "--no-d2",
+    "--out=06_output",
+    "--json"
+   ],
+   "commands": [
+    {
+     "name": "rs_diagnose.py",
+     "sub": null,
+     "probe": [
+      "P"
+     ]
+    }
+   ]
+  },
+  {
+   "script": "rs_doctor.py",
+   "purpose": "CutFlow 环境自检:检查所有依赖,输出 JSON 或人读报告。",
+   "stage": [],
+   "outputs": [],
+   "gate": "素材可解码;**未处理幕布检测(ADR-0031)**",
+   "args": [
+    "--report"
+   ],
+   "commands": [
+    {
+     "name": "rs_doctor.py",
+     "sub": null,
+     "probe": []
+    }
+   ]
+  },
+  {
+   "script": "rs_dub.py",
+   "purpose": "TTS 配音强制对齐(OPTIMIZATION-v7 #10)。",
+   "stage": [],
+   "outputs": [],
+   "gate": "",
+   "args": [
+    "--wordline(必需)",
+    "--audio",
+    "--from-asr",
+    "--backend=auto|pkg|onnx|server",
+    "--out=06_output",
+    "--write"
+   ],
+   "commands": [
+    {
+     "name": "rs_dub.py align",
+     "sub": "align",
+     "probe": [
+      "align",
+      "--wordline",
+      "P"
+     ]
+    }
+   ]
+  },
+  {
+   "script": "rs_editor.py",
+   "purpose": "rs_editor.py — 工程 ↔ CutForge 编辑器桥(计划书 5.5)。",
+   "stage": [],
+   "outputs": [],
+   "gate": "",
+   "args": [
+    "--json"
+   ],
+   "commands": [
+    {
+     "name": "rs_editor.py view",
+     "sub": "view",
+     "probe": [
+      "view"
+     ]
+    },
+    {
+     "name": "rs_editor.py timeline",
+     "sub": "timeline",
+     "probe": [
+      "timeline"
+     ]
+    },
+    {
+     "name": "rs_editor.py check",
+     "sub": "check",
+     "probe": [
+      "check"
+     ]
+    },
+    {
+     "name": "rs_editor.py diff",
+     "sub": "diff",
+     "probe": [
+      "diff"
+     ]
+    },
+    {
+     "name": "rs_editor.py --probe",
+     "sub": "--probe",
+     "probe": [
+      "--probe"
+     ]
+    }
+   ]
+  },
+  {
+   "script": "rs_frames.py",
+   "purpose": "视频抽帧:均匀采样 + 网格拼图,供 Agent 目测(内容理解/构图锚点/自评)。",
+   "stage": [],
+   "outputs": [],
+   "gate": "",
+   "args": [
+    "<video>(必需)",
+    "--out(必需)",
+    "--every=10.0",
+    "--tile=3x3",
+    "--scale=270:480"
+   ],
+   "commands": [
+    {
+     "name": "rs_frames.py",
+     "sub": null,
+     "probe": [
+      "P",
+      "--out",
+      "P"
+     ]
+    }
+   ]
+  },
+  {
+   "script": "rs_gate.py",
+   "purpose": "rs_gate.py — CutForge 统一门禁入口桥(计划书 5.5;等价 cutforge/tools/gates/gate.py)。",
+   "stage": [],
+   "outputs": [],
+   "gate": "",
+   "args": [
+    "--check",
+    "--json"
+   ],
+   "commands": [
+    {
+     "name": "rs_gate.py",
+     "sub": null,
+     "probe": []
+    }
+   ]
+  },
+  {
+   "script": "rs_greenscreen.py",
+   "purpose": "绿幕/蓝幕检测(ADR-0031)。",
+   "stage": [],
+   "outputs": [],
+   "gate": "",
+   "args": [
+    "<target>(必需)",
+    "--reason",
+    "--samples=6",
+    "--json"
+   ],
+   "commands": [
+    {
+     "name": "rs_greenscreen.py check",
+     "sub": "check",
+     "probe": [
+      "check",
+      "P"
+     ]
+    },
+    {
+     "name": "rs_greenscreen.py allow",
+     "sub": "allow",
+     "probe": [
+      "allow",
+      "P"
+     ]
+    }
+   ]
+  },
+  {
+   "script": "rs_ingest.py",
+   "purpose": "S0 素材摄取 + 交付清单(OPTIMIZATION-v7 #9)+ 绿幕门禁(ADR-0031)+ 决策说明书(N4)。",
+   "stage": [
+    "S0"
+   ],
+   "outputs": [
+    "01_materials/manifest.json"
+   ],
+   "gate": "素材可解码;**未处理幕布检测(ADR-0031)**",
+   "args": [
+    "<root>(必需)",
+    "--slug",
+    "--ratio=9x16|3x4|16x9",
+    "--reason"
+   ],
+   "commands": [
+    {
+     "name": "rs_ingest.py scan",
+     "sub": "scan",
+     "probe": [
+      "scan",
+      "P"
+     ]
+    },
+    {
+     "name": "rs_ingest.py deliverables",
+     "sub": "deliverables",
+     "probe": [
+      "deliverables",
+      "P"
+     ]
+    },
+    {
+     "name": "rs_ingest.py green-ok",
+     "sub": "green-ok",
+     "probe": [
+      "green-ok",
+      "P"
+     ]
+    },
+    {
+     "name": "rs_ingest.py decisions",
+     "sub": "decisions",
+     "probe": [
+      "decisions",
+      "P"
+     ]
+    }
+   ]
+  },
+  {
+   "script": "rs_intent.py",
+   "purpose": "N1 意图编译器(副文档 04 · 阶段四):提示词 → 结构化参数 → 现有 intake 产物。",
+   "stage": [],
+   "outputs": [],
+   "gate": "",
+   "args": [
+    "--brief(必需)",
+    "--plan(必需)",
+    "--prompt",
+    "--out=.",
+    "--dry-run"
+   ],
+   "commands": [
+    {
+     "name": "rs_intent.py compile",
+     "sub": "compile",
+     "probe": [
+      "compile",
+      "--brief",
+      "P",
+      "--plan",
+      "P"
+     ]
+    }
+   ]
+  },
+  {
+   "script": "rs_ir.py",
+   "purpose": "IR 校验与生成。",
+   "stage": [
+    "S3"
+   ],
+   "outputs": [
+    "05_ir/project.json"
+   ],
+   "gate": "IR validate",
+   "args": [
+    "--from-cutlist",
+    "--from-cards",
+    "--anchors",
+    "--wordline",
+    "--voice",
+    "--bgm",
+    "--gain-db=-20",
+    "--no-ducking",
+    "--root=.",
+    "--slug=project",
+    "--ratio=9x16|3x4|16x9",
+    "--xfade=8",
+    "--punch-in-auto",
+    "--no-audio",
+    "--force",
+    "--manifest",
+    "--plan",
+    "--track-name=overlay",
+    "--replace",
+    "--out"
+   ],
+   "commands": [
+    {
+     "name": "rs_ir.py validate",
+     "sub": "validate",
+     "probe": [
+      "validate"
+     ]
+    },
+    {
+     "name": "rs_ir.py build",
+     "sub": "build",
+     "probe": [
+      "build"
+     ]
+    },
+    {
+     "name": "rs_ir.py add-overlay",
+     "sub": "add-overlay",
+     "probe": [
+      "add-overlay"
+     ]
+    }
+   ]
+  },
+  {
+   "script": "rs_jy_draft.py",
+   "purpose": "IR → 剪映 5.9 明文草稿(vendored pyJianYingDraft,MIT)。",
+   "stage": [],
+   "outputs": [],
+   "gate": "",
+   "args": [
+    "<project>(必需)",
+    "--name",
+    "--subtitles",
+    "--dry-run",
+    "--open"
+   ],
+   "commands": [
+    {
+     "name": "rs_jy_draft.py",
+     "sub": null,
+     "probe": [
+      "P"
+     ]
+    }
+   ]
+  },
+  {
+   "script": "rs_meta.py",
+   "purpose": "S9 文案生成:标题 / 简介 / Tag(rules/meta.md)。",
+   "stage": [
+    "S10"
+   ],
+   "outputs": [
+    "06_output/metadata.json"
+   ],
+   "gate": "平台字数合规",
+   "args": [
+    "--wordline(必需)",
+    "--brief",
+    "--platform=douyin,bili",
+    "--title",
+    "--desc",
+    "--tags",
+    "--markers",
+    "--out(必需)"
+   ],
+   "commands": [
+    {
+     "name": "rs_meta.py",
+     "sub": null,
+     "probe": [
+      "--wordline",
+      "P",
+      "--out",
+      "P"
+     ]
+    }
+   ]
+  },
+  {
+   "script": "rs_notes.py",
+   "purpose": "rs_notes.py — notes.json(时间轴标注)读写/孤儿统计桥(计划书 5.5)。",
+   "stage": [],
+   "outputs": [],
+   "gate": "",
+   "args": [
+    "--state=open|orphan|rejected|resolved",
+    "--author=user|agent",
+    "--json"
+   ],
+   "commands": [
+    {
+     "name": "rs_notes.py list",
+     "sub": "list",
+     "probe": [
+      "list"
+     ]
+    },
+    {
+     "name": "rs_notes.py stats",
+     "sub": "stats",
+     "probe": [
+      "stats"
+     ]
+    },
+    {
+     "name": "rs_notes.py --probe",
+     "sub": "--probe",
+     "probe": [
+      "--probe"
+     ]
+    }
+   ]
+  },
+  {
+   "script": "rs_oplog.py",
+   "purpose": "rs_oplog.py — CutForge OpLog 读取/审计桥(计划书 5.5)。",
+   "stage": [],
+   "outputs": [],
+   "gate": "",
+   "args": [
+    "--rev",
+    "--actor=user|agent|script",
+    "--limit=20",
+    "--json"
+   ],
+   "commands": [
+    {
+     "name": "rs_oplog.py tail",
+     "sub": "tail",
+     "probe": [
+      "tail"
+     ]
+    },
+    {
+     "name": "rs_oplog.py report",
+     "sub": "report",
+     "probe": [
+      "report"
+     ]
+    },
+    {
+     "name": "rs_oplog.py --probe",
+     "sub": "--probe",
+     "probe": [
+      "--probe"
+     ]
+    }
+   ]
+  },
+  {
+   "script": "rs_render.py",
+   "purpose": "FFmpeg 渲染器:IR → 七步管线 → 成片。",
+   "stage": [
+    "S3",
+    "S8"
+   ],
+   "outputs": [
+    "05_ir/project.json",
+    "06_output/final/final_*.mp4"
+   ],
+   "gate": "IR validate;用**现有 ass**,不重新生成字幕",
+   "args": [
+    "<project>(必需)",
+    "--ratio=9x16|3x4|16x9",
+    "--profile=final|preview|draft",
+    "--ass",
+    "--out",
+    "--explain",
+    "--clear-cache",
+    "--no-cache"
+   ],
+   "commands": [
+    {
+     "name": "rs_render.py",
+     "sub": null,
+     "probe": [
+      "P"
+     ]
+    }
+   ]
+  },
+  {
+   "script": "rs_run.py",
+   "purpose": "阶段缓存与增量编排(ADR-0013 / rules/incremental.md)。",
+   "stage": [],
+   "outputs": [],
+   "gate": "",
+   "args": [
+    "--root=.",
+    "--status",
+    "--from",
+    "--only",
+    "--dirty",
+    "--explain",
+    "--mark",
+    "--plan",
+    "--force",
+    "--init",
+    "--rollback",
+    "--at",
+    "--verify",
+    "--verify-full",
+    "--auto"
+   ],
+   "commands": [
+    {
+     "name": "rs_run.py",
+     "sub": null,
+     "probe": []
+    }
+   ]
+  },
+  {
+   "script": "rs_sense.py",
+   "purpose": "图片感知:OCR(文字)+ VQA(语义)合并输出。用法:python rs_sense.py <图片> --out <目录>\"\"\"",
+   "stage": [],
+   "outputs": [],
+   "gate": "",
+   "args": [
+    "<image>(必需)",
+    "--out(必需)",
+    "--prompt=用中文详细描述这张图片的内容:主体、文字、风格、配色。",
+    "--force"
+   ],
+   "commands": [
+    {
+     "name": "rs_sense.py",
+     "sub": null,
+     "probe": [
+      "P",
+      "--out",
+      "P"
+     ]
+    }
+   ]
+  },
+  {
+   "script": "rs_sfx.py",
+   "purpose": "S6 音效自动落点:把「手动挂音效」变成「Agent 出草案 + 人审」(rules/sfx.md)。",
+   "stage": [
+    "S6"
+   ],
+   "outputs": [
+    "05_ir/sfx_draft.json"
+   ],
+   "gate": "≤2 个 / 15s",
+   "args": [
+    "<ir>(必需)",
+    "--auto",
+    "--apply",
+    "--write",
+    "--wordline",
+    "--out=05_ir/sfx_draft.json"
+   ],
+   "commands": [
+    {
+     "name": "rs_sfx.py",
+     "sub": null,
+     "probe": [
+      "P"
+     ]
+    }
+   ]
+  },
+  {
+   "script": "rs_subtitle.py",
+   "purpose": "字幕:时间轴来源(Wordline / TTS manifest / transcript)→ SRT + ASS(DP 卡切分 + 风格模板)。",
+   "stage": [
+    "S7"
+   ],
+   "outputs": [
+    "06_output/subtitles.ass"
+   ],
+   "gate": "回归集全绿、CPS ≤9",
+   "args": [
+    "--from-wordline",
+    "--from-tts",
+    "--from-transcript",
+    "--style",
+    "--ratio=9x16|3x4|16x9",
+    "--canvas",
+    "--platform",
+    "--max-chars",
+    "--out(必需)",
+    "--terms",
+    "--top=3",
+    "--segment=dp|length",
+    "--no-optimize",
+    "--karaoke",
+    "--allow-degraded",
+    "--override",
+    "--fps=30.0",
+    "--no-snap"
+   ],
+   "commands": [
+    {
+     "name": "rs_subtitle.py",
+     "sub": null,
+     "probe": [
+      "--out",
+      "P"
+     ]
+    }
+   ]
+  },
+  {
+   "script": "rs_sync.py",
+   "purpose": "S8 三对齐自检:字幕 ↔ Wordline ↔ 成片(rules/align.md §6、rules/subtitles.md §8)。",
+   "stage": [
+    "S9"
+   ],
+   "outputs": [
+    "06_output/sync_report.md"
+   ],
+   "gate": "偏移中位数 ≤40ms;**成片音频内容闸**;**QC 体检**(黑帧/冻结/VFR/响度,v0.11)",
+   "args": [
+    "--video",
+    "--wordline(必需)",
+    "--ass(必需)",
+    "--out=06_output",
+    "--ir",
+    "--strict-cards",
+    "--legacy-end",
+    "--frame-ms=34.0",
+    "--audio-content",
+    "--audio-sim-min=0.9",
+    "--no-audio-cache",
+    "--qc"
+   ],
+   "commands": [
+    {
+     "name": "rs_sync.py",
+     "sub": null,
+     "probe": [
+      "--wordline",
+      "P",
+      "--ass",
+      "P"
+     ]
+    }
+   ]
+  },
+  {
+   "script": "rs_tts.py",
+   "purpose": "TTS:音色卡驱动,逐句合成+断点续传,产出 wav 序列与句级时间轴。",
+   "stage": [],
+   "outputs": [],
+   "gate": "",
+   "args": [
+    "--script(必需)",
+    "--out(必需)",
+    "--voice",
+    "--speed=1.0"
+   ],
+   "commands": [
+    {
+     "name": "rs_tts.py",
+     "sub": null,
+     "probe": [
+      "--script",
+      "P",
+      "--out",
+      "P"
+     ]
+    }
+   ]
+  },
+  {
+   "script": "rs_verify.py",
+   "purpose": "分级自检(ADR-0016 / rules/verify.md)。",
+   "stage": [],
+   "outputs": [],
+   "gate": "偏移中位数 ≤40ms;**成片音频内容闸**;**QC 体检**(黑帧/冻结/VFR/响度,v0.11)",
+   "args": [
+    "--level=L0|L1",
+    "--content",
+    "--out=06_output",
+    "--status",
+    "--mark-first",
+    "--result=pass|fail",
+    "--content-budget=900.0",
+    "--json"
+   ],
+   "commands": [
+    {
+     "name": "rs_verify.py",
+     "sub": null,
+     "probe": []
+    }
+   ]
+  }
+ ]
+}

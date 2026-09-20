@@ -32,7 +32,8 @@ CUT_COST = -1.0             # 每切一刀的固定代价:防 DP 为了拿语义
                             # 切成一片 4 字卡(过度切分同样是「断句拉跨」)
 TAIL_FUNC = "的了着地吧呢啊吗嘛"
 CN_DIGITS = "零一二两三四五六七八九十百千万"
-CN_UNITS = "个岁次天年月日时秒分元块毛角米厘斤吨度倍页条第名位件台只张片章节课"
+# 「号」(P30-4 文件引文:〔2003〕158号 / N号文件 的「数字+号」同属数量结构,禁切)
+CN_UNITS = "个岁次天年月日时秒分元块毛角米厘斤吨度倍页条第名位件台只张片章节课号"
 CURRENCY = "¥$€£"
 FORBID_AFTER = "的地得了着之"
 ELLIPSIS = "…"
@@ -46,6 +47,19 @@ DEFAULT_IDIOMS = (
     "一心一意", "三心二意", "四面八方", "五湖四海", "七上八下", "十全十美",
     "画蛇添足", "守株待兔", "刻舟求剑", "塞翁失马", "青出于蓝", "水到渠成",
 )
+
+# P30-4 保护词表(副文档 07:20260920 NCLM1605 工程实测教训)。
+# 这些搭配 jieba/兜底词表经常拆开(周转|归还、资金|往来、费用|科目),
+# 拆开即「动宾被斩断/专名被切碎」——与 terms 同等强度,**始终**并入词跨度
+# (word_spans 的 jieba 分支也不例外),词内位置因此在 DP 第一阶段全禁切。
+PROTECTED_WORDS = (
+    "周转归还", "资金往来", "财务费用科目", "财务费用", "利润表", "高度重视",
+)
+
+# 文件引文括号(P30-4):〔2003〕158号 / 《…》——半括号挂卡首(「〕158号文件」)
+# 是 20260920 实测事故形态;括号内侧一律禁切。
+CITE_OPEN = "〔[《〈「『【([“\"‘'"
+CITE_CLOSE = "〕]》〉」』】)]”\"’'"
 
 _SPACE = " \u3000"
 # 词内强惩罚:两阶段 DP 降级后仍切在词内的代价(必须压过一切语义加分)
@@ -109,6 +123,16 @@ REGRESSION = (
     # B6(v0.12):破折/短语收尾的 3 字孤卡必须并入前卡(安信德:『说谁好』孤卡)
     {"text": "这个方案真的非常不错所以我们最终决定采用它了说谁好", "terms": (),
      "must_not_split": ("说谁好",)},
+    # P30-5(副文档 07):20260920 NCLM1605 工程四案例固化,保证不再复现
+    # 案例 #1/#2:「中」被甩到下一卡、「科目」被拆走 —— 长度驱动的边界落点
+    {"text": "小企业会计准则的利润表中只有一个财务费用科目", "terms": ("利润表中",),
+     "must_not_split": ("利润表中", "财务费用科目")},
+    # 案例 #3:动宾「周转归还」被拆开、文件引文「〔2003|〕158」半括号挂卡首
+    {"text": "借款时发生纳税年度内周转归还依据财税〔2003〕158号文件的规定", "terms": (),
+     "must_not_split": ("周转归还", "〔2003〕", "158号")},
+    # 案例 #4:动宾/名词搭配「资金往来」被拆走
+    {"text": "规范股东与公司之间的资金往来务必高度重视", "terms": (),
+     "must_not_split": ("资金往来", "高度重视")},
 )
 
 
@@ -135,6 +159,9 @@ def forbidden_positions(text: str, terms=(), idioms=DEFAULT_IDIOMS) -> set[int]:
             forb.add(i)                      # 标点前不切(标点挂上一卡尾,防「?关于…」式领头卡)
         if b in _SPACE:
             forb.add(i)                      # 空格前不切:空格挂上一卡尾(校对稿的天然词组分隔)
+        # P30-4 文件引文:括号内侧禁切(「〔2003 | 〕158号」半括号挂卡首是实测事故形态)
+        if b in CITE_CLOSE or a in CITE_OPEN:
+            forb.add(i)
     for t in list(terms) + list(idioms):
         if not t:
             continue
@@ -245,6 +272,8 @@ def word_spans(text: str, terms=(), idioms=DEFAULT_IDIOMS) -> list[tuple[int, in
     """词跨度列表 [(start, end));jieba 优先,降级内置高频词表(ADR-0020)。
 
     词不得横跨空格;terms/idioms 总是显式并入(专名/行业词即便 jieba 在场也可能被切碎)。
+    P30-4:PROTECTED_WORDS(动宾搭配/专名,如「周转归还」「资金往来」)同样**始终**并入
+    —— jieba 对这类搭配常拆成两个词,不强制并跨度就会重演 20260920 的甩字事故。
     """
     if not text:
         return []
@@ -260,7 +289,7 @@ def word_spans(text: str, terms=(), idioms=DEFAULT_IDIOMS) -> list[tuple[int, in
     if jb is None:
         lexicon = COMMON_WORDS | {t for t in terms if t} | set(idioms)
         spans.update(_lexicon_spans(text, lexicon))
-    for t in list(terms) + list(idioms):
+    for t in list(terms) + list(idioms) + list(PROTECTED_WORDS):
         if not t:
             continue
         start = 0
@@ -370,6 +399,72 @@ def _dp(text: str, max_chars: int, min_chars: int, forb: set[int],
 
 
 # ---------------------------------------------------------------- 对外接口
+
+def reabsorb_cuts(text: str, cuts: list[int], max_chars: int, *,
+                  forb: set[int] | None = None, preferred: set[int] | None = None,
+                  terms=(), idioms=DEFAULT_IDIOMS) -> tuple[list[int], int]:
+    """P30-1 末卡回吸(副文档 07):把被字数墙逼出的边界调整到语义完整处。
+
+    治「…利润表 | 中 只有一个…」式甩字(20260920 NCLM1605 实测)。只学
+    jianying-headless「把边界调整到低能量处」的方法,规则自定,两类触发:
+
+      A. 切点把词跨度拦腰截断(仅词内降级路径可达)→ 整词回吸进上一卡
+         (边界移到词尾);词尾放不下 → 整词推给下一卡(边界移到词首)。
+      B. 切点不是候选边界(无标点/空格/停顿/连词信号)且下一卡首字是**单字词**
+         (如「利润表|中」的「中」)且上一卡已顶近字数上限 → 回吸该字。
+
+    硬边界:新边界必须 ≤max_chars、不在禁切表、不在任何词跨度内部、
+    下一卡剩余 ≥MIN_CHARS;且回吸**只吞整词**,永不制造新的词内切点。
+    返回 (新切点表, 回吸次数)。无变化时原表返回。
+    """
+    if not cuts:
+        return cuts, 0
+    forb = forb if forb is not None else forbidden_positions(text, terms, idioms)
+    preferred = preferred if preferred is not None else candidate_positions(text)
+    spans = word_spans(text, terms=terms, idioms=idioms)
+
+    def _in_word(p: int) -> bool:
+        return any(a < p < b for a, b in spans)
+
+    def _is_single_char_word(p: int) -> bool:
+        """位置 p 上的字是**单字词**:没有任何 ≥2 字词跨度覆盖它
+        (word_spans 只收 ≥2 字跨度,单字词靠覆盖性判定)。"""
+        return not any(a <= p < b for a, b in spans)
+
+    n = len(text)
+    out: list[int] = []
+    moved = 0
+    q = 0                       # 上一边界(当前卡的起点)
+    for k, p in enumerate(cuts):
+        r = cuts[k + 1] if k + 1 < len(cuts) else n
+        newp = p
+        if _in_word(p):
+            # 触发 A:切在词内 → 整词回吸进上一卡;放不下则整词推给下一卡
+            span = next((a, b) for a, b in spans if a < p < b)
+            a, b = span
+            if b - q <= max_chars and b not in forb and not _in_word(b) and r - b >= MIN_CHARS:
+                newp = b
+            elif q <= a and a > 0 and a not in forb and not _in_word(a) and r - a <= max_chars:
+                newp = a
+        else:
+            # 触发 B:非候选边界 + 下一卡首字是单字词(如「利润表|中」的「中」)
+            # + 上一卡顶近字数墙 → 回吸一字(不碰连词领起字)
+            if (_is_single_char_word(p) and p not in preferred
+                    and p + 1 - q <= max_chars and (p + 1) not in forb
+                    and not _in_word(p + 1) and r - (p + 1) >= MIN_CHARS
+                    and text[p] not in NO_TAIL and text[p] not in CONJ_HEAD):
+                newp = p + 1
+        if newp != p:
+            moved += 1
+        out.append(newp)
+        q = newp
+    # 防御:单调去重(回吸后两边界重合 → 后者吞并)
+    dedup: list[int] = []
+    for p in out:
+        if not dedup or p > dedup[-1]:
+            dedup.append(p)
+    return dedup, moved
+
 
 def cards_from_cuts(text: str, cuts: list[int]) -> list[dict]:
     spans, prev = [], 0
@@ -539,6 +634,10 @@ def segment(text: str, max_chars: int = 12, *, min_chars: int = MIN_CHARS,
 
     plans = []
     for cuts in raw_plans:
+        # P30-1 末卡回吸:DP 出解后把「字数墙甩字」边界调整到语义完整处(先于成卡,
+        # 孤卡合并/时间锚定都在回吸后的边界上做)。
+        cuts, _absorbed = reabsorb_cuts(text, cuts, max_chars, forb=forb,
+                                        preferred=preferred, terms=terms, idioms=idioms)
         cards = cards_from_cuts(text, cuts)
         cards, orphan_note = _merge_orphan_tail(cards, max_chars)
         cards = _finalize(cards, index_map, char_times, max_chars, cps_max, dur_range)

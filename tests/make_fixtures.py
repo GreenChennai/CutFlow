@@ -46,7 +46,8 @@ def sapi_tts(tmp: Path) -> tuple[Path, list[dict]]:
         assert w.is_file(), f"TTS 失败:{r.stderr[-200:]}"
         # 时长
         p = subprocess.run([FF, "-v", "error", "-i", str(w), "-f", "null", "-"],
-                           capture_output=True, text=True)
+                           capture_output=True, text=True,
+                           encoding="utf-8", errors="replace", timeout=120)
         import re
         m = re.search(r"time=(\d+):(\d+):([\d.]+)", p.stderr)
         dur = float(m.group(1)) * 3600 + float(m.group(2)) * 60 + float(m.group(3)) if m else 2.0

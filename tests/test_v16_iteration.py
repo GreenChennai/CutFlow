@@ -74,13 +74,14 @@ def test_no_post_concat_in_source():
     assert '[st["cmd"][0]] + st["post"]' not in src
 
 
-# ---------------------------------------------------------------- P10
+# ---------------------------------------------------------------- P10 / P10b-1
 
 def test_s5_s6_s8_output_globs_match_reality_and_are_disjoint():
+    # P10b-1(副文档03 §4.1)更新:S5/S8 各落独占子目录,从根上消除 glob 交叠
     s5, s6, s8 = _stage("S5"), _stage("S6"), _stage("S8")
-    assert s5["outputs"] == ["06_output/成片_*.mp4"]   # rs_brand.py:279 的真实产物名
-    assert s6["outputs"] == ["05_ir/sfx_draft.json"]   # 与 S6 cmd 落点同点
-    assert s8["outputs"] == ["06_output/final_*.mp4"]  # rs_render.py:771 的真实产物名
+    assert s5["outputs"] == ["06_output/branded/成片_*.mp4"]   # rs_brand --out 06_output/branded
+    assert s6["outputs"] == ["05_ir/sfx_draft.json"]           # 与 S6 cmd 落点同点
+    assert s8["outputs"] == ["06_output/final/final_*.mp4"]    # rs_render final 档独占子目录
     s5_set, s8_set = set(s5["outputs"]), set(s8["outputs"])
     assert not s5_set & s8_set, "S5/S8 产物 glob 交叠会互相打脏(--dirty 永不收敛)"
 
@@ -88,8 +89,13 @@ def test_s5_s6_s8_output_globs_match_reality_and_are_disjoint():
 def test_s5_s8_states_converge_no_mutual_stale(tmp_path):
     """S5、S8 各自落账后,重评对方必须仍是 done(此前同 glob 导致互相改 outHash)。"""
     root = _mk_project(tmp_path)
-    (root / "06_output" / "成片_916_logoA_final.mp4").write_bytes(b"brand")
-    (root / "06_output" / "final_proj_916.mp4").write_bytes(b"render")
+    # P10b-1:两阶段产物各落独占子目录
+    branded = root / "06_output" / "branded"
+    final = root / "06_output" / "final"
+    branded.mkdir(parents=True)
+    final.mkdir(parents=True)
+    (branded / "成片_916_logoA_final.mp4").write_bytes(b"brand")
+    (final / "final_proj_916.mp4").write_bytes(b"render")
     for sid in ("S5", "S8"):
         st = _stage(sid)
         parts = rs_run.stage_parts(root, st, rs_run.params_of(root), {})

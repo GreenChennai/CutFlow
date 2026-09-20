@@ -31,8 +31,23 @@
 }
 ```
 
-- `keep` 由 `cuts` 中 `action == "remove"` 的区间**自动推导**,不得手写;`rs_cut.py --apply` 会重算并校验连续性(必须严格覆盖 `[0, srcTotalMs]` 且不重叠)。
+- `keep` 由 `cuts` 中 `action == "remove"` 的区间**自动推导**,不得手写;`rs_cut.py` 的 `--apply` 会重算并校验连续性(必须严格覆盖 `[0, srcTotalMs]` 且不重叠)。
 - `removedMs / srcTotalMs` 用于验收:裁剪比应落在 **20–35%**(口播长素材);偏离过大时如实上报,不硬凑。
+
+### 2.1 keep 末段终点保底(P26-3,副文档 07)
+
+keep 末段终点 = `max(末字 endMs + 尾余量, ffprobe 实测时长)`,**口播结尾留 0.5–0.8s 自然底噪是不割裂的最低要求**(20260920 实测:keep 终点被钉在 ASR 钳制出的错误总时长上,末字衰减 + 0.7s 底噪全被切掉,成片在字尾瞬间硬停)。
+
+- 尾余量默认 **650ms**(`rs_cut --tail-reserve-ms`,建议区间 500–800);
+- 给了 `--media` 时以 ffprobe 实测为唯一真相(物理上限);无实测时退回 `max(记录总时长, 末字+尾余量)`——记录值被字尾钳制时也能自动多留一个尾余量;
+- 保底触发时 cutlist 写入 `tail` 块(`reserveMs / measuredMs / recordedTotalMs / keepEndMs`)留痕,`srcTotalMs` 同步为有效源时长。
+
+### 2.2 时长账自动同步(P27,副文档 07)
+
+**`rs_cut.py` 的 `--apply` 是时长账同步的单一入口**:重算 keep 之后自动把工程 wordline(`05_ir/wordline.json`,或 `--wordline` 显式指定)的三个时长字段改平——`srcDurationMs = cutlist.srcTotalMs`、`removedMs = cutlist.removedMs`、`finalDurationMs = src − removed`——**不再需要手改 wordline 两个字段**。
+
+- **恒等式**(P27-2):`srcDurationMs − removedMs == finalDurationMs`,任一环节写盘后校验;`rs_ir build --from-cutlist` 在 S3 入口把「改 keep 但 wordline 未同步」判为 `DURATION_LEDGER` 硬失败并给出修复命令,不等 `rs_sync` 事后挂红叉;
+- **手改护栏**(B8 同源):wordline 带 `manualEdit` 痕迹时 `--apply` 拒绝自动改写(`WORDLINE_MANUAL_EDIT`),确认放弃手改加 `--force`,或只改时长用 `rs_align.py refresh-durations --media <素材>`。
 
 ## 3. `reason` 是封闭枚举
 
@@ -93,6 +108,20 @@
 
 删掉某段后,若其**前后两个语义单元的间隔从 > 700ms 降到 < 200ms**,说明这一刀删掉的是一个有表达作用的停顿 → 标记 `rhetorical_pause_suspect`,**强制 `review`**。
 
+### 5.2 protect 保护区(阶段六 J2:guard 第四条)
+
+`cutlist.protect` 是**被明确"必须保留发音"的词的有效发音区间**清单(单位与 keep 一致,ms,左闭右开):
+
+```json
+"protect": [{"startMs": 1200, "endMs": 1580, "note": "术语「蓝屏」必须完整"}]
+```
+
+- **guard 加第四条:切点不得侵入 protect 区**(remove 区间与任一 protect 区相交即冲突;触边不算侵入,半开区间判定)。
+- **优先级 protect > 既有 guard 三项**:guard 不过尚可降级 `review`(留稿待人审),protect 冲突**即报错而非降级**(`PROTECT_INTRUDED`,退出码 2)——protect 的语义是"审也不许切",必须显式解决冲突:改刀,或撤区。
+- 双闸:检测/构建期(`build_cutlist`,审 remove+review 候选)与 `--apply`/`finalize`(审真正执行的 remove,防人工改刀绕过)都复验。
+- CLI:`rs_cut.py 05_ir/wordline.json --detect all --out 04_cut --protect 1200-1580,2000-2800`;protect 区随 cutlist 落盘(`cl["protect"]`),可审计、可复验。
+- 与专项 07 共存:protect 只**收紧**可删区间,不改 `derive_keep`/时长账/尾余量保底——被保护区天然落在 keep 里。
+
 ## 6. `conf` 三级 → `action` 三态
 
 | conf | action | 行为 |
@@ -136,7 +165,7 @@ rs_cut.py --review-pack 04_cut/cutlist.json
 rs_cut.py --apply 04_cut/cutlist.final.json --render
 ```
 
-`--apply` 负责:重算 `keep` → 写回 `wordline.json`(`space: final`)→ 供 `rs_ir.py build --from-cutlist` 生成 IR 主轨。
+`--apply` 负责:重算 `keep` → **自动同步 wordline 时长账**(`srcDurationMs/removedMs/finalDurationMs`,P27,见 §2.2)→ 供 `rs_align.py remap` 与 rs_ir.py 的 build --from-cutlist 生成 IR 主轨。
 
 ### 剪后衔接(必须保留)
 
@@ -155,6 +184,7 @@ rs_cut.py --apply 04_cut/cutlist.final.json --render
 | 检查 | 通过线 |
 |---|---|
 | **误删率** | **= 0**(硬线) |
+| **protect 侵入**(J2) | **= 0**:`remove`/`review` 候选切点不落入任何 protect 区;冲突必须报错解决,不得降级放行 |
 | retake 检出率 | 含 ≥3 处重录的测试素材上 ≥ 90%(含**跨句**重录) |
 | guard 通过率 | 所有 `remove` 刀过其 `reason` 对应硬过项(100%);`wordClipped` 永不放松 |
 | 裁剪收益 | 长口播素材时长减少 20–35% |

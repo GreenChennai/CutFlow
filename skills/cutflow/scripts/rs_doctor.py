@@ -122,12 +122,16 @@ def main() -> int:
     except Exception as exc:  # noqa: BLE001 — 自检本身绝不致命
         checks.append(_check("jieba 分词器", False, f"检查失败:{exc}", fatal=False, group="字幕"))
     wpi = Path(cfg.get("artboard_dir", "")) if cfg.get("artboard_dir") else None
-    checks.append(_check("artboard 桥", bool(wpi and wpi.is_dir()), str(wpi or "(未配置 artboard_dir)"),
-                         fatal=False, group="趣味素材"))
+    # P21-1:artboard 桥不再只看目录存在(假名副其实)—— 下面的探针循环统一跑
+    # rs_artboard.py --probe 真检「配置了?目录在?导出脚本找得到?」,且提为 fatal。
+    checks.append(_check("artboard_dir 已配置", bool(wpi and wpi.is_dir()),
+                         str(wpi or "(未配置 artboard_dir)"), fatal=False, group="趣味素材",
+                         hint="config.json 的 artboard_dir 指向 artboard 技能目录"))
 
-    # CutForge 桥脚本(v0.15,计划书 M4):四个桥 --probe 自检必须全过
+    # CutForge/artboard 桥脚本(v0.15 计划书 M4;P21-1 起 --probe 自检**提为 fatal**):
+    # 桥断链曾只显示「可后补」,DOCTOR_OK 照发 —— 四桥是编排链路,断了必须先修。
     forge_scripts = Path(__file__).parent
-    for name in ("rs_editor.py", "rs_notes.py", "rs_oplog.py", "rs_gate.py"):
+    for name in ("rs_editor.py", "rs_notes.py", "rs_oplog.py", "rs_gate.py", "rs_artboard.py"):
         script = forge_scripts / name
         ok, detail = False, f"{script}"
         if script.is_file():
@@ -142,9 +146,10 @@ def main() -> int:
                 detail = f"探测失败({type(exc).__name__})"
         else:
             detail = "脚本缺失"
-        checks.append(_check(f"CutForge 桥:{name}", ok, detail, fatal=False,
-                             group="CutForge 桥",
-                             hint="缺失则重拉 CutFlow 仓库 skills/cutflow/scripts/"))
+        checks.append(_check(f"桥探针:{name}", ok, detail, fatal=True,
+                             group="桥探针",
+                             hint="缺失则重拉 CutFlow 仓库 skills/cutflow/scripts/;"
+                                  "artboard 桥还需 config.artboard_dir 指向技能目录"))
 
     fatal_bad = [c for c in checks if c["fatal"] and not c["ok"]]
     all_ok = not fatal_bad

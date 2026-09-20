@@ -7,10 +7,14 @@
 
 ## 通道一:草稿直写(主)
 
-`rs_jy_draft.py 05_ir/project.json --name <草稿名> [--subtitles 03_assets/tts/manifest.json] [--open]`
+`rs_jy_draft.py 05_ir/project.json --name <草稿名> [--subtitles 03_assets/tts/manifest.json] [--open]` / 预检:`rs_jy_draft.py 05_ir/project.json --dry-run`
 
-- 落位 `<draft_root>/<名>/draft_content.json` + `draft_meta_info.json`,并注册 root_meta_info.json(首页可见)。
-- 能力映射:视频/音频/文本字幕/位置缩放;交付时告诉用户:在剪映首页找到同名草稿即可继续精修。
+- **编译层(阶段六)**:先 IR → 草稿计划(帧对齐中间表示,帧/微秒双记法)→ 门禁 → 才写盘;门禁含轨道数/片段时长和/主轨首段从 0 且不重叠/无黑场间隙/帧对齐断言,任一失败 `PLAN_GATE_FAIL` 拒写(退出码 4)。
+- `--dry-run` 只打印「IR 片段 → 草稿片段」映射表(人读),不写任何文件、不查剪映进程;排查"为什么开不了草稿"先跑它。
+- 落位 `<draft_root>/<名>/draft_content.json` + `draft_meta_info.json`,并注册 root_meta_info.json(首页可见);写后自动回读对账(`DRAFT_GATE_FAIL` = 落盘与计划不符)。
+- 能力映射:视频/音频/文本字幕/位置缩放/变速/音量/转场/淡入淡出/音效 gainDb/BGM;主轨 V1 + 画中画 V2+ + 音频 A1(+BGM A2)+ 字幕 T1(≤120 条)。视觉动效关键帧(motion/reframe)与 ducking 不写,计划留 warning(见诚实验收「拒绝」区)。
+- 交付时告诉用户:在剪映首页找到同名草稿即可继续精修。
+- **诚实验收说明**(已验证/未验证/拒绝三类,含"未在真机剪映打开验证"的边界声明):`rules/jianying-verification.md`。
 
 ## 通道二:GUI 自动导出(辅,用 computer-use)
 

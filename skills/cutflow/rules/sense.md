@@ -8,7 +8,7 @@
    a. `python tools/start_asr.py`(无头直启,PATH 含 ffmpeg);
    b. 打包版 GUI(MomentShift.exe)用 computer-use 点"服务模式";
    c. 失败则告知用户,先做不依赖转写的环节。
-3. `rs_align.py <媒体> --out 05_ir/wordline.json`:取 **Paraformer 原生字级 `timestamp`** 建 Wordline
+3. `rs_align.py build --media <素材> --out 05_ir/wordline.json`:取 **Paraformer 原生字级时间戳(timestamp 字段)** 建 Wordline
    (唯一真相源)。若上游 MomentShift 未透传字级字段,自动降级为「句级 + 停顿锚点」模式,并在
    `data.degraded` 与报告中标注,**不静默降级**。详见 rules/align.md。
 4. **校对(必做)**:逐句读 transcript_raw.md,修错字/口误/标点,专有名词对照 brief 术语表;

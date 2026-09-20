@@ -31,12 +31,13 @@ FFMPEG = _ffmpeg()
 pytestmark = pytest.mark.skipif(not FFMPEG, reason="本机没有 ffmpeg,跳过端到端")
 
 
-def _run(*args: str, cwd: Path) -> dict:
+def _run(*args: str, cwd: Path, allow_fail: bool = False) -> dict:
     p = subprocess.run([sys.executable, str(SCRIPTS / args[0]), *args[1:]], cwd=cwd,
                        capture_output=True, text=True, encoding="utf-8", errors="replace")
     out = (p.stdout or "").strip().splitlines()
     doc = json.loads(out[-1]) if out else {"ok": False, "code": "NO_OUTPUT", "message": p.stderr}
-    assert doc.get("ok"), f"{args[0]} 失败:{doc.get('code')} {doc.get('message')}"
+    if not allow_fail:
+        assert doc.get("ok"), f"{args[0]} 失败:{doc.get('code')} {doc.get('message')}"
     return doc
 
 
@@ -113,6 +114,12 @@ def test_end_to_end_3x4_pipeline(tmp_path):
     # 10) L0 自检 + 交付清单
     ver = _run("rs_verify.py", str(root), cwd=root)
     assert ver["data"]["pass"] is True, ver["data"].get("failed")
-    deliv = _run("rs_ingest.py", "deliverables", str(root), cwd=root)
+    # P18-1:deliverables 是真对账 —— e2e 没跑 S10(封面/文案),缺的必须恰好是那两项
+    # 且非零退出;其余对账项(字幕/srt/sync_report/成片)全齐。
+    deliv = _run("rs_ingest.py", "deliverables", str(root), cwd=root, allow_fail=True)
+    assert deliv["code"] == "DELIVERABLES_INCOMPLETE" and deliv["ok"] is False
+    missing = " ".join(deliv["data"]["missing"])
+    assert "封面.png" in missing and "metadata.json" in missing, deliv["data"]["missing"]
+    assert "subtitles.ass" not in missing and "master.srt" not in missing
     assert deliv["data"]["ratio"] == "3x4"
     assert (root / "06_output" / "deliverables.md").is_file()

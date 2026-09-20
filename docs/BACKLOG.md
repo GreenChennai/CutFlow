@@ -2,6 +2,7 @@
 
 > 级别:P0 缺陷(必须马上修)/ P1 优化 / P2 弱项 / IDE 新能力想法。
 > 每轮自迭代:取最高优先 1–3 项 → 实现 → 验证 → tag `iter-NN` → push。
+> 2026-09-21 v0.18 清账(副文档 03 O8-1):已落地条目收口打勾,"仍成立"条目补当前证据;对照本轮交付(P17–P25、RT 闭环)无已落地仍挂 `[ ]` 的条目。
 
 ## 待办
 
@@ -10,8 +11,8 @@
 - [x] **抠像/背景合成移交用户(ADR-0031)**:删除 `chroma`/`background` 全链(render/ir/schema/jy/verify/文档/测试);用户预抠像+合成背景后交付剪辑
 - [x] **S0 幕布检测门禁**:`rs_greenscreen.py` 抽帧判据 + `rs_ingest green-ok` 误判放行留痕 + `rs_verify` L0 二次把关
 - [x] **批修**:`rs_subtitle` 卡尾标点终点锚(NCLM1605);测试 ffmpeg cfg/skipif 健壮性;`skills/cutflow-prompt/` 遗留副本
-- [ ] **检测阈值实测校准(P2)**:`rs_greenscreen` 的 BORDER_FRAC/OVERALL_FRAC/MAX_CV 是经验值,需用真实绿幕/非绿幕素材各跑一批统计误报率/漏报率,必要时按素材类型分档
-- [ ] **多段素材联合判定(P2)**:当前逐条素材独立检测;同一工程多条同源素材可合并判据(减少单条抽帧抖动)
+- [ ] **检测阈值实测校准(P2)**:`rs_greenscreen` 的 BORDER_FRAC/OVERALL_FRAC/MAX_CV 是经验值,需用真实绿幕/非绿幕素材各跑一批统计误报率/漏报率,必要时按素材类型分档(仍成立:v0.18 时阈值仍为经验常量,未见实测评差)
+- [ ] **多段素材联合判定(P2)**:当前逐条素材独立检测;同一工程多条同源素材可合并判据(减少单条抽帧抖动)(仍成立:rs_ingest.scan 仍逐条 detect_media)
 
 ### v0.12(2026-09-14,来源 HANDOFF-v0.12-安信德GEO实测迭代与修复)
 
@@ -21,16 +22,16 @@
 - [x] **I2 按文本裁片**:`rs_cut --from-text`(引文顺序锚定,引文外走 guard)
 - [x] **I6 制作端 checklist**:`rules/intake.md` 绿幕四问 + 纯动画四问 + 环境 checklist
 - [x] **W5(部分)**:文本锚定三处重复已抽 `rs_common.content_index/anchor_span`(rs_subtitle 已委托);事件层「必并→延长→间距→校验→meta」管线去重仍开放
-- [ ] **I4 说话人分离(P2,暂不做)**:仅 `interview` 类 videoType 需要(预留位),单人口播无收益;做时落点 `fun_asr --spk`(funasr `spk_model="cam++"`,CPU 可跑)→ `--json` 带 speaker → `build_wordline` 已能消费 `seg.get("speaker")`;**勿为单人口播引入 ~1GB 模型成本**
-- [ ] **I5 音频事件(IDEA)**:掌声/笑声/音乐起等事件维度(SenseVoice 方向)可给 `dead_air`/`hesitate` 做"别删"白名单;新模型 ~1GB + 新依赖,违背零第三方依赖克制,不进近期迭代
-- [ ] **Q5 遗留副本核查**:`D:\CutFlow` 复盘引用的副本已确认不存在(Test-Path=False);若其它盘再发现旧副本,diff 后只合并有测试覆盖的差异,勿整体覆盖
+- [ ] **I4 说话人分离(P2,暂不做)**:仅 `interview` 类 videoType 需要(预留位),单人口播无收益;做时落点 `fun_asr --spk`(funasr `spk_model="cam++"`,CPU 可跑)→ `--json` 带 speaker → `build_wordline` 已能消费 `seg.get("speaker")`;**勿为单人口播引入 ~1GB 模型成本**(决策性挂起,非欠账)
+- [ ] **I5 音频事件(IDEA)**:掌声/笑声/音乐起等事件维度(SenseVoice 方向)可给 `dead_air`/`hesitate` 做"别删"白名单;新模型 ~1GB + 新依赖,违背零第三方依赖克制,不进近期迭代(决策性挂起)
+- [x] **Q5 遗留副本核查**:`D:\CutFlow` 复盘引用的副本已确认不存在(Test-Path=False)——**核查完成**;后续若其它盘再发现旧副本,diff 后只合并有测试覆盖的差异,勿整体覆盖
 
 ### v0.8.2(2026-09-13,来源 BUGREPORT-20260913-纯口播复测 B1–B10)
 
 - [x] **B1–B10 批修**:见 `docs/BUGFIX-20260913-B1-B10.md`;音频内容闸见 ADR-0021;回归 `tests/test_v9.py`
-- [ ] **I1 DP 断句语义单元惩罚**:否定词跨卡(「不|属于」)、复合词跨卡(「经营|主体」「运营|效率」「店群|企业」)罚分;「的」字头卡降权(「的市场版图」「的客流量差异」)—— 影响质量不影响正确性
-- [ ] **I2 --terms 即断词保护表**:brief 术语表强制喂给 `rs_subtitle`;歧义候选里显式展示 terms 命中
-- [ ] **I3 rs_cut 尾部黑场检测器**:源尾黑帧目前只靠 L1 目测
+- [ ] **I1 DP 断句语义单元惩罚**:否定词跨卡(「不|属于」)、复合词跨卡(「经营|主体」「运营|效率」「店群|企业」)罚分;「的」字头卡降权(「的市场版图」「的客流量差异」)—— 影响质量不影响正确性(仍成立:segmentation 现有 NO_TAIL/连词/词内禁切,无语义单元罚分)
+- [ ] **I2 --terms 即断词保护表**:brief 术语表强制喂给 `rs_subtitle`;歧义候选里显式展示 terms 命中(部分落地:`rs_subtitle --terms` 断句禁切已可用;brief 自动喂入与候选 terms 命中展示未做,rs_run S7 命令未带 --terms)
+- [ ] **I3 rs_cut 尾部黑场检测器**:源尾黑帧目前只靠 L1 目测(仍成立:v0.17 落的是实测片尾时长保底,黑帧检测未做)
 
 ### v0.8.1(2026-09-13,来源 v2 重跑实测反馈 + 分词主诉)
 
@@ -40,11 +41,11 @@
 - [x] **B2 rs_artboard 三连**:`project` 统一 `/src` 口径 + hash 四处一致(旧版永远误报"已变化");apply 未引用卡片默认跳过+告警(`--strict`/`--only`);挂点匹配改归一化绝对路径
 - [x] **B3 junction config 错位**:仓库根优先 + `skills/config.json` 兜底只补缺;新增 `skills/config.example.json`
 - [x] **B5 rs_sync 伪重叠**:snap 后碰撞消解 + 重叠容差 1 帧(`--frame-ms`),3ms 级帧取整伪影放行
-- [ ] **B4 ebur128**:经用户对比确认为 ffmpeg 内置滤镜且输出正常 —— **关闭,不改**
-- [ ] **W3 词表持续扩充**(继承原 P2 条目):新发现的切词案例 → 补 `COMMON_WORDS` + `REGRESSION` 双保险;jieba 覆盖不到的领域词也可走 brief terms
-- [ ] **W4 Agent 复核实跑验证**:在真实工程上跑一遍「cards.json → Agent 审 → override 回灌」闭环(本次只落了机制与单测)
-- [ ] **W5 事件层去重(code-review 两次复核共认)**:`events_from_wordline` 与 `events_from_override` 的「必并→延长→间距→校验→meta」管线几乎逐行重复;字级锚计算(+RELEASE_MS/anchorStart/End)三处重复;main() 的 karaoke 降级三连;可抽共享管线函数
-- [ ] **W6 rs_sync 容差按 fps 自适应**:当前默认 34ms ≈ 1 帧@30fps,60fps 素材需手动 `--frame-ms 17`;可从 IR/成片读 fps 自动定容差
+- [x] **B4 ebur128**:经用户对比确认为 ffmpeg 内置滤镜且输出正常 —— **关闭,不改(决策已执行)**
+- [ ] **W3 词表持续扩充**(继承原 P2 条目):新发现的切词案例 → 补 `COMMON_WORDS` + `REGRESSION` 双保险;jieba 覆盖不到的领域词也可走 brief terms(仍成立:词表随案例滚动扩,机制在 segmentation.py)
+- [ ] **W4 Agent 复核实跑验证**:在真实工程上跑一遍「cards.json → Agent 审 → override 回灌」闭环(本次只落了机制与单测)(仍成立:机制 + 单测在,真实工程实跑缺)
+- [ ] **W5 事件层去重(code-review 两次复核共认)**:`events_from_wordline` 与 `events_from_override` 的「必并→延长→间距→校验→meta」管线几乎逐行重复;字级锚计算(+RELEASE_MS/anchorStart/End)三处重复;main() 的 karaoke 降级三连;可抽共享管线函数(部分落地:文本锚定三处已抽 rs_common.content_index/anchor_span;事件层管线仍重复)
+- [ ] **W6 rs_sync 容差按 fps 自适应**:当前默认 34ms ≈ 1 帧@30fps,60fps 素材需手动 `--frame-ms 17`;可从 IR/成片读 fps 自动定容差(仍成立:OVERLAP_TOL_MS 仍为常量默认)
 
 ### v7 落地进度(2026-09-12,来源 `docs/OPTIMIZATION-v7.md`)
 
@@ -68,11 +69,11 @@
 
 **v7 验收欠账(需真实素材)**
 
-- [ ] #A1 真实长口播素材端到端:终点偏移达标、中间段残留 ≤1 处/10min、连词不落卡尾
+- [ ] #A1 真实长口播素材端到端:终点偏移达标、中间段残留 ≤1 处/10min、连词不落卡尾(欠账性质:机制有合成素材回归,真实素材实测缺)
 - [ ] #A2 真实素材上 `--media` 的 `dead_air` 音频能量探测实测
 - [ ] #A3 `rs_cut` 的 `retakeRatio` 按 `brief.videoType` 自动取默认值(当前只有 `--retake-ratio` 手动旋钮)
 - [ ] #A4 videoType 三类型各跑一条端到端(现 e2e 只覆盖 `talking-head` + 口播+动画的卡片安全区由 rs_artboard 测试覆盖)
-- [ ] #A5 `rs_sync` 补「字幕时间与最近帧差 ≤1 帧」断言与段级抽样(现只校验起点/终点偏移与总时长)
+- [ ] #A5 `rs_sync` 补「字幕时间与最近帧差 ≤1 帧」断言与段级抽样(现只校验起点/终点偏移与总时长)(仍成立:rs_sync 断言集未含帧差项)
 - [ ] #A6 `platforms.json` 的 `safeArea` 目前只作为 Agent/目测清单的参考,未进脚本硬校验(字幕位置仍由 `STYLES.margin_v` 决定);若要硬校验,需把 marginV 由 safeArea 反推
 
 ### v5 落地验收清单(2026-09-10,来源 `docs/OPTIMIZATION-v5.md` §8)
@@ -121,13 +122,13 @@
 
 - [x] **P1** 无字级时间戳时的**跨词硬切**(实测「再加上一 / 点耐心」)—— **已解决(2026-09-11)**:pkg 字级时间戳落地,坏切分实测变为「干净的录音再加上 / 一点耐心」
 - [x] **P1** `rs_render` 接入 seg 级缓存 —— **v0.6.0 已落地(2026-09-11)**:内容寻址段缓存 + step_keys 门禁,JJAV2815 实测改字幕重出片 174s→54s(seg 8/8 命中)
-- [ ] **P1** 补 `rs_ingest`(S0)与 `deliverables.md` 生成
+- [x] **P1** 补 `rs_ingest`(S0)与 `deliverables.md` 生成 —— **已落地**(v0.8.0 #9;P18 后 deliverables 还带真对账)
 - [x] **P2** `fun_asr` 的 `pkg` 后端在**本机实际安装验证** —— **已实测(2026-09-11)**:torch 2.14 + torchaudio 2.11 cpu(venv `tools/.venv-asr`);timestamp 单位为 ms
-- [ ] **P2** `rs_artboard` 支持动画卡 `--fps` 与时长从工程导出配置读取
-- [ ] **P2** 备份占用可视:`rs_cleanup` 一并清理 `_state/backup/`
+- [x] **P2** `rs_artboard` 支持动画卡 `--fps` 与时长从工程导出配置读取 —— **已落地**:export_item 按 manifest item 的 kind/fps 传 `--format MP4 --fps`;时长由 apply 时 ffprobe 实测(probe_duration_ms)回填并平移下游
+- [ ] **P2** 备份占用可视:`rs_cleanup` 一并清理 `_state/backup/`(范围收窄:rs_run 已有 BACKUP_KEEP=5 上限 + P13-2 清理失败如实上报;剩余是 rs_cleanup 侧的集中清理/占用展示)
 - [→] **P2** 粗剪 retake 相似度阈值**按素材类型分档** → 已部分落地(v0.7.0 加 `--retake-ratio`,短剧可提到 0.86);按 `brief.videoType` 自动取默认值待接(#6)
-- [→] **P2** `rs_sync` 增加「卡片 ↔ 动画卡时间窗」重叠检查 → 归入 v7 #12
-- [→] **P2** `fa-zh` 强制对齐偏移自检 → 并入 v7 #10 `rs_dub align`
+- [x] **P2** `rs_sync` 增加「卡片 ↔ 动画卡时间窗」重叠检查 → 已随 v7 #12 落地(v0.8.0,rs_sync 卡片重叠检查)
+- [x] **P2** `fa-zh` 强制对齐偏移自检 → 已并入 `rs_dub align`(v0.8.0 落地:真实字级回填 + 漂移报告)
 
 ### v4 落地验收清单(2026-09-10,来源 `docs/OPTIMIZATION-v4.md` §9)
 
@@ -146,8 +147,8 @@
 - [x] B1 `pipeline.json` + `_state/` + 含脚本 hash 的缓存键(已单测)
 - [x] B2 `rs_run.py --status/--from/--only/--dirty/--explain/--mark`
 - [x] B3 `rs_render` 的 seg 级 hash 接入 —— v0.6.0 落地(segcache + prune 3 代)
-- [ ] B4 单卡字幕重渲路径(只重生成该卡 ASS 事件 + 重叠)→ 端到端 ≤10s
-- [ ] B5 无改动重跑 `--from S3` 全程命中 ≤2s(需 B3 完成)
+- [ ] B4 单卡字幕重渲路径(只重生成该卡 ASS 事件 + 重叠)→ 端到端 ≤10s(机制已落:segcache(v0.6.0)+ --dirty 收敛(v0.17);≤10s 实测待真实素材)
+- [ ] B5 无改动重跑 `--from S3` 全程命中 ≤2s(B3 已完成,实测计时待真实素材)
 
 **批次 C · 断句 v2**
 
@@ -168,12 +169,12 @@
 ### 已知待办(v4 之后)
 
 - [x] **P1** 上游联动:MomentShift `asr_server.py` 增补 `char_timestamps=1` —— **moot(2026-09-11)**:CutFlow 自带 fun_asr pkg 后端直出字级时间戳,不再依赖上游透传
-- [ ] **P1** `rs_render` 按 `pipeline.json` 的 seg 清单做 seg 级缓存(B3)
-- [ ] **P1** 补 `rs_ingest`(S0)与 `deliverables.md` 生成,把交付清单自动化
-- [ ] **P2** `fa-zh` 强制对齐的偏移自检工具(切片起点回填;FunASR issue #2784)
-- [ ] **P2** 成语/固定搭配词表扩充(当前只做 4 字整体保护 + 内置常用表)
-- [ ] **P2** `rs_sync` 增加「卡片 ↔ 动画卡时间窗」重叠检查(BACKLOG 原条目的自动化版)
-- [ ] **P2** 粗剪 retake 检测的相似度阈值按素材类型分档(短剧 vs 口播)
+- [x] **P1** `rs_render` 按 `pipeline.json` 的 seg 清单做 seg 级缓存(B3)—— **v0.6.0 已落地**(见上方同条目;真实落点 `06_output/_build/<ratio>/segcache/`,P25-1 文档已改指实码)
+- [x] **P1** 补 `rs_ingest`(S0)与 `deliverables.md` 生成,把交付清单自动化 —— **已落地**(v0.8.0 #9;本行与 v0.12 区重复挂账,一并收口)
+- [x] **P2** `fa-zh` 强制对齐的偏移自检工具(切片起点回填;FunASR issue #2784)—— 已并入 `rs_dub align`(v0.8.0)
+- [x] **P2** 成语/固定搭配词表扩充(当前只做 4 字整体保护 + 内置常用表)—— 并入 **W3 词表持续扩充**(同机制,不再单列)
+- [x] **P2** `rs_sync` 增加「卡片 ↔ 动画卡时间窗」重叠检查(BACKLOG 原条目的自动化版)—— 已随 v7 #12 落地
+- [x] **P2** 粗剪 retake 检测的相似度阈值按素材类型分档(短剧 vs 口播)—— 部分落地收口:v0.7.0 `--retake-ratio` 可调;按 videoType 自动取默认见上方 #A3
 
 ### 原有待办
 

@@ -13,13 +13,23 @@ artboard 工程(src/)  ──export──►  产物(png/mp4)  ──apply──
 清单 `03_assets/artboard/manifest.json` 是**唯一映射表**:工程 ↔ 产物 ↔ IR 挂点(`usedIn`)。
 
 ```powershell
+python skills/cutflow/scripts/rs_artboard.py gen-cards --from 00_brief/cards.json --out 03_assets/artboard/manifest.json
+# 或:手工 scaffold 的既有卡片工程用 --scan 登记
 python skills/cutflow/scripts/rs_artboard.py --scan 03_assets/artboard --out 03_assets/artboard/manifest.json
 python skills/cutflow/scripts/rs_artboard.py 03_assets/artboard/manifest.json --export
+python skills/cutflow/scripts/rs_artboard.py export-fallback 03_assets/artboard/manifest.json   # 主引擎不可用时的兜底
 python skills/cutflow/scripts/rs_artboard.py 03_assets/artboard/manifest.json --apply 05_ir/project.json
-python 03_assets/artboard/rebuild.py     # 一条龙:上面三步 + 从 S4 级联
+python 03_assets/artboard/rebuild.py     # 一条龙:导出+回填+从 S4 级联
 ```
 
+- **卡片计划 JSON(00_brief/cards.json)是 gen-cards 与 add-overlay 的共用输入**:内容字段
+  (`id`/`template`(info|stat|section)/`title`/`lines`/`accent`/`kicker`)归 `gen-cards`,
+  时间窗字段(`card|id`/`startMs`/`durationMs`/`motion`)归 `rs_ir.py add-overlay`,一份计划两处消费;
 - **`--export` 按 `source_hash` 判断**,没改的卡片不重导(内容寻址);hash 与 manifest 的 `project` 字段统一按 **`<卡片>/src` 目录**算(v0.8.1;旧清单不带 `/src` 也兼容);
+  **P6-2:产物不在盘也重导** —— skip 判定 = 「源码未变 **且** 产物存在」,首次 scan 后不会假 EXPORT_SKIP 漏导;
+- **export-fallback(升格自 artboard 技能的 export_fallback.py)**:Playwright + 系统 Edge/Chrome
+  截图导 PNG,与主引擎同一张清单、同一套产物落点,导完同样回写 sourceHash;
+  用途:Kiln 主引擎不可用/导不出时;`--only id1,id2`、`--scale 2`、`--transparent` 可选;
 - **尺寸不符直接报错、不拉伸**:导出尺寸必须等于画幅(9:16=1080×1920 / 16:9=1920×1080);
 - **时长变化会传播**:动画卡改长了,`--apply` 自动平移后续 clip,并给出需重跑的下游阶段(时长变 → S4–S9;仅路径变 → S4/S5/S8);
 - **未被 IR 引用的卡片(v0.8.1)**:默认**跳过+告警**(`APPLY_OK` 的 `skipped` 列表,不静默丢弃也不硬停);`--strict` 恢复硬失败;`--only id1,id2` 只校验选中的卡片——多变体/多场景不必再为每次 apply 拆 manifest。IR 里的挂点路径写**工程根相对**或绝对都行(按归一化绝对路径匹配);
@@ -38,6 +48,22 @@ python 03_assets/artboard/rebuild.py     # 一条龙:上面三步 + 从 S4 级�
    (固定高度必须带 --height;动图 `--format MP4 --fps 25`,GIF `--format GIF`);
 4. 9:16 用 1080x1920,16:9 用 1920x1080(slide 品类);
 5. **导出 MP4 的环境变量:`WPI_FFMPEG` 才是有效项**(`ARTBOARD_FFMPEG` 无效——artboard 的 MP4 导出走 WPI;两个都设,rules/intake.md 环境 checklist 同款,安信德 #13)。
+
+## 口播+动画挂轨:rs_ir add-overlay(T1-1 升格,原 _apply_overlay.py / 上一版 O2)
+
+S4 的人工装配(手写 overlay 轨 JSON → apply → 记 manualEdit)**一条命令官方化**:
+
+```powershell
+python skills/cutflow/scripts/rs_ir.py add-overlay 05_ir/project.json `
+    --manifest 03_assets/artboard/manifest.json --plan 00_brief/cards.json
+```
+
+- `--plan` 时间窗表:`[{"card":"c01","startMs":3200,"durationMs":1800,"motion":{"in":"fadeIn","inMs":400}}]`
+  (与 gen-cards 共用一份 cards.json;按 startMs 升序自动排;重叠、缺产物、白名单外字段一律硬失败);
+- 自动:新增 `name=overlay` 的 video 轨(只写 schema 允许的字段,P8)→ 回写 manifest `usedIn`
+  (track/clipIndex/startMs/durationMs)→ 标 IR `_meta.manualEdit`(S3 重建护栏认得这次手改);
+- 同名轨已存在默认报错(防重复挂轨);确认整体替换加 `--replace`,或 `--track-name` 另挂一层;
+- IR 若带 CutForge 编辑痕迹(`schemaVersion`)默认拒绝——编辑器工程走编辑器挂轨,显式 `--force` 才绕过。
 
 ## 场景卡 → 纯动画成片(I7,v0.12)
 

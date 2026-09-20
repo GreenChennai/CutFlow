@@ -664,7 +664,8 @@ def step_encode(src: Path, out: Path, profile: str, cfg: dict, fps: int,
 # ---------------- 主流程 ----------------
 
 def render(doc: dict, project_path: Path, ratio: str, profile: str, *,
-           use_cache: bool = True, dry_run: bool = False, clear_cache: bool = False) -> dict:
+           use_cache: bool = True, dry_run: bool = False, clear_cache: bool = False,
+           out_override: str = "") -> dict:
     cfg = load_config()
     # dev-jj2815 实测:IR 用相对路径传入时,seg/输出路径全为相对,concat demuxer
     # 以 concat.txt 所在目录为基准再拼一次 → 路径双重拼接打不开。入口即绝对化。
@@ -770,7 +771,17 @@ def render(doc: dict, project_path: Path, ratio: str, profile: str, *,
 
     name = f"final_{doc.get('slug', 'out')}_{ratio.replace('x', '')}.mp4" if profile == "final" \
         else f"{profile}_{doc.get('slug', 'out')}_{ratio.replace('x', '')}.mp4"
-    out = base_dir / "06_output" / name
+    # P10b-1:final 档(交付成片)默认落 06_output/final/ 独占子目录,与品牌变体
+    #(06_output/branded/)彻底隔离,消除顶层 glob 交叠互相打脏的历史;
+    # preview/draft 是探针/中间档,留在 06_output 顶层(归 rs_cleanup 清理)。
+    # rs_brand 变体渲染传 --out 显式指定落点(变体 IR 的 base_dir 是 branded/,不适用上规)。
+    if out_override:
+        ov = Path(out_override)
+        out = ov if ov.is_absolute() else Path.cwd() / ov
+    else:
+        out_dir = (base_dir / "06_output" / "final") if profile == "final" \
+            else (base_dir / "06_output")
+        out = out_dir / name
     # v0.11 R1:final 档双 pass loudnorm —— 先音频-only 测量(秒级),实测值回填编码。
     # 测量值是 subtitled 的纯函数(已在 k_sub 里),键只需记"是否双 pass"。
     loud2 = measure_loudness(subtitled, cfg) if profile == "final" else None
@@ -791,6 +802,7 @@ def render(doc: dict, project_path: Path, ratio: str, profile: str, *,
     if use_cache and prev.get("encode") == k_enc and out.is_file():
         skipped.append("encode")
     else:
+        out.parent.mkdir(parents=True, exist_ok=True)
         step_encode(subtitled, out, profile, cfg, doc["fps"], loudness=loud2)
 
     # B2 回归断言:成片视频流时长 vs IR 名义总长差 ≤1.5 帧。
@@ -827,6 +839,9 @@ def main() -> int:
     ap.add_argument("--ratio", default=None, choices=list(RATIO))
     ap.add_argument("--profile", default="final", choices=["final", "preview", "draft"])
     ap.add_argument("--ass", default=None, help="覆盖 IR 的字幕 ass 路径(每比例各一个 ass)")
+    ap.add_argument("--out", default="",
+                    help="显式输出文件路径(P10b-1:rs_brand 变体渲染用;缺省按 profile "
+                         "落 06_output[/final]/)")
     ap.add_argument("--explain", action="store_true",
                     help="只报告 seg/步骤缓存命中情况,不执行渲染")
     ap.add_argument("--clear-cache", action="store_true", help="清除该工程的 seg 缓存后渲染")
@@ -848,7 +863,8 @@ def main() -> int:
     if a.ass:
         doc.setdefault("subtitle", {})["ass"] = a.ass
     data = render(doc, p, ratio, a.profile,
-                  use_cache=not a.no_cache, dry_run=a.explain, clear_cache=a.clear_cache)
+                  use_cache=not a.no_cache, dry_run=a.explain, clear_cache=a.clear_cache,
+                  out_override=a.out)
     if a.explain:
         msg = (f"[explain] seg 命中 {data['segHits']}/{data['segTotal']};"
                f"步骤命中:" + ",".join(k for k, v in data["steps"].items() if v))

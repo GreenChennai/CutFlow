@@ -66,8 +66,7 @@ B站章节格式:
 
 ```powershell
 python skills/cutflow/scripts/rs_meta.py --wordline 05_ir/wordline.json `
-    --brief 00_brief/brief.md --cut-report 04_cut/cut_report.md `
-    --platform douyin,bili --out 06_output
+    --brief 00_brief/brief.md --platform douyin,bili --out 06_output
 ```
 
 - 只要 `--platform` 里包含 `bili`,就会带 `chapters`;

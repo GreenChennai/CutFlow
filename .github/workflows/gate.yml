@@ -2,6 +2,22 @@ name: gate
 on: [push, pull_request]
 
 jobs:
+  tests:
+    runs-on: windows-latest
+    env:
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install ffmpeg(测试夹具用 ffmpeg 现场合成媒体,与 M8-3 同纪律:硬门禁不跳过)
+        run: choco install ffmpeg -y --no-progress
+      - name: Python tests(本仓全量:断句片尾/状态机/意图编译/能力目录/剪映出口)
+        run: |
+          pip install pytest -q
+          python -m pytest tests -q
+
   bridge-smoke:
     runs-on: windows-latest
     env:

@@ -207,6 +207,30 @@ def load_variants(path: Path) -> dict:
     return doc
 
 
+def _absolutize_assets(doc: dict, base: Path) -> None:
+    """变体 IR 的素材路径就地改绝对(锚定工程根)。
+
+    rs_render 以「IR 文件位置推导 base_dir」——变体 IR 在 06_output/branded/_variants/
+    下,工程根相对的 src 在那里必然解析错位,渲染/校验必挂;此前被 rs_brand 恒 0 的
+    退出码掩盖(失败也记 S5 done,P10b-1 随独占子目录一并修正)。
+    """
+    def _abs(v: str) -> str:
+        return v if not v or Path(v).is_absolute() else str((base / v).resolve())
+
+    for tr in doc.get("tracks", []):
+        for c in tr.get("clips", []):
+            if c.get("src"):
+                c["src"] = _abs(str(c["src"]))
+    sub = doc.get("subtitle")
+    if isinstance(sub, dict):
+        for k in ("ass", "source"):
+            if sub.get(k):
+                sub[k] = _abs(str(sub[k]))
+    bgm = doc.get("bgm")
+    if isinstance(bgm, dict) and bgm.get("src"):
+        bgm["src"] = _abs(str(bgm["src"]))
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("ir", nargs="?")
@@ -216,7 +240,10 @@ def main() -> int:
     ap.add_argument("--ratios", default="9x16")
     ap.add_argument("--durations", default="full")
     ap.add_argument("--variants")
-    ap.add_argument("--out", required=True)
+    # P19-1 伴随修:--out 不再 argparse 级 required —— `--analyze` / `--expand` 模式
+    # 用不到落点目录,全局 required 曾让手册里的裸 `--analyze` 示例永远解析不过;
+    # 真正需要落点的变体渲染在下面用 NO_INPUT 显式把关(退出码语义不变)。
+    ap.add_argument("--out", default="")
     ap.add_argument("--profile", default="final")
     ap.add_argument("--plan", action="store_true")
     ap.add_argument("--logo-src", default="03_assets/branding/logos/{id}.png")
@@ -243,13 +270,15 @@ def main() -> int:
                "durations": [x.strip() for x in a.durations.split(",") if x.strip()],
                "matrix": expand_matrix(logos, [x.strip() for x in a.ratios.split(",") if x.strip()],
                                        [x.strip() for x in a.durations.split(",") if x.strip()])}
+        if not a.out:
+            return emit(False, "NO_INPUT", "--expand 需要 --out <variants.json 落点>", exit_code=2)
         out = Path(a.out)
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(json.dumps(doc, ensure_ascii=False, indent=1), encoding="utf-8")
         return emit(True, "VARIANTS_OK", f"变体矩阵 {len(doc['matrix'])} 条 → {out}",
                     {"path": str(out), "count": len(doc["matrix"]), "matrix": doc["matrix"]})
 
-    if not a.ir or not a.variants:
+    if not a.ir or not a.variants or not a.out:
         return emit(False, "NO_INPUT", "需要 <ir> --variants <variants.json> --out <dir>", exit_code=2)
     ir = json.loads(Path(a.ir).read_text(encoding="utf-8"))
     vdoc = load_variants(Path(a.variants))
@@ -275,14 +304,19 @@ def main() -> int:
         if doc["_variant"]["logoRect"].get("lifted"):
             all_errs.append(f"{v['id']}: Logo 自动抬升避开字幕带(交付说明需标注)")
         vp = vdir / f"{v['id']}.json"
+        _absolutize_assets(doc, Path.cwd())
         vp.write_text(json.dumps(doc, ensure_ascii=False, indent=1), encoding="utf-8")
-        final = outdir / f"成片_{v['ratio']}_{v['logo']}_{a.profile}.mp4"
+        # P10b-1:品牌变体成片全部落 --out 指定的独占子目录(06_output/branded/),
+        # 通过 --out 显式告知 rs_render —— 预测路径与实际写盘必须逐字一致。
+        final = (outdir / f"成片_{v['ratio']}_{v['logo']}_{a.profile}.mp4").resolve()
         cmd = [sys.executable, str(SCRIPTS_DIR / "rs_render.py"), str(vp),
-               "--ratio", v["ratio"], "--profile", a.profile]
+               "--ratio", v["ratio"], "--profile", a.profile, "--out", str(final)]
         plans.append({"variant": v["id"], "ir": str(vp), "output": str(final),
                       "cmd": " ".join(cmd)})
         if not a.plan:
-            p = subprocess.run(cmd, capture_output=True, text=True)
+            # P24-1:子进程显式 UTF-8 + 限时(变体渲染失败信息在 cp936 控制台不乱码)
+            p = subprocess.run(cmd, capture_output=True, text=True,
+                               encoding="utf-8", errors="replace", timeout=3600)
             results.append({"variant": v["id"], "ok": p.returncode == 0,
                             "output": str(final) if p.returncode == 0 else None,
                             "err": None if p.returncode == 0 else (p.stderr or p.stdout)[-200:]})
@@ -296,8 +330,12 @@ def main() -> int:
     msg = f"{ok}/{len(results)} 个变体渲染完成(共享中间件)"
     if all_errs:
         msg += f";{len(all_errs)} 个安全区/标注问题"
-    return emit(ok == len(results) and not all_errs, "BRAND_OK" if ok else "BRAND_PARTIAL", msg,
-                {"results": results, "errors": all_errs, "plan": plans})
+    # P10b-1 伴随修正:渲染有失败必须非零退出(此前恒 0,rs_run 会把失败的 S5 记成 done
+    # —— 产物声明=实际写盘在缓存账上不成立)
+    all_ok = ok == len(results) and not all_errs and bool(results)
+    return emit(all_ok, "BRAND_OK" if all_ok else "BRAND_PARTIAL", msg,
+                {"results": results, "errors": all_errs, "plan": plans},
+                exit_code=0 if all_ok else 4)
 
 
 if __name__ == "__main__":

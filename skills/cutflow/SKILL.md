@@ -27,6 +27,7 @@ description: AI 视频制作总控技能:接收口播视频/文案/剧本分镜/
 | L0 机械自检 | **脚本** | `rs_verify` |
 | 封面抽帧与合成 | **脚本** | `rules/cover.md` |
 | 术语校对、口水词、语义改写 | **Agent** | 脚本做不了 |
+| 提示词语义解析(brief.json/plan.json) | **Agent** | 唯二语义工作之一;校验/补默认/查表/落盘归 `rs_intent` 编译 |
 | 断句歧义裁决(`ambiguous`) | **Agent** | 需要语感 |
 | 卡片文案与设计意图 | **Agent** | 需要创意 |
 | 标题 / 简介 / Tag | **Agent**(脚本只校验+截断+生成章节) | `rs_meta` |
@@ -35,7 +36,7 @@ description: AI 视频制作总控技能:接收口播视频/文案/剧本分镜/
 
 ### 1.2 读哪个文件(读完就停)
 
-**规则文件按需加载。不是当前任务,不要读。**
+**规则文件按需加载。不是当前任务,不要读。** 确认有没有某能力/命令、旗标与缺省(**不读源码**)先查 `skills/cutflow/capabilities.json`(机器可读能力目录,`rs_caps.py generate` 再生成)。
 
 | 任务 | 只读这一个 |
 |---|---|
@@ -55,7 +56,7 @@ description: AI 视频制作总控技能:接收口播视频/文案/剧本分镜/
 | 标题简介 Tag / 章节 | `rules/meta.md` |
 | 封面 | `rules/cover.md` |
 | artboard 图形素材 | `rules/artboard.md` |
-| 剪映草稿双通道 | `rules/jianying.md` |
+| 剪映草稿双通道(含诚实验收说明) | `rules/jianying.md` + `rules/jianying-verification.md` |
 | 工程归档与命名 | `rules/archive.md` |
 | 自评闭环细节 | `rules/selfcheck.md` |
 | 类型节奏/管线分支默认值 | `rules/video-types/<videoType>.md`(**仅一册**) |
@@ -86,20 +87,20 @@ S0 素材 ─► S1 转写+字级对齐 ─► S2 粗剪 ─► S3 基础合成 
 | **S7** | 字幕 | `rs_subtitle` | `06_output/subtitles.ass` | 回归集全绿、CPS ≤9 |
 | **S8** | **烧录导出** | `rs_render` | `06_output/final_*.mp4` | 用**现有 ass**,不重新生成字幕 |
 | **S9** | 自评与对齐断言 | `rs_sync` + `rs_verify` | `sync_report.md` | 偏移中位数 ≤40ms;**成片音频内容闸**;**QC 体检**(黑帧/冻结/VFR/响度,v0.11) |
-| **S10** | 封面与文案 | 抽帧 + `rs_meta` | `cover.png`、`metadata.json` | 平台字数合规 |
+| **S10** | 封面与文案 | 抽帧 + `rs_meta` | `封面.png`、`metadata.json` | 平台字数合规 |
 | **S11** | 交付 | `rs_cleanup [--apply]` | 变体成片 + `deliverables.md` | 清单齐全 |
 
 ---
 
 ## 3. Hard Rules(会静默失败,违反必炸)
 
-1. **一切决策只查 brief.md**;automation 模式不打断用户,自行选择并记录理由。
+1. **一切决策只查 brief.md**;automation 模式不打断用户,自行选择并记录理由;`--auto` 无人值守(阶段四)同理且更进一步——从意图编译入口起全程自动、每条裁决写 `05_ir/pipeline.json` 的 decision_log、L1 降级抽帧留证、**L2 验收仍归用户**;它是入口与留痕约定,不是新状态机。
 2. **`wordline.json` 是时间的唯一真相源**。任何模块不得自行算时间,一律调 `rs_align.map_src_to_final()`。**禁止「按字符数比例插值」**。
 3. **粗剪宁可漏删不可错删**。`conf ≥0.90` 才 `remove`,且 guard 三项(静音切点 / 不切断字内音素 / 后留 ≥60ms)必须全过,否则降级 `review`。
 4. **阶段产物走声明式缓存**。缓存键 = 上游 hash + 参数 + **脚本文件 hash**。改一个字幕先 `rs_run --status`,再 `--only/--from`,不要盲目重跑。
 5. **自带 ASR,不依赖外部服务器**。默认 `tools/fun_asr.py`;`onnx` 后端**没有字级时间戳**(模型导出固有限制),产出必须标 `degraded`,不得当字级用。
 6. **验证分级**:每次产出跑 L0;**L1 仅在首次或画面构图变更时**;L2 由用户触发。**任何交付输出必须带 `verifyLevel` 与 `firstCheckDone`**,缺失即视为未验证。
-7. **手改后走一键重建**:改哪个文件夹就跑那个文件夹的 `rebuild.py`(先备份 → 校验 → 级联 → 导出)。**不要手动去调 `rs_render`**。
+7. **手改后走一键重建**:改哪个文件夹就跑那个文件夹的 `rebuild.py`(自动备份 → 级联 → 自检)。**不要手动去调 `rs_render`**。
 8. ASR 原始输出**必须经你校对**后才能用;校对改文本后**按字级锚点重聚合**(见 `rules/align.md`),不得沿用旧时间戳插值。
 9. TTS 长文**先全量合成落盘**再进时间线;逐句时长以 ffprobe **实测值**为准(禁止估算累加)。
 10. 渲染:统一帧率 → 逐段提取 → concat → 合成 → 混音 → **字幕最后叠** → 编码(rs_render 已固化,勿绕过)。
@@ -109,7 +110,7 @@ S0 素材 ─► S1 转写+字级对齐 ─► S2 粗剪 ─► S3 基础合成 
 14. **竖屏(9:16)每卡 10–12 字、CPS ≤9 字/秒、单卡 0.83–7s**;旧工程按当时 `maxChars` 复现,不追改。
 15. 素材/中间件/git:`01_materials` 只读;大文件与 `models/` 不进 git;工程目录 `<YYYYMMDD>-<中文标题>-<类型>`;产物中文命名并带 variantId;测试件用 `dev-` 前缀,交付前 `rs_cleanup` 必删。
 16. 感知备选:Agent 自带视觉优先自己看图;OCR/VQA 仅在批量/无视觉/`force_local` 时用。
-17. 开工必读 `brief.videoType`(`talking-head` / `talking-head+animation` / `pure-animation`)对应的 `rules/video-types/` 分册(**仅一册**);它同时定义该类型的**管线分支**(素材是否需预抠像 / 动画密度与贴合 / 声音来源)。预留扩展位:`screen-recording` / `interview` / `drama` / `film-commentary`(暂不实现)。
+17. 开工必读 `brief.videoType`(`talking-head` / `talking-head+animation` / `pure-animation` / `vlog` / `混剪`)对应的 `rules/video-types/` 分册(**仅一册**);它同时定义该类型的**管线分支**(素材是否需预抠像 / 动画密度与贴合 / 声音来源)。videoType 是**开放注册表**:新增类型 = 新增一册 + 一条 `templates/styles/registry.json` 条目,不改引擎;预留扩展位:`screen-recording` / `interview` / `drama` / `film-commentary`(暂不实现)。
 18. **卡拉OK(--karaoke)**:挂字必须在必并/合规校验**之前**,以「显示字形」(含标点,`_clean_card` 剥掉的标点会在 `\kf` 层经 chars 带回)为唯一预算口径;合并事件同步拼 `chars`;任何 ASS Dialogue 文本匹配/计数前必须剥 `{...}` override 标签(rs_sync 已内置)。
 19. **必并线 = 单卡时长下限(0.83s)**,两线之间不留死区(不并又延不满 → L0 硬失败);预算放不下时向下一卡吞并,起点取短卡(对齐精度不动)。
 20. **卡时间的调整只能在「释放余量」内**:起点 ≤ 首字 `startMs`、终点 ≥ 末字 `endMs` 且延长 ≤ +0.30s;余量耗尽仍不足 2 帧就保留字级精确时间(对齐精度 > 卡间距)。`rs_sync` 同时校验起点与**终点**偏移。
@@ -117,6 +118,7 @@ S0 素材 ─► S1 转写+字级对齐 ─► S2 粗剪 ─► S3 基础合成 
 22. **转场字段唯一 `durMs`**(`ms` 是幽灵字段,validate 直接报错;v0.10 起 0<durMs<1帧 自动提升为 `joinCrossfadeMs` 交叉溶解——尾帧扩展法保证零时间漂移,ADR-0023;仅源间隙放不下时才整链弃用走 concat)。多段人声的 `sourceInMs` 由 rs_render 输入寻址消费——不要再手工预抽 voice_full(绕过法仍有效但不必需)。**S9 自带成片音频内容闸**(ADR-0021):交付前对成片音轨跑 ASR 对账,报告"跳过"也要核对原因。ASR 未就绪一律自动部署(`fun_asr.py --ensure`),禁止让用户手装或启动服务。
 23. **`subtitle.ass` 才是烧录字段**(只写 `subtitle.source` = 不烧字幕,v0.12 渲染时显式 WARN)。生成式 IR(from-cutlist / **from-cards**)一律不得手改,重建覆盖受 `_manual_edits` 护栏。**音频闸/对齐闸不过 → 修归一化与坐标系,禁止调阈值**(AUDIO_SIM_MIN / END_TOL_MS 等);渲染后时长断言报警必须查完再交付。
 24. **绿幕由用户自行预处理**(ADR-0031,v0.14):CutFlow 不再抠像/合成背景 —— 用户须先抠好并合成背景再交付编辑。S0 摄取自动抽帧检测幕布,命中即阻断(`GREEN_SCREEN_INPUT`),提示用户处理;确属误判时用户说明后 `rs_ingest.py green-ok <工程> --reason "…"` 留痕放行。L0 自检二次把关;**禁止绕过检测或替用户抠像**。
+25. **禁止为一次性任务现写剪辑逻辑脚本**。凡「给定输入必得同一输出」且可能复用的(批量生成、装配挂轨、导出兜底、清理对账),必须升格为官方 `rs_*` 子命令并进能力目录(改完跑 `rs_caps.py generate` 再生成 `skills/cutflow/capabilities.json`);语义、创作、审美类的一次性判断仍归 Agent,不在此列。
 
 ---
 
@@ -125,66 +127,75 @@ S0 素材 ─► S1 转写+字级对齐 ─► S2 粗剪 ─► S3 基础合成 
 | 环节 | 命令 |
 |------|------|
 | 体检 | `rs_doctor.py --report` |
-| **素材摄取(S0)** | `rs_ingest.py scan <工程>` / `rs_ingest.py deliverables <工程>` / `rs_ingest.py green-ok <工程> --reason "误判说明"` |
-| **阶段状态 / 增量** | `rs_run.py --status` / `--from S3` / `--only S7` / `--dirty` / `--explain S7` |
+| **意图编译(阶段四,S0 前)** | `rs_intent.py compile --brief <b.json> --plan <p.json> --out <工程>`(`--dry-run` 只打印推断表不落盘;`--prompt <file>` 原文锚定 decision_log) |
+| **素材摄取(S0)** | `rs_ingest.py scan <工程>` / `rs_ingest.py deliverables <工程>` / `rs_ingest.py green-ok <工程> --reason "误判说明"` / `rs_ingest.py decisions <工程>` |
+| **阶段状态 / 增量** | `rs_run.py --status` / `--from S3` / `--only S7` / `--dirty` / `--explain S7` / `--auto` |
 | **一键重建** | `rs_run.py --init`(生成 rebuild.py)/ `--from S8 --force` / `--rollback` |
 | **分级自检** | `rs_verify.py <工程>` / `--level L1` / `--mark-first` |
 | **自带 ASR** | `python tools/fun_asr.py <媒体> [--backend onnx\|pkg]` / `--probe` |
 | **ASR 部署** | `python tools/fetch_deps.py asr [--onnx\|--pkg\|--seed-models D]` |
 | 转写 + 对齐(S1) | `rs_align.py build --media <素材> --out 05_ir/wordline.json`(专名错 → `--terms-file 00_brief/terms.txt` 热词重跑,勿手改字) |
 | wordline 平滑 | `rs_align.py smooth 05_ir/wordline.json --out 05_ir/wordline.final.json`(标点零宽+重叠钳制,纯动画/配音工程用) |
-| 重映射 | `rs_align.py remap 05_ir/wordline.json --cutlist 04_cut/cutlist.applied.json --out ...` |
-| 粗剪(S2) | `rs_cut.py 05_ir/wordline.json --detect all --out 04_cut`(`--media 源` 增能量检测;`--apply ...`)| 
+| 重映射 | `rs_align.py remap 05_ir/wordline.json --cutlist 04_cut/cutlist.applied.json --out ...`(space=final 会拒绝二次重映射;`--force-remap` 强行越过) |
+| 已 remap 工程清幽灵字 | `rs_align.py prune-ghost 05_ir/wordline.final.json --cutlist 04_cut/cutlist.applied.json`(丢被删句残留、重排 i;替代临时脚本) |
+| 只改时长不动字符时间 | `rs_align.py refresh-durations 05_ir/wordline.json --media 01_materials/a.mp4`(ffprobe 实测,时长账自动改平) |
+| 粗剪(S2) | `rs_cut.py 05_ir/wordline.json --detect all --out 04_cut`(`--media 源` 增能量检测+实测片尾保底;`--apply ...` 自动同步 wordline 时长账)| 
 | 按文本裁片 | `rs_cut.py 05_ir/wordline.json --from-text "引文"`(只保留引文区间;引文外走 guard) |
 | CutList→IR | `rs_ir.py build --from-cutlist 04_cut/cutlist.applied.json --slug X --out 05_ir/project.json` |
-| **纯动画组装** | `rs_ir.py build --from-cards 03_assets/artboard/manifest.json --anchors 00_brief/cards.json --wordline 05_ir/wordline.json --voice 03_assets/vo/voice.wav --slug X --ratio 16x9 --out 05_ir/project.json` |
+| **纯动画组装** | `rs_ir.py build --from-cards 03_assets/artboard/manifest.json --anchors 00_brief/cards.json --wordline 05_ir/wordline.json --voice 03_assets/vo/voice.wav --slug X --ratio 16x9 --out 05_ir/project.json`;口播+动画挂轨(S4,原 _apply_overlay)用 `rs_ir.py add-overlay <ir> --manifest <manifest> --plan <cards.json>`(挂轨+usedIn+manualEdit;同名轨须 `--replace`) |
 | IR 校验 | `rs_ir.py validate 05_ir/project.json` |
 | 渲染 | `rs_render.py 05_ir/project.json --ratio 9x16 --profile final` |
 | 品牌变体 | `rs_brand.py --expand --logos a,b --ratios 9x16,16x9 --out 05_ir/variants.json` |
 | 音效落点 | `rs_sfx.py 05_ir/project.json --auto --wordline 05_ir/wordline.json` |
 | 字幕 | `rs_subtitle.py --from-wordline 05_ir/wordline.json --platform douyin --out 06_output`（`--platform` 取预设；显式 `--style/--ratio/--max-chars` 优先） |
-| **artboard 闭环** | `rs_artboard.py 03_assets/artboard/manifest.json --export\|--apply` |
+| **artboard 闭环(S4,原 _gen_cards)** | `rs_artboard.py gen-cards --from 00_brief/cards.json --out 03_assets/artboard/manifest.json`(批量生成;同一份计划喂 add-overlay)/ `rs_artboard.py <manifest> --export` / `--apply <ir>`;主引擎不可用时 `rs_artboard.py export-fallback <manifest>`(浏览器截图兜底) |
 | 对齐自检 | `rs_sync.py --wordline ... --ass 06_output/subtitles.ass --out 06_output --video 成片.mp4 --audio-content --qc` |
 | 抽帧目测 | `rs_bench.py <成片> --ir 05_ir/project.json --out 06_output/bench.png` |
-| 文案 | `rs_meta.py --wordline ... --brief 00_brief/brief.md --platform douyin,bili` |
+| 文案 | `rs_meta.py --wordline ... --brief 00_brief/brief.md --platform douyin,bili --out 06_output` |
 | 剪映草稿 | `rs_jy_draft.py 05_ir/project.json --name <名>` |
 | 抽帧 / 感知 | `rs_frames.py` / `rs_sense.py` |
 | 配音 | `rs_tts.py --script 文案.txt --out 03_assets/tts` |
 | **配音强制对齐** | `rs_dub.py align --wordline 05_ir/wordline.json --audio 03_assets/tts/all.wav --write`（TTS 句内估算 → 真实字级） |
 | 清理 | `rs_cleanup.py <工程> [--apply]` |
 
-### 4.1 CutForge 编辑器桥(四桥;人与 AI 在同一条时间线上)
+### 4.1 CutForge 编辑器桥(四桥 + artboard 桥;人与 AI 在同一条时间线上)
 
-CutForge(github.com/GreenChennai/cutforge)是同伴项目:Op 级可审计编辑器。
-工程被 CutForge 打开/编辑后,`05_ir/project.json` 会带 `schemaVersion` 与稳定 id
-(B8 护栏会识别为编辑痕迹)。四桥(均在 `skills/cutflow/scripts/`):
+CutForge(github.com/GreenChennai/cutforge)是同伴项目:Op 级可审计编辑器;工程被它打开/编辑后,`05_ir/project.json` 带 `schemaVersion` 与稳定 id(B8 护栏识别)。桥在 `skills/cutflow/scripts/`,错误码与 CutForge 5.4 码表对齐(输入错 `PRECONDITION_FAILED`,缺依赖 `DEP_MISSING`):
 
 | 桥 | 命令 | 用途 |
 |---|---|---|
-| editor | `rs_editor.py timeline <工程>` / `view <工程>` / `check <工程>` | 时间线/视图投影(原生 IR 无 id 时回退 `V1#2` 并标 `idSource=fallback`) |
-| notes | `rs_notes.py tail <工程>` / `--probe` | 标注(notes.json)只读审计桥 |
-| oplog | `rs_oplog.py tail <工程> [--rev N] [--actor agent]` / `report` | OpLog 审计桥(半行截断语义与 cutforge-io 一致) |
-| gate | `rs_gate.py M0 [--check X] --json` / `--probe` | 门禁透传桥(probe 真检 gate.py 在位) |
+| editor | `rs_editor.py timeline <工程>` / `view <工程>` / `check <工程>` / `diff <工程>` | 时间线/视图/体检/变更识别(无原生 id 回退内容寻址 `cf-…` 可作锚点;`displayId` 仅人读,禁止当锚点) |
+| notes | `rs_notes.py list <工程> [--state open]` / `stats <工程>` | 标注(notes.json)只读审计桥 |
+| oplog | `rs_oplog.py tail <工程> [--rev 3] [--actor agent]` / `report` | OpLog 审计桥(半行截断语义与 cutforge-io 一致) |
+| gate | `rs_gate.py M0–M7 [--check X] --json` / `--probe` | 门禁透传桥(范围以 gate.py 注册表为准;无里程碑参数报错) |
 
-MCP 编排工具(stage_run/render/export_jianying 等)由 CutForge 侧封装同一批脚本;
-两侧 CI 互跑桥冒烟。
+MCP 编排工具由 CutForge 侧封装同一批脚本,两侧 CI 互跑桥冒烟;手册命令有「↔ argparse 机械对拍」门禁(`tests/check_manual_cmds.py`),照抄即可执行。
 
 ---
 
 ## 5. 改了东西怎么办(手工编辑工作流)
 
-每个阶段文件夹里都有 `rebuild.py`(`rs_run.py --init` 生成):
+先 `rs_run.py --status` 看哪个阶段 stale(带 `staleReason`),再按位置选重建入口(`rs_run.py --init` 生成各 rebuild.py):
 
 | 你改了什么 | 运行哪个 |
 |---|---|
 | 字幕 `06_output/subtitles.ass` | `python 06_output/rebuild.py` |
 | IR / Wordline `05_ir/` | `python 05_ir/rebuild.py`;⚠ **手改过 `05_ir/project.json`**(手注单 clip 音频/转场)→ 改跑 `python 06_output/rebuild.py`(S8 只用现有 ass,不碰 IR) |
 | 粗剪决策 action 改动 `04_cut/cutlist.json` | `python <scripts>/rs_cut.py --apply 04_cut/cutlist.json`(重算 keep;**不要**重跑 S2 detect——会冲掉 action 编辑) |
-| artboard 卡片 `03_assets/artboard/` | `python 03_assets/artboard/rebuild.py` |
-| 拿不准 | `python rebuild.py`(全量) |
+| artboard 卡片 `03_assets/artboard/` | `python 03_assets/artboard/rebuild.py`(一条龙:只重导源码变了的卡 → 回填 IR → S4 级联) |
+| 拿不准 | `python rebuild.py`(根目录,全量) |
 
-每个脚本固定四步:**备份 → 校验 → 级联(`--force` 只作用于起点,上游走缓存)→ 导出 + 自检**。
-校验不过会**停住并指出具体行**;跑砸了可 `rs_run.py --rollback` 还原。
+rebuild.py 的实际行为:`--from <Sx> --force` 起跑,**每个真正写盘的阶段跑前自动备份**到 `_state/backup/`(留最近 5 次),末端按策略跑 L0/L1 自检;输入校验由各阶段脚本承担(不合法会停住并指出具体位置);跑砸了 `rs_run.py --rollback` 还原。
+
+---
+
+## 5.5 编辑器改了什么(变更识别闭环 RT)
+
+人在 CutForge 里改完盘面,CutFlow 侧按此链路接住(顺序固定):**`rs_run.py --status`**(outHash
+护栏把带外改写标 stale;有会话摘要则末尾列「rev 区间 + 人工 Op」)→ **`rs_editor.py diff <工程>`**
+(有摘要按 Op 逐条人话;无摘要拿 `.cutforge/bases/` 最新基线对比盘面,如「V2 轨新增 1 个 overlay 卡
+3.2–5.0s」)→ **定向重建**(只动字幕走 `06_output/rebuild.py`;动 IR/卡片走对应 rebuild.py;拿不准
+`rs_run.py --from S3 --force`,上游走缓存)→ **重跑 S9 自检**(`rs_run.py --verify-full`,画面变过必 L1)。何时用哪条:看「脏没脏」用 --status;要「改了什么」用 diff;要「接着出片」走后两步。
 
 ---
 
@@ -201,7 +212,7 @@ MCP 编排工具(stage_run/render/export_jianying 等)由 CutForge 侧封装同�
  "outputs":["9x16"]}
 ```
 
-风格 token:`templates/styles/`(talkshow-bold / tutorial-clean / motion-info)。
+风格 token:`templates/styles/`(talkshow-bold / tutorial-clean / motion-info);风格组合查表 `templates/styles/registry.json`(rs_intent 消费,新增风格 = 加条目不改引擎)。
 
 ---
 
@@ -209,7 +220,7 @@ MCP 编排工具(stage_run/render/export_jianying 等)由 CutForge 侧封装同�
 
 ```
 <工程>/
-├── 00_brief/brief.md
+├── 00_brief/                         brief.md / terms.txt / intent_decisions.json(意图编译产物)
 ├── 01_materials/                      只读
 ├── 02_sensed/                         转写与校对
 ├── 03_assets/                         ★artboard/manifest.json
@@ -243,7 +254,7 @@ MCP 编排工具(stage_run/render/export_jianying 等)由 CutForge 侧封装同�
 
 **Token / 协作级**
 
-- ❌ **在能用脚本的地方让 Agent 代劳**(逐字校对、语义润色除外)。
+- ❌ **在能用脚本的地方让 Agent 代劳**(逐字校对、语义润色除外;为一次性任务现写剪辑逻辑脚本同禁 —— Hard Rule 25)。
 - ❌ **一次读两个以上规则文件**。
 - ❌ **Agent 主动跑 L1 目测**(用户没要求时)—— 费时间费 Token,还剥夺用户验收权。
 - ❌ **在没有备份的情况下跑 `rebuild.py`**。

@@ -1,0 +1,403 @@
+{
+ "version": 1,
+ "_doc": [
+  "风格注册表(副文档 04 · 阶段四 N2):风格 = videoType × 平台预设 × 画幅 × 节奏档 × 字幕样式 × 卡片模板 × BGM 库 的组合声明。",
+  "单一真相源(收编而非复制):本文件只存【引用键】,机械对拍(tests/test_v21_prompt_auto.py)保证每个键真实存在 ——",
+  "  · platform  → templates/platforms.json 的 platforms 键(画幅/安全区/每卡字数/CPS/字号由它供给);",
+  "  · style     → templates/styles/<style>.yaml 的文件名(字幕样式 token/配色/转场语法档/bgm_gain_db 由它供给);",
+  "  · videoTypes.<id>.doc → rules/video-types/ 分册文件(节奏策略与该型验收清单);",
+  "  · pacing    → 本文件 pacingTiers 键(卡时长目标区间 / BGM 有无与增益 / 视觉节拍)。",
+  "新增一个风格 = 新增一条 entries 条目 +(必要时)一册 video-types 文档,不改引擎(N5/验收判据 5)。",
+  "消费者:skills/cutflow/scripts/rs_intent.py compile(校验/补默认/查表/落 00_brief 产物);禁止手改条目外的第三处默认。"
+ ],
+ "videoTypes": {
+  "talking-head": {
+   "label": "纯口播",
+   "doc": "rules/video-types/纯口播.md"
+  },
+  "talking-head+animation": {
+   "label": "口播+动画",
+   "doc": "rules/video-types/口播+动画.md"
+  },
+  "pure-animation": {
+   "label": "纯动画",
+   "doc": "rules/video-types/纯动画.md"
+  },
+  "vlog": {
+   "label": "Vlog 生活记录",
+   "doc": "rules/video-types/vlog.md"
+  },
+  "混剪": {
+   "label": "混剪卡点",
+   "doc": "rules/video-types/混剪.md"
+  }
+ },
+ "pacingTiers": {
+  "fast": {
+   "cardMs": [
+    900,
+    3500
+   ],
+   "bgm": false,
+   "bgmGainDb": -18,
+   "visualBeatSec": [
+    2,
+    3
+   ],
+   "wpm": [
+    280,
+    330
+   ],
+   "note": "快节奏:信息密度高,前 3 秒定去留"
+  },
+  "normal": {
+   "cardMs": [
+    1500,
+    5000
+   ],
+   "bgm": false,
+   "bgmGainDb": -18,
+   "visualBeatSec": [
+    2,
+    5
+   ],
+   "wpm": [
+    240,
+    280
+   ],
+   "note": "常规口播节奏(通用规则缺省)"
+  },
+  "slow": {
+   "cardMs": [
+    2500,
+    7000
+   ],
+   "bgm": false,
+   "bgmGainDb": -20,
+   "visualBeatSec": [
+    3,
+    5
+   ],
+   "wpm": [
+    200,
+    240
+   ],
+   "note": "慢节奏:深度内容/教程演示"
+  },
+  "music": {
+   "cardMs": [
+    800,
+    2400
+   ],
+   "bgm": true,
+   "bgmGainDb": -12,
+   "visualBeatSec": [
+    1,
+    2
+   ],
+   "wpm": [
+    0,
+    0
+   ],
+   "note": "音乐驱动(混剪卡点):BGM 是时间轴骨架,画面事件跟节拍"
+  }
+ },
+ "entries": [
+  {
+   "id": "knowledge-talkshow-douyin",
+   "label": "知识口播·抖音竖屏",
+   "videoTypes": [
+    "talking-head"
+   ],
+   "defaultFor": [
+    "talking-head"
+   ],
+   "platform": "douyin",
+   "ratio": "9x16",
+   "style": "talkshow-bold",
+   "styleTemplate": "talkshow-bold",
+   "pacing": "fast",
+   "cards": {
+    "template": "info",
+    "density": "少"
+   },
+   "bgmLibrary": null,
+   "match": {
+    "keywords": [
+     "知识口播",
+     "口播",
+     "抖音",
+     "竖屏",
+     "快节奏",
+     "大字幕",
+     "科普",
+     "知识"
+    ]
+   },
+   "overrides": [
+    "platform",
+    "ratio",
+    "style",
+    "pacing",
+    "maxChars",
+    "cpsMax",
+    "bgm",
+    "durationTarget",
+    "density"
+   ]
+  },
+  {
+   "id": "tutorial-bilibili",
+   "label": "教程·B站横屏",
+   "videoTypes": [
+    "talking-head"
+   ],
+   "defaultFor": [],
+   "platform": "bilibili",
+   "ratio": "16x9",
+   "style": "tutorial-clean",
+   "styleTemplate": "tutorial-clean",
+   "pacing": "slow",
+   "cards": {
+    "template": "chapter",
+    "density": "少"
+   },
+   "bgmLibrary": null,
+   "match": {
+    "keywords": [
+     "教程",
+     "B站",
+     "bilibili",
+     "横屏",
+     "深度",
+     "步骤"
+    ]
+   },
+   "overrides": [
+    "platform",
+    "ratio",
+    "style",
+    "pacing",
+    "maxChars",
+    "cpsMax",
+    "bgm",
+    "durationTarget",
+    "density"
+   ]
+  },
+  {
+   "id": "knowledge-cards-douyin",
+   "label": "知识口播+信息卡·抖音竖屏",
+   "videoTypes": [
+    "talking-head+animation"
+   ],
+   "defaultFor": [
+    "talking-head+animation"
+   ],
+   "platform": "douyin",
+   "ratio": "9x16",
+   "style": "talkshow-bold",
+   "styleTemplate": "talkshow-bold",
+   "pacing": "normal",
+   "cards": {
+    "template": "info",
+    "density": "多",
+    "visualBeatSec": [
+     2,
+     3
+    ]
+   },
+   "bgmLibrary": null,
+   "match": {
+    "keywords": [
+     "口播+动画",
+     "信息卡",
+     "知识卡",
+     "动画口播",
+     "卡片"
+    ]
+   },
+   "overrides": [
+    "platform",
+    "ratio",
+    "style",
+    "pacing",
+    "maxChars",
+    "cpsMax",
+    "bgm",
+    "durationTarget",
+    "density"
+   ]
+  },
+  {
+   "id": "motion-story-bilibili",
+   "label": "动画信息流·B站横屏",
+   "videoTypes": [
+    "pure-animation"
+   ],
+   "defaultFor": [
+    "pure-animation"
+   ],
+   "platform": "bilibili",
+   "ratio": "16x9",
+   "style": "subtitle-white",
+   "styleTemplate": "motion-info",
+   "pacing": "normal",
+   "cards": {
+    "template": "scene",
+    "density": "多"
+   },
+   "bgmLibrary": {
+    "enabled": true,
+    "gainDb": -18
+   },
+   "match": {
+    "keywords": [
+     "纯动画",
+     "动画",
+     "场景卡",
+     "信息流",
+     "无人出镜"
+    ]
+   },
+   "overrides": [
+    "platform",
+    "ratio",
+    "style",
+    "pacing",
+    "maxChars",
+    "cpsMax",
+    "bgm",
+    "durationTarget",
+    "density"
+   ]
+  },
+  {
+   "id": "vlog-douyin",
+   "label": "Vlog 生活记录·抖音竖屏",
+   "videoTypes": [
+    "vlog"
+   ],
+   "defaultFor": [
+    "vlog"
+   ],
+   "platform": "douyin",
+   "ratio": "9x16",
+   "style": "talkshow-bold",
+   "styleTemplate": "talkshow-bold",
+   "pacing": "normal",
+   "cards": {
+    "template": "info",
+    "density": "无"
+   },
+   "bgmLibrary": {
+    "enabled": true,
+    "gainDb": -18
+   },
+   "match": {
+    "keywords": [
+     "vlog",
+     "Vlog",
+     "VLOG",
+     "生活记录",
+     "日常",
+     "碎片",
+     "旅拍"
+    ]
+   },
+   "overrides": [
+    "platform",
+    "ratio",
+    "style",
+    "pacing",
+    "maxChars",
+    "cpsMax",
+    "bgm",
+    "durationTarget",
+    "density"
+   ]
+  },
+  {
+   "id": "mixcut-douyin",
+   "label": "混剪卡点·抖音竖屏",
+   "videoTypes": [
+    "混剪"
+   ],
+   "defaultFor": [
+    "混剪"
+   ],
+   "platform": "douyin",
+   "ratio": "9x16",
+   "style": "subtitle-white",
+   "styleTemplate": "motion-info",
+   "pacing": "music",
+   "cards": {
+    "template": "scene",
+    "density": "多"
+   },
+   "bgmLibrary": {
+    "enabled": true,
+    "gainDb": -12
+   },
+   "match": {
+    "keywords": [
+     "混剪",
+     "卡点",
+     "踩点",
+     "音乐驱动",
+     "remix",
+     "高燃"
+    ]
+   },
+   "overrides": [
+    "platform",
+    "ratio",
+    "style",
+    "pacing",
+    "maxChars",
+    "cpsMax",
+    "bgm",
+    "durationTarget",
+    "density"
+   ]
+  },
+  {
+   "id": "knowledge-xiaohongshu",
+   "label": "知识口播·小红书 3:4",
+   "videoTypes": [
+    "talking-head"
+   ],
+   "defaultFor": [],
+   "platform": "xiaohongshu",
+   "ratio": "3x4",
+   "style": "talkshow-bold",
+   "styleTemplate": "talkshow-bold",
+   "pacing": "fast",
+   "cards": {
+    "template": "info",
+    "density": "少"
+   },
+   "bgmLibrary": null,
+   "match": {
+    "keywords": [
+     "小红书",
+     "3x4",
+     "3:4",
+     "三比四",
+     "图文感"
+    ]
+   },
+   "overrides": [
+    "platform",
+    "ratio",
+    "style",
+    "pacing",
+    "maxChars",
+    "cpsMax",
+    "bgm",
+    "durationTarget",
+    "density"
+   ]
+  }
+ ]
+}

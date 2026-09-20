@@ -31,7 +31,8 @@ CFG = {"ffmpeg_dir": str(Path(FFMPEG).parent)} if FFMPEG else {}
 
 
 def _gen(path: Path, args: list[str]) -> Path:
-    p = subprocess.run([FFMPEG, "-y", "-v", "error", *args], capture_output=True, text=True)
+    p = subprocess.run([FFMPEG, "-y", "-v", "error", *args], capture_output=True, text=True,
+                       encoding="utf-8", errors="replace", timeout=300)
     if p.returncode != 0:
         pytest.skip(f"lavfi 不可用:{p.stderr[-120:]}".encode("ascii", "replace").decode())
     return path

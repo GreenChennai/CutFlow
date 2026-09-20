@@ -556,12 +556,19 @@ def test_rs_ingest_deliverables_lists_outputs(tmp_path, monkeypatch, capsys):
         {"firstCheck": {"done": True}, "lastL0": {"level": "L0", "at": "2026-09-12"}}),
         encoding="utf-8")
     monkeypatch.setattr(sys, "argv", ["rs_ingest.py", "deliverables", str(root)])
-    assert rs_ingest.main() == 0
-    data = _last_json(capsys)["data"]
+    # P18-1:交付对账不齐必须非零退出(缺封面/字幕/元数据不再假绿 ok=true)
+    assert rs_ingest.main() == 4
+    env = _last_json(capsys)
+    data = env["data"]
+    assert env["code"] == "DELIVERABLES_INCOMPLETE" and env["ok"] is False
     assert data["ratio"] == "3x4" and data["firstCheckDone"] is True
+    missing = " ".join(data["missing"])
+    for need in ("subtitles.ass", "master.srt", "封面.png", "metadata.json"):
+        assert need in missing, f"缺失项必须点名:{need}"
     doc = (root / "06_output" / "deliverables.md").read_text(encoding="utf-8")
     assert "final_demo_34.mp4" in doc and "3x4" in doc
     assert "subtitles.ass" in doc, "缺失项必须点名"
+    assert "缺失项(交付前必须补齐)" in doc
 
 
 def test_run_spec_registers_ingest_at_s0():

@@ -114,7 +114,10 @@ def _max_chars(root: Path) -> int:
     if p.is_file():
         try:
             params = json.loads(p.read_text(encoding="utf-8")).get("params") or {}
-            v = (params.get("maxChars") or {}).get(ratio)
+            # P12-1:params.maxChars 支持两种形态 —— 按画幅字典(默认快照)或
+            # brief 显式声明的全局整数(每卡字数:N);两种都消费,读不到回退默认。
+            mc = params.get("maxChars")
+            v = mc.get(ratio) if isinstance(mc, dict) else mc
             if isinstance(v, int) and 4 <= v <= 40:
                 return v
         except json.JSONDecodeError:
@@ -237,11 +240,27 @@ def check_alignment(root: Path) -> dict:
             "summary": res}
 
 
+def list_videos(root: Path) -> list[Path]:
+    """全部成片路径(P10b-1):06_output 顶层 + final/ + branded/ 独占子目录。
+
+    S8/S5 的交付成片已各落独占子目录;这里合并列出(按 mtime),
+    让 L0 产物检查 / 体检 / L1 抽帧清单在新旧落点上都找得到成片。
+    """
+    out = root / "06_output"
+    if not out.is_dir():
+        return []
+    vids: list[Path] = []
+    for pat in ("*.mp4", "final/*.mp4", "branded/*.mp4"):
+        vids.extend(out.glob(pat))
+    return sorted(vids, key=lambda p: p.stat().st_mtime)
+
+
 def check_artifacts(root: Path) -> dict:
     out = root / "06_output"
-    videos = sorted(p.name for p in out.glob("*.mp4")) if out.is_dir() else []
-    return {"name": "产物存在", "ok": bool(videos), "skipped": None if videos else "尚无成片",
-            "videos": videos}
+    vids = list_videos(root)
+    names = sorted(p.relative_to(out).as_posix() for p in vids)
+    return {"name": "产物存在", "ok": bool(vids), "skipped": None if vids else "尚无成片",
+            "videos": names}
 
 
 def check_qc(root: Path) -> dict:
@@ -253,8 +272,7 @@ def check_qc(root: Path) -> dict:
     ADR-0021 失败语义),不硬失败;体检判 FAIL 才 ok=False。
     """
     name = "成片体检(黑帧/冻结/VFR/响度)"
-    out = root / "06_output"
-    videos = sorted(out.glob("*.mp4"), key=lambda p: p.stat().st_mtime) if out.is_dir() else []
+    videos = list_videos(root)
     if not videos:
         return {"name": name, "ok": True, "skipped": "尚无成片"}
     try:
@@ -342,9 +360,10 @@ L1_CHECKLIST = [
 
 def l1_payload(root: Path) -> dict:
     out = root / "06_output"
-    videos = sorted(p.name for p in out.glob("*.mp4")) if out.is_dir() else []
+    vids = list_videos(root)
+    names = sorted(p.relative_to(out).as_posix() for p in vids)
     cmds = [f"python skills/cutflow/scripts/rs_bench.py 06_output/{v} "
-            f"--ir 05_ir/project.json --out 06_output/bench_{Path(v).stem}.png" for v in videos]
+            f"--ir 05_ir/project.json --out 06_output/bench_{Path(v).stem}.png" for v in names]
     return {"level": "L1", "needsAgentReview": True,
             "checklist": L1_CHECKLIST, "benchCommands": cmds,
             "note": "L1 判定权在 Agent/用户;脚本只产出清单与抽帧命令,不自动判定"}
@@ -416,8 +435,7 @@ def main() -> int:
     res = collect_l0(root)
     content_verdict = None
     if a.content:
-        videos = sorted((root / "06_output").glob("*.mp4"), key=lambda p: p.stat().st_mtime) \
-            if (root / "06_output").is_dir() else []
+        videos = list_videos(root)
         if not videos:
             content_verdict = {"verdict": "indetermined", "note": "无成片,内容诊断未运行"}
         else:
