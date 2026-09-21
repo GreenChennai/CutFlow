@@ -13,6 +13,17 @@ jobs:
           python-version: '3.13'
       - name: Install ffmpeg(测试夹具用 ffmpeg 现场合成媒体,与 M8-3 同纪律:硬门禁不跳过)
         run: choco install ffmpeg -y --no-progress
+      - name: Seed config.json(CI 最小配置:ffmpeg_dir 指向 runner 实际目录;本机配置不入库)
+        shell: python
+        run: |
+          import json, pathlib, shutil
+          exe = shutil.which("ffmpeg")
+          bin_dir = str(pathlib.Path(exe).parent) if exe else r"C:\ProgramData\chocolatey\bin"
+          cfg = json.loads(pathlib.Path("config.example.json").read_text(encoding="utf-8"))
+          cfg["ffmpeg_dir"] = bin_dir
+          pathlib.Path("config.json").write_text(
+              json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
+          print("config.json seeded; ffmpeg_dir =", bin_dir)
       - name: Python tests(本仓全量:断句片尾/状态机/意图编译/能力目录/剪映出口)
         run: |
           pip install pytest numpy -q

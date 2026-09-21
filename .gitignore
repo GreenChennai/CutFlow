@@ -34,3 +34,6 @@ dev-*
 _tmp/
 
 .cluster/
+
+# 例外:诊断回归夹具视频(432K,确定性合成)必须入库,CI 才能复现 test_v15
+!tests/fixtures/diagnosis/*.mp4
