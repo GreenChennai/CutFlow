@@ -710,11 +710,15 @@ def main() -> int:
     doc = json.loads(p.read_text(encoding="utf-8"))
     if a.subtitles:
         doc.setdefault("subtitle", {})["source"] = a.subtitles
-    cfg = load_config()
-    if not cfg.get("jianying59"):
-        return emit(False, "NO_CONFIG",
-                    "config.json 缺 jianying59 段 —— 本工具只写剪映 5.9 明文草稿,"
-                    "11.3+ 加密草稿永不读写", exit_code=3)
+    cfg: dict | None = None
+    if not a.dry_run:
+        # 只有真正写草稿才依赖剪映配置;--dry-run 只编译映射表,全新克隆/CI
+        # 没有 config.json 也能跑(gate 照校验素材与结构,与配置无关)
+        cfg = load_config()
+        if not cfg.get("jianying59"):
+            return emit(False, "NO_CONFIG",
+                        "config.json 缺 jianying59 段 —— 本工具只写剪映 5.9 明文草稿,"
+                        "11.3+ 加密草稿永不读写", exit_code=3)
     warnings: list[str] = []
     plan = compile_draft_plan(doc, p, cfg, warnings)
     gates = plan_gates(plan)
