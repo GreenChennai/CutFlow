@@ -183,13 +183,13 @@ def die(exit_code: int, code: str, message: str, data=None) -> "None":
 
 def ffmpeg_bin(cfg: dict | None = None) -> str:
     cfg = cfg or load_config()
-    p = Path(cfg["ffmpeg_dir"]) / "ffmpeg.exe"
+    p = Path(cfg.get("ffmpeg_dir", "")) / "ffmpeg.exe"
     return str(p) if p.is_file() else "ffmpeg"
 
 
 def ffprobe_bin(cfg: dict | None = None) -> str:
     cfg = cfg or load_config()
-    p = Path(cfg["ffmpeg_dir"]) / "ffprobe.exe"
+    p = Path(cfg.get("ffmpeg_dir", "")) / "ffprobe.exe"
     return str(p) if p.is_file() else "ffprobe"
 
 

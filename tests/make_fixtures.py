@@ -162,7 +162,7 @@ def main():
     mux(tmp, silent, base_wav, base, 0.0)
     ass = OUT / "baseline.ass"
     write_ass(ass, timeline, 0.0)
-    manifest.append({"name": "baseline", "video": str(base), "ass": str(ass),
+    manifest.append({"name": "baseline", "video": base.name, "ass": ass.name,
                      "expect": {"verdict": "pass", "D1": "pass", "D2": "pass"}})
 
     # FIX1 字幕 +0.5s
@@ -170,7 +170,7 @@ def main():
     mux(tmp, silent, base_wav, v1, 0.0)
     a1 = OUT / "fix1_subtitle_shift.ass"
     write_ass(a1, timeline, 0.5)
-    manifest.append({"name": "fix1-subtitle-shift", "video": str(v1), "ass": str(a1),
+    manifest.append({"name": "fix1-subtitle-shift", "video": v1.name, "ass": a1.name,
                      "expect": {"verdict": "issues", "D1": "fail"},
                      "note": "字幕整体 +0.5s(单卡偏移 500ms 触 D1 硬线)"})
 
@@ -179,7 +179,7 @@ def main():
     mux(tmp, silent, base_wav, v2, 0.45)
     a2 = OUT / "fix2_audio_shift.ass"
     write_ass(a2, timeline, 0.45)
-    manifest.append({"name": "fix2-audio-shift", "video": str(v2), "ass": str(a2),
+    manifest.append({"name": "fix2-audio-shift", "video": v2.name, "ass": a2.name,
                      "expect": {"verdict": "issues", "D2": "fail", "D1": "pass"},
                      "note": "音轨+字幕同延 0.45s,画面不动 → 口型错位;D2 应检出整体偏移"})
 
@@ -214,7 +214,7 @@ def main():
            {"text": "然后重新插拔再开机。", "start": cut_point + 0.1 + timeline[2]["dur"] + 0.6,
             "dur": timeline[3]["dur"]}]
     write_ass(a3, tl3, 0.0)
-    manifest.append({"name": "fix3-bad-cut", "video": str(v3), "ass": str(a3),
+    manifest.append({"name": "fix3-bad-cut", "video": v3.name, "ass": a3.name,
                      "expect": {"verdict": "issues", "D3b": "fail", "D1": "pass"},
                      "note": "第 2 句句中腰斩硬接 → 语义断裂;D3b 应抓突兀截断/悬空,D1 pass(字幕跟音轨一致)"})
 

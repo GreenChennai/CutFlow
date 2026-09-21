@@ -169,7 +169,12 @@ def _args_summary(parser: argparse.ArgumentParser, sub_dest: str | None) -> list
             elif act.default is None or act.default is False or act.default == "":
                 out.append(flag)
             else:
-                out.append(f"{flag}={act.default}")
+                dv = str(act.default)
+                # 仓库内绝对路径默认值按仓库相对形式入目录——否则目录随
+                # checkout 路径漂移,防漂移门禁在异机/CI 必红
+                if dv.startswith(str(REPO_ROOT)):
+                    dv = dv[len(str(REPO_ROOT)):].lstrip("/\\")
+                out.append(f"{flag}={dv}")
         elif act.nargs is None and act.dest != sub_dest:
             out.append(f"<{act.dest}>(必需)")
     return out

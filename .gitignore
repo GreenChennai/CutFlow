@@ -37,3 +37,6 @@ _tmp/
 
 # 例外:诊断回归夹具视频(432K,确定性合成)必须入库,CI 才能复现 test_v15
 !tests/fixtures/diagnosis/*.mp4
+
+# 例外:内置音效库(Mixkit 免费许可,CREDITS.md 同目录)——assets_sfx: 伪协议的解析目标
+!assets/sfx/*.mp3

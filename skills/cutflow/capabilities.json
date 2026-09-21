@@ -196,7 +196,7 @@
    "outputs": [],
    "gate": "",
    "args": [
-    "--out=E:\\平日资料\\GitHub\\CutFlow\\skills\\cutflow\\capabilities.json"
+    "--out=skills\\cutflow\\capabilities.json"
    ],
    "commands": [
     {

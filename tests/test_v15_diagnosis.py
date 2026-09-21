@@ -51,7 +51,12 @@ class TestDiagnosisRegression:
 
     def _case(self, name: str) -> dict:
         m = json.loads(MANIFEST.read_text(encoding="utf-8"))
-        return next(c for c in m if c["name"] == name)
+        c = next(c for c in m if c["name"] == name)
+        # 兼容旧绝对路径与新相对路径:相对路径锚定夹具目录(路径不硬编码盘符)
+        for k in ("video", "ass"):
+            p = Path(c[k])
+            c[k] = str(p if p.is_absolute() else FIXTURES / p)
+        return c
 
     def test_baseline_passes(self):
         """正常视频不得被误报(误报率 0/1)。"""

@@ -1,8 +1,8 @@
 [
  {
   "name": "baseline",
-  "video": "E:\\平日资料\\GitHub\\CutFlow\\tests\\fixtures\\diagnosis\\baseline.mp4",
-  "ass": "E:\\平日资料\\GitHub\\CutFlow\\tests\\fixtures\\diagnosis\\baseline.ass",
+  "video": "baseline.mp4",
+  "ass": "baseline.ass",
   "expect": {
    "verdict": "pass",
    "D1": "pass",
@@ -11,8 +11,8 @@
  },
  {
   "name": "fix1-subtitle-shift",
-  "video": "E:\\平日资料\\GitHub\\CutFlow\\tests\\fixtures\\diagnosis\\fix1_subtitle_shift.mp4",
-  "ass": "E:\\平日资料\\GitHub\\CutFlow\\tests\\fixtures\\diagnosis\\fix1_subtitle_shift.ass",
+  "video": "fix1_subtitle_shift.mp4",
+  "ass": "fix1_subtitle_shift.ass",
   "expect": {
    "verdict": "issues",
    "D1": "fail"
@@ -21,8 +21,8 @@
  },
  {
   "name": "fix2-audio-shift",
-  "video": "E:\\平日资料\\GitHub\\CutFlow\\tests\\fixtures\\diagnosis\\fix2_audio_shift.mp4",
-  "ass": "E:\\平日资料\\GitHub\\CutFlow\\tests\\fixtures\\diagnosis\\fix2_audio_shift.ass",
+  "video": "fix2_audio_shift.mp4",
+  "ass": "fix2_audio_shift.ass",
   "expect": {
    "verdict": "issues",
    "D2": "fail",
@@ -32,8 +32,8 @@
  },
  {
   "name": "fix3-bad-cut",
-  "video": "E:\\平日资料\\GitHub\\CutFlow\\tests\\fixtures\\diagnosis\\fix3_bad_cut.mp4",
-  "ass": "E:\\平日资料\\GitHub\\CutFlow\\tests\\fixtures\\diagnosis\\fix3_bad_cut.ass",
+  "video": "fix3_bad_cut.mp4",
+  "ass": "fix3_bad_cut.ass",
   "expect": {
    "verdict": "issues",
    "D3b": "fail",
