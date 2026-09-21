@@ -39,9 +39,27 @@ def _has_asr() -> bool:
     return (REPO / "tools" / "fun_asr.py").is_file()
 
 
+def _asr_ready() -> bool:
+    """真可用性探针:只查 fun_asr.py 存在不够——D1/D3b 依赖真实转写,
+    后端全不可用时诊断器只能给 indetermined(CI/裸机),这组测试应诚实跳过。"""
+    if not _has_asr():
+        return False
+    try:
+        p = subprocess.run(
+            [sys.executable, str(REPO / "tools" / "fun_asr.py"), "--probe"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120)
+        lines = [l for l in (p.stdout or "").splitlines() if l.strip()]
+        doc = json.loads(lines[-1])
+        backends = (doc.get("data") or {}).get("backends", {})
+        return bool(backends.get("pkg", {}).get("ready") or backends.get("onnx", {}).get("ready"))
+    except Exception:
+        return False
+
+
 needs_fixtures = pytest.mark.skipif(
     not MANIFEST.is_file(), reason="缺 tests/fixtures/diagnosis(先跑 tests/make_fixtures.py)")
-needs_asr = pytest.mark.skipif(not _has_asr(), reason="缺 tools/fun_asr.py")
+needs_asr = pytest.mark.skipif(not _asr_ready(),
+                               reason="ASR 后端不可用(pkg/onnx 均未就绪,D1/D3b 需真实转写)")
 
 
 @needs_fixtures
