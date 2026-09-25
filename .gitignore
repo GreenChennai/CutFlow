@@ -48,3 +48,5 @@ _tmp/
 
 # 例外:内置音效库(Mixkit 免费许可,CREDITS.md 同目录)——assets_sfx: 伪协议的解析目标
 !assets/sfx/*.mp3
+# 例外:内置 BGM 小曲库(M8 --bgm auto 消费,自产合成无版权约束)
+!skills/cutflow/assets/bgm/*.mp3
