@@ -12,5 +12,14 @@ bgm: {enabled: true, gainDb: -18, ducking: on_voice_only}   # [内部] vlog.md �
 transition: {default: hard_cut, allow: [fade], snapToBeat: false}   # [内部] vlog.md §2(硬切为主,场景大切换用 fade;禁花哨转场连用)
 subtitle: {style: talkshow-bold, maxChars: 12, cpsMax: 9, lyricOnly: false}   # [内部] vlog.md §3(只上人声对白,环境音/纯 BGM 段不出字幕)+ platforms.douyin.maxChars=12
 cards: {density: 无, template: info}   # [内部] vlog.md §3(默认无卡;地名/时间戳角标与订阅引导除外)+ registry.entries.vlog-douyin.cards
-capabilities: [cut.dead-air, qc.black-frame, vision.shot, vision.track, vision.reframe]   # [内部] registry.videoTypes.vlog.capabilities(M8 补登:rs_shot/rs_reframe 描述符已落地)
+capabilities: [cut.dead-air, qc.black-frame, vision.shot, vision.track, vision.reframe, fx.transition, fx.transition.t2, fx.entry, fx.combo, fx.text, fx.prescription, fx.usage-gate, fx.safety-flash, fx.transition.audio]   # [内部] registry.videoTypes 同源(M13 增 fx.* 家族)
 artboard: {styles: [xhs-cover], templates: ["opener:1", "endcard:1"]}   # [经验] 借 xhs-cover 暖底贴纸手账感做旅拍片头;artboard references/styles/xhs-cover.md
+
+# v2 M13/ADR-0059:效果处方(分册06 §7.4 vlog 照抄;碎片缝合/角标是必备语义)。
+effects_prescription:
+  transition: {min: 1, max_per_8s: 1, prefer: [tr.invisible.cut, tr.fade.black, tr.jcut], forbid: [tr.glitch.slice, tr.fade.fast, tr.flash.zoom, effect.glitch.rgb, effect.tv.old]}   # [内部] §7.4 必备 invisible.cut(碎片缝合)/常用 fade.black(场景大切换)/jcut(环境声先行);禁 glitch/flash(与自然感冲突)
+  in: {min: 1, max: 12, prefer: [in.fade.up, fx.kenburns, in.breathe]}   # [内部] §7.4 必备 in.fade.up(地名/时间戳角标)+ 常用 kenburns/breathe
+  out: {min: 1, max: 12, prefer: [out.fade.up]}   # [内部] §7.4 必备 out.fade.up(与入场成对,方向延续)
+  sfx: {min: 0, max: 20, per15s: 2, noRepeatWithinMs: 10000}
+  flashy_max: 0                                                # [内部] §7.4 禁 flash/glitch;whip.pan 仅转场前后都有运动(慎用档,min 侧不要求)
+  require_reason: true

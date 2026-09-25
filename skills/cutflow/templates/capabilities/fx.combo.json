@@ -1,0 +1,27 @@
+{
+ "id": "fx.combo",
+ "label": "组合/整段特效(compare.slider 等)",
+ "appliesTo": [
+  "talking-head",
+  "talking-head+animation",
+  "pure-animation",
+  "vlog",
+  "混剪",
+  "drama",
+  "screen-recording"
+ ],
+ "stage": "S8",
+ "detector": "rs_render.py",
+ "depends": [],
+ "degrade": {
+  "to": "none",
+  "trace": "fxDegraded",
+  "message": "组合特效注册表未部署;fxId 声明报错不静默"
+ },
+ "params": {
+  "generators": 27
+ },
+ "artifact": "timeline/fx_report.json",
+ "verify": "tests/test_effects.py",
+ "notes": "M13(分册02 §6.4):fx.compare.slider/fx.split.screen/fx.pip/fx.film.grain/fx.vignette/fx.lut.warm/cool 等 slot=combo 整段效果(filter_complex 模板机制)。"
+}

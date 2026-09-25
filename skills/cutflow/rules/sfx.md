@@ -18,7 +18,24 @@
 | **章节** | `markers[]` 的章节标记 | `riser` / `bell` |
 | **结尾** | 最后一张卡片 / 片尾 | `bell` |
 
-内置音色(仓库 `assets/sfx/`):`whoosh` `swipe` `pop` `click` `ding` `riser` `bell`。
+内置音色(M12 起真相源 = `skills/cutflow/assets/manifest.json`,按 `usage` 语义检索;
+旧 7 个名字 `whoosh` `swipe` `pop` `click` `ding` `riser` `bell` 保留为兜底引用名,
+`assets_sfx:<组名|id>` 两种写法都可解析)。每条素材带许可四字段
+(source/license/commercial/attribution)与 `aiGenerated` 标识(R45)。
+
+### 2.1 落点语义表(M12,逐条给触发判据)
+
+| 时机 | 音效(组) | 判据 |
+|---|---|---|
+| 章节卡入场 | `riser` / `chime` | markers `{ms,label}` 的 ms(rs_sfx 经 normalize_markers 统一口) |
+| 关键词/金句上屏 | `ding` | `--keywords` 或 IR `sfx.keywords` 命中词的首字锚点 |
+| 列举(第 N 项) | `pop`(第N)/ `click`(首先/其次/最后) | wordline 文本命中序数词/连接词 |
+| 数字/数据强调 | `duang` / `impact` | stat 卡入场点(rs_ir add-overlay 计划给定) |
+| 转场 | `whoosh`(按方向选变体) | clip.transition:fade→01、左擦/左滑→04(横扫)、上擦→02(上行)、圆展开→03(下行);**纯硬切不撒声**,jumpcut→轻 swipe |
+| 片尾定格 | `outro_bell` | 末段末尾 −0.8s |
+| 情绪低谷 | `heartbeat` | 语速骤降 + 长停顿(VAD 判据;草案期人工/Agent 标注) |
+
+**奇偶交替废止**:同类型转场永远得同音色(可复现);方向由 TRANSITION_PREFER 表映射到具体变体。
 
 ## 3. 密度约束(防噪)
 
@@ -31,6 +48,8 @@
 3. 列举
 4. 氛围类
 
+**新增(M12):同一音效 10s 内不得重复**(防"哒哒哒");**混剪类(videoType=mixcut)转场音效默认让位 BGM 卡点**(BGM 即时间轴骨架,§5.5.1)。
+
 被丢弃的候选写入 `06_成片输出/sfx_dropped.md`,可人工捞回——**不静默丢弃**。
 
 ## 4. 音量与混音
@@ -42,8 +61,9 @@
 ## 5. 用法
 
 ```powershell
-# 出草案(不改 IR,只产建议表)
+# 出草案(不改 IR,只产建议表;--keywords 触发关键词上屏 ding)
 python skills/cutflow/scripts/rs_sfx.py 05_时间线工程/project.json --auto --out 05_时间线工程/sfx_draft.json
+python skills/cutflow/scripts/rs_sfx.py 05_时间线工程/project.json --auto --keywords 蓝屏,免费
 
 # 人工审完后合并进 IR 的 audio.clips[] (role: sfx)
 python skills/cutflow/scripts/rs_sfx.py 05_时间线工程/project.json --apply 05_时间线工程/sfx_draft.json

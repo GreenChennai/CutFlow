@@ -40,8 +40,8 @@ from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from rs_common import (EXIT_DEP, EXIT_EXEC, EXIT_INPUT, EXIT_OK, emit,  # noqa: E402
-                       ensure_utf8, write_text_atomic)
+from rs_common import (EXIT_DEP, EXIT_EXEC, EXIT_INPUT, EXIT_OK, IrError, emit,  # noqa: E402
+                       ensure_utf8, load_ir, write_text_atomic)
 import rs_paths  # noqa: E402  — 阶段路径唯一真相源(ADR-0046),本文件禁止目录字面量
 import rs_editor  # noqa: E402  — 复用内容寻址 id(cf-<sha1>)与 diff 人话引擎
 
@@ -56,6 +56,17 @@ BASES_REL = "bases"               # .cutforge/bases/<rev>.json(rev 快照,M9-1)
 LOCK_REL = "edit.lock"            # rs_edit 自身的写锁(编辑器的 .cutforge/lock 互不影响)
 LOCK_TTL_S = 300                  # 锁超时:超龄或持锁进程已死即可 --force 接管
 STILL_ACTIVE = 259                # Windows GetExitCodeProcess 的「仍在运行」码
+
+# 素材库(v2 M12/ADR-0053,分册01):统一 manifest 与素材根(skills/cutflow/assets/)。
+# 防御性读取:manifest 是 M12 的产物,缺失/坏档时相关 op 显式 DEP_MISSING,绝不猜路径。
+ASSETS_DIR = Path(__file__).resolve().parents[1] / "assets"
+ASSETS_MANIFEST_PATH = ASSETS_DIR / "manifest.json"
+# 效果目录(v2 M13/ADR-0054,分册02):catalog.json 同样 M13 才落,context 防御性读取。
+EFFECTS_CATALOG_PATH = (Path(__file__).resolve().parents[1] / "templates"
+                        / "effects" / "catalog.json")
+# element.add/overlay.add 挂元素贴图时,未给几何的兜底显示宽度(占画宽比例;
+# 元素是贴图不是全幅卡片,scale=1.0 会铺满画布 —— 取贴图惯例的 1/5)。
+ELEMENT_DEFAULT_SCALE = 0.2
 
 REQUEST_KEYS = {"baseRev", "ops", "requestId"}   # ops.json 包装对象白名单
 OP_KEYS = {"op", "target", "before", "after", "reason", "source", "requestId"}
@@ -102,20 +113,27 @@ DIRTY_ADVICE = {
     "S6": ("S6/S8", "python skills/cutflow/scripts/rs_run.py --only S6 之后 --only S8"),
     "S7": ("S7 产物", "python skills/cutflow/scripts/rs_run.py --from S7 --force"),
     "S2": ("粗剪决策", "python skills/cutflow/scripts/rs_cut.py --apply(不重跑 detect)"),
+    "S8": ("渲染(效果/T2)", "python skills/cutflow/scripts/rs_run.py --only S8"),
     "OUT": ("参数源", "python skills/cutflow/scripts/rs_run.py --status 后按提示"),
 }
 OP_DIRTY = {
     "clip.trim": "S3", "clip.move": "S3", "clip.split": "S3", "clip.delete": "S3",
     "clip.speed": "S3", "clip.reframe": "S3", "clip.motion": "S3",
     "transition.set": "S3", "freeze.set": "S3", "beat.snap": "S3",
+    "fx.apply": "S3", "fx.clear": "S3",
     "overlay.add": "S4", "overlay.remove": "S4",
+    "element.add": "S4", "element.remove": "S4", "element.retime": "S4",
     "sfx.add": "S6", "sfx.remove": "S6", "bgm.set": "S6", "audio.gain": "S6",
+    "asset.swap": "S6",
     "subtitle.set": "S7", "subtitle.retime": "S7",
-    "segment.protect": "S2", "output.set": "OUT",
+    "huazi.set": "S7", "huazi.clear": "S7",
+    "font.set": "S7",
+    "segment.protect": "S2", "output.set": "OUT", "effect.glsl.enable": "S8",
 }
 # context「可执行手法」/裁剪声明的节名
 SECTION_LABELS = {"ops": "可执行手法清单", "degrade": "当前降级项", "subtitle": "字幕摘要",
-                  "protect": "保护区", "overlay": "覆盖轨明细", "audio": "音频轨明细"}
+                  "protect": "保护区", "overlay": "覆盖轨明细", "audio": "音频轨明细",
+                  "effects": "可用特效", "fxplan": "本工程该用的特效", "assets": "可用素材"}
 
 
 class EditError(Exception):
@@ -484,6 +502,51 @@ def _v_obj(v, where):
     return v
 
 
+def _v_fx_id(v, where):
+    """fxId(v2 分册04 §4):非空字符串;注册表校验归渲染端/M13,这里只把住类型关。"""
+    s = _v_str(v, where)
+    if len(s) > 64 or any(ch in s for ch in " \t\r\n"):
+        _fail("BAD_VALUE", f"{where} 须为紧凑 fxId(≤64 字符,不含空白),得到 {v!r}")
+    return s
+
+
+def _v_slot(v, where):
+    return _v_enum("in", "out", "combo")(v, where)
+
+
+def _v_huazi(v, where):
+    """huazi 挂载对象:{template 必填, params 可选}(schema clip.huazi 同构)。"""
+    _v_obj(v, where)
+    unknown = sorted(set(v) - {"template", "params"})
+    if unknown:
+        _fail("BAD_FIELD", f"{where} 有契约外字段 {unknown}(合法:['params', 'template'])")
+    if "template" not in v:
+        _fail("BAD_VALUE", f"{where}.template 必填(huazi.* 模板 id)")
+    _v_fx_id(v["template"], f"{where}.template")
+    if "params" in v:
+        _v_obj(v["params"], f"{where}.params")
+    return v
+
+
+def _v_element_motion(v, where):
+    """element.add 的 motion{fx}:目前只承载 fx 一键(几何动画归渲染端)。"""
+    _v_obj(v, where)
+    unknown = sorted(set(v) - {"fx"})
+    if unknown:
+        _fail("BAD_FIELD", f"{where} 有契约外字段 {unknown}(合法:['fx'])")
+    _v_fx_id(v["fx"], f"{where}.fx")
+    return v
+
+
+def _v_asset_id(v, where):
+    """素材 id(分册01 命名法 <kind>.<组>.<序号>):这里只把住类型关;存在性与
+    commercial 校验在 apply 时对着 manifest.json 做(缺失 → DEP_MISSING)。"""
+    s = _v_str(v, where)
+    if len(s) > 96:
+        _fail("BAD_VALUE", f"{where} 过长(≤96):{s[:24]}…")
+    return s
+
+
 OP_AFTER: dict[str, dict[str, object]] = {
     "clip.trim": {"startMs": _v_ms(), "durationMs": _v_ms(0.5), "sourceInMs": _v_ms()},
     "clip.move": {"startMs": _v_ms(), "ripple": _v_bool},
@@ -491,23 +554,42 @@ OP_AFTER: dict[str, dict[str, object]] = {
     "clip.speed": {"rate": _v_num(*RATE_RANGE)},
     "clip.reframe": {"anchorY": _v_num(0, 1), "scale": _v_num(*SCALE_RANGE)},
     "clip.motion": {"in": _v_enum(*MOTION_IN), "inMs": _v_ms(),
-                    "out": _v_enum(*MOTION_OUT), "outMs": _v_ms()},
-    "transition.set": {"kind": _v_kind, "durMs": _v_ms(0.5)},
-    "overlay.add": {"card": _v_str, "startMs": _v_ms(), "durationMs": _v_ms(0.5),
+                    "out": _v_enum(*MOTION_OUT), "outMs": _v_ms(),
+                    "inFx": _v_fx_id, "outFx": _v_fx_id},       # v2 扩展:fxId(分册04 §4.1)
+    "transition.set": {"kind": _v_kind, "durMs": _v_ms(0.5), "fx": _v_fx_id},
+    "overlay.add": {"card": _v_str, "element": _v_asset_id,
+                    "startMs": _v_ms(), "durationMs": _v_ms(0.5),
                     "motion": _v_obj},
-    "sfx.add": {"name": _v_str, "gainDb": _v_num(*GAIN_RANGE)},
-    "bgm.set": {"src": _v_str, "gainDb": _v_num(*GAIN_RANGE), "ducking": _v_bool},
+    "sfx.add": {"name": _v_str, "gainDb": _v_num(*GAIN_RANGE),
+                "assetId": _v_asset_id},                          # v2 扩展:素材 id 取代裸 name
+    "bgm.set": {"src": _v_str, "gainDb": _v_num(*GAIN_RANGE), "ducking": _v_bool,
+                "assetId": _v_asset_id},                          # v2 扩展:按素材 id 选曲
     "audio.gain": {"gainDb": _v_num(*GAIN_RANGE)},
     "freeze.set": {"freezeMs": _v_ms(1)},
-    "subtitle.set": {"text": _v_str},
+    "subtitle.set": {"text": _v_str, "huazi": _v_huazi},          # v2 扩展:字幕挂花字
     "subtitle.retime": {"startMs": _v_ms(), "endMs": _v_ms(0.5)},
     "segment.protect": {"startMs": _v_ms(), "endMs": _v_ms(0.5), "note": _v_str},
     "note.add": {"text": _v_str, "author": _v_enum("user", "agent")},
     "output.set": {"ratios": _v_ratios},
     "beat.snap": {"windowMs": _v_num(1, 500)},
+    # ---- v2 M14 新增 op(分册04 §4.2;schema 契约已双仓同步)----
+    "fx.apply": {"slot": _v_slot, "fx": _v_fx_id, "params": _v_obj},
+    "fx.clear": {"slot": _v_slot},
+    "element.add": {"element": _v_asset_id, "startMs": _v_ms(), "durationMs": _v_ms(0.5),
+                    "x": _v_num(0, 1), "y": _v_num(0, 1),
+                    "w": _v_num(1, None), "h": _v_num(1, None),
+                    "opacity": _v_num(0, 1), "motion": _v_element_motion},
+    "element.remove": {},
+    "element.retime": {"startMs": _v_ms(), "durationMs": _v_ms(0.5)},
+    "huazi.set": {"template": _v_fx_id, "params": _v_obj},
+    "huazi.clear": {},
+    "font.set": {"family": _v_str, "scope": _v_enum("project", "clip", "style")},
+    "asset.swap": {"assetId": _v_asset_id},
+    "effect.glsl.enable": {"on": _v_bool},
 }
-# op → 无 after(值放别处/纯删除)
-NO_AFTER_OPS = {"clip.delete", "overlay.remove", "sfx.remove"}
+# op → 无 after(值放别处/纯删除/纯清除)
+NO_AFTER_OPS = {"clip.delete", "overlay.remove", "sfx.remove",
+                "element.remove", "huazi.clear"}
 
 
 def check_op_shape(op, idx: int) -> None:
@@ -522,7 +604,7 @@ def check_op_shape(op, idx: int) -> None:
     name = op.get("op")
     if not isinstance(name, str) or (name not in OP_AFTER and name not in NO_AFTER_OPS
                                      and name not in UNSUPPORTED_OPS):
-        _fail("BAD_OP", f"{where}.op 未知:{name!r}(见 rules/edit-op.md 24 op 表)")
+        _fail("BAD_OP", f"{where}.op 未知:{name!r}(见 rules/edit-op.md 34 op 表)")
     target = op.get("target")
     if not isinstance(target, str) or not target.strip():
         _fail("BAD_ADDRESS", f"{where}.target 须为非空字符串(稳定引用)")
@@ -668,6 +750,8 @@ CLIP_FIELD_MAP = {
     ("clip.motion", "inMs"): ("motion", "inMs"),
     ("clip.motion", "out"): ("motion", "out"),
     ("clip.motion", "outMs"): ("motion", "outMs"),
+    ("clip.motion", "inFx"): ("motion", "inFx"),
+    ("clip.motion", "outFx"): ("motion", "outFx"),
     ("freeze.set", "freezeMs"): ("clip", "freezeMs"),
     ("audio.gain", "gainDb"): ("clip", "volume"),
 }
@@ -722,7 +806,9 @@ def _move_ripple(ctx: Ctx, op: dict, track: dict, clip: dict, new_start) -> None
 
 
 def op_transition_set(ctx: Ctx, op: dict, idx: int) -> None:
-    """transition.set:target「clipA|clipB」,转场挂在后一片段(与前一片段的 xfade)。"""
+    """transition.set:target「clipA|clipB」,转场挂在后一片段(与前一片段的 xfade)。
+    v2 扩展(分册04 §4.1/§3.3):after.fx 直写 transition.fx(fxId);kind 与 fx 并存时
+    两者都落契约、渲染端以 fx 为准并 WARN —— 这里只留痕,不静默丢任一字段。"""
     norm = validate_after(op, idx)
     parts = op["target"].split("|")
     if len(parts) != 2:
@@ -737,12 +823,18 @@ def op_transition_set(ctx: Ctx, op: dict, idx: int) -> None:
         _fail("BAD_ADDRESS", f"{parts[0]} 与 {parts[1]} 不相邻(中间还有别的段)")
     later, later_i = (cb, ib) if ib > ia else (ca, ia)
     if not norm:
-        _fail("BAD_VALUE", "transition.set.after 需要 kind / durMs")
+        _fail("BAD_VALUE", "transition.set.after 需要 kind / durMs / fx 至少一个")
     plan = []
     if "kind" in norm:
         plan.append(("type", TRANSITION_KIND[str(norm["kind"])]))
     if "durMs" in norm:
         plan.append(("durMs", snap_ms(norm["durMs"], ctx.fps)))
+    if "fx" in norm:
+        plan.append(("fx", norm["fx"]))
+        if "kind" in norm:
+            ctx.warnings.append(
+                f"transition.set:{parts[0]}→{parts[1]} 同时给了 kind 与 fx,"
+                "渲染端以 fx 为准(分册04 §3.3),kind 仅作回退档保留")
     ti, _ = track_clip_pos(ctx.doc, tb, later)
     box = later.setdefault("transition", {})
     label = f"转场 {parts[0]} → {parts[1]}({_fmt_ms(later.get('startMs'))} 起)"
@@ -796,11 +888,44 @@ def op_clip_delete(ctx: Ctx, op: dict, idx: int) -> None:
 
 
 def op_overlay_add(ctx: Ctx, op: dict, idx: int) -> None:
-    """overlay.add:挂卡片(走 artboard 桥语义:manifest 解析产物路径,不渲染)。"""
+    """overlay.add:挂卡片(artboard 桥语义)或元素贴图(v2 扩展,after.element;
+    与 card 互斥)。元素走素材库 manifest 解析,复用与 element.add 相同的 clip 组装。"""
     import rs_ir  # noqa: PLC0415 — 复用白名单与 manifest 解析(P8 单一来源)
     norm = validate_after(op, idx)
-    if "card" not in norm or "startMs" not in norm or "durationMs" not in norm:
-        _fail("BAD_VALUE", "overlay.add.after 需要 card / startMs / durationMs")
+    if "card" in norm and "element" in norm:
+        _fail("BAD_VALUE", "overlay.add 的 card(artboard 卡)与 element(素材库元素)互斥,"
+                           "一次只挂一种")
+    if not ({"startMs", "durationMs"} <= set(norm)):
+        _fail("BAD_VALUE", "overlay.add.after 需要 startMs / durationMs"
+                           "(card 或 element 二选一)")
+    if "element" in norm:
+        entry = _manifest_asset(norm["element"], kind="element")
+        clip = _element_clip({**norm, "_src": entry["_src"], "_id": entry["id"]})
+        clip["startMs"] = snap_ms(clip["startMs"], ctx.fps)
+        clip["durationMs"] = snap_ms(clip["durationMs"], ctx.fps)
+        if isinstance(norm.get("motion"), dict) and not norm["motion"].get("fx"):
+            _fail("BAD_VALUE", "overlay.add.motion 元素路径只承载 {fx}(几何动画归渲染端)")
+        tracks = ctx.doc.setdefault("tracks", [])
+        ov = next((t for t in tracks if t.get("kind") == "video"
+                   and t.get("name") == "overlay"), None)
+        if ov is None:
+            ov = {"kind": "video", "name": "overlay", "clips": []}
+            tracks.append(ov)
+        clips = ov.setdefault("clips", [])
+        clips.append(clip)
+        clips.sort(key=lambda c: (c.get("startMs") or 0))
+        ti, ci = track_clip_pos(ctx.doc, ov, clip)
+        label = (f"覆盖轨 · 挂元素 {entry['id']} @ {_fmt_ms(clip['startMs'])}"
+                 f"(源 {Path(clip['src']).name})")
+        ctx.push_pending(kind="insert", file="project.json", before=None, after=clip,
+                         ptrs=[_clip_ptr(ti, ci)], human=label,
+                         reason=str(op.get("reason")),
+                         rid=op.get("requestId") or ctx.request_id)
+        ctx.dirty.add("S4")
+        return
+    if "card" not in norm:
+        _fail("BAD_VALUE", "overlay.add.after 需要 card / element 二选一"
+                           "(+ startMs / durationMs)")
     manifest_p = rs_paths.resolve(ctx.root, "assets") / "artboard" / "manifest.json"
     if not manifest_p.is_file():
         _fail("DEP_MISSING",
@@ -843,35 +968,50 @@ def op_overlay_remove(ctx: Ctx, op: dict, idx: int) -> None:
 
 def op_sfx_add(ctx: Ctx, op: dict, idx: int) -> None:
     """sfx.add:target「t<毫秒>」锚点。单点挂载;「≤2 个/15s」密度闸由 rs_sfx --auto
-    统一裁决(口径见 rules/sfx.md),rs_edit 不重复实现。"""
+    统一裁决(口径见 rules/sfx.md),rs_edit 不重复实现。
+    v2 扩展(分册04 §4.1):after.assetId 直指素材库 manifest id(取代裸 name;
+    name 作为别名兼容 —— 两者同时给出以 assetId 为准并 WARN)。"""
     norm = validate_after(op, idx)
     tstr = op["target"].strip()
     if not tstr.startswith("t") or not tstr[1:].isdigit():
         _fail("BAD_ADDRESS", "sfx.add.target 须为时间锚点「t<毫秒>」,如 t12345")
-    name = norm.get("name")
-    if not name:
-        _fail("BAD_VALUE", "sfx.add.after.name 必填(内置音效名或素材路径)")
-    if "/" in name or "\\" in name or name.endswith(".mp3"):
-        src = name
-        if not (ctx.root / src).is_file():
-            _fail("BAD_VALUE", f"音效素材不存在:{src}")
+    asset_id, name = norm.get("assetId"), norm.get("name")
+    if asset_id:
+        if name:
+            ctx.warnings.append(
+                f"sfx.add:name({name})与 assetId({asset_id})同时给出,"
+                "以 assetId 为准(分册04 §4.1),name 仅作兼容别名")
+        entry = _manifest_asset(asset_id, kind="sfx")
+        src = entry["_src"]
     else:
-        src = f"assets_sfx:{name}"    # 内置音效库伪协议(rs_ir/rs_sfx 同口径)
-        if not (Path(__file__).resolve().parents[3] / "assets" / "sfx" / f"{name}.mp3").is_file():
-            _fail("BAD_VALUE", f"内置音效库无此名:{name}")
+        if not name:
+            _fail("BAD_VALUE", "sfx.add.after 需要 assetId(v2 口径)或 name(兼容别名)")
+        if "/" in name or "\\" in name or name.endswith(".mp3"):
+            src = name
+            if not (ctx.root / src).is_file():
+                _fail("BAD_VALUE", f"音效素材不存在:{src}")
+        else:
+            src = f"assets_sfx:{name}"    # 内置音效库伪协议(rs_ir/rs_sfx 同口径)
+            if not (Path(__file__).resolve().parents[3] / "assets" / "sfx" / f"{name}.mp3").is_file():
+                _fail("BAD_VALUE", f"内置音效库无此名:{name}")
     audio = next((t for t in ctx.doc.get("tracks", []) if t.get("kind") == "audio"), None)
     if audio is None:
         audio = {"kind": "audio", "name": "audio", "clips": []}
         ctx.doc.setdefault("tracks", []).append(audio)
     clip = {"src": src, "startMs": snap_ms(int(tstr[1:]), ctx.fps),
             "durationMs": SFX_DEFAULT_DURATION_MS, "role": "sfx"}
+    if asset_id:
+        clip["assetId"] = asset_id        # 溯源与 asset.swap 的换素材键(渲染由 src 驱动)
     if "gainDb" in norm:   # 映射:schema 增益字段是线性 volume(0–2),10^(dB/20)
         clip["volume"] = round(10 ** (norm["gainDb"] / 20.0), 6)
+    if asset_id and isinstance(entry.get("durationMs"), (int, float)) \
+            and entry["durationMs"] > 0:
+        clip["durationMs"] = snap_ms(int(entry["durationMs"]), ctx.fps)  # manifest 实测时长
     clips = audio.setdefault("clips", [])
     clips.append(clip)
     clips.sort(key=lambda c: (c.get("startMs") or 0))
     ti, ci = track_clip_pos(ctx.doc, audio, clip)
-    label = f"音效 {src} 落点 {_fmt_ms(clip['startMs'])}"
+    label = f"音效 {src if not asset_id else asset_id} 落点 {_fmt_ms(clip['startMs'])}"
     ctx.push_pending(kind="insert", file="project.json", before=None, after=clip,
                      ptrs=[_clip_ptr(ti, ci)], human=label,
                      reason=str(op.get("reason")),
@@ -892,9 +1032,17 @@ def op_bgm_set(ctx: Ctx, op: dict, idx: int) -> None:
         _fail("BAD_ADDRESS", "bgm.set.target 固定为「bgm」(顶层配乐对象)")
     norm = validate_after(op, idx)
     if not norm:
-        _fail("BAD_VALUE", "bgm.set.after 至少要有一个字段(src/gainDb/ducking)")
+        _fail("BAD_VALUE", "bgm.set.after 至少要有一个字段(src/gainDb/ducking/assetId)")
     plan = []
-    if "src" in norm:
+    entry = None
+    if "assetId" in norm and "src" in norm:
+        ctx.warnings.append("bgm.set:src 与 assetId 同时给出,以 assetId 为准"
+                            "(分册04 §4.3),src 仅作兼容别名")
+    if "assetId" in norm:
+        entry = _manifest_asset(norm["assetId"], kind="bgm")
+        plan.append(("assetId", entry["id"]))
+        plan.append(("src", entry["_src"]))       # 渲染由 src 驱动;assetId 是溯源/换素材键
+    elif "src" in norm:
         src = norm["src"]
         if not (ctx.root / src).is_file():
             _fail("BAD_VALUE", f"配乐素材不存在:{src}(相对工程根)")
@@ -909,17 +1057,23 @@ def op_bgm_set(ctx: Ctx, op: dict, idx: int) -> None:
 
 
 def op_subtitle_set(ctx: Ctx, op: dict, idx: int) -> None:
-    """subtitle.set:只改文本(Hard Rule 8:时间从 wordline 重建,S7 重建时生效)。"""
+    """subtitle.set:改文本(Hard Rule 8:时间从 wordline 重建,S7 重建时生效);
+    v2 扩展(分册04 §4.1):after.huazi 给该字幕挂花字模板(schema clip.huazi)。"""
     norm = validate_after(op, idx)
-    if "text" not in norm:
-        _fail("BAD_VALUE", "subtitle.set.after.text 必填且非空")
+    if "text" not in norm and "huazi" not in norm:
+        _fail("BAD_VALUE", "subtitle.set.after 需要 text / huazi 至少一个")
     track, clip = resolve_clip(ctx.doc, op["target"])
     if track.get("kind") != "text":
         _fail("BAD_ADDRESS", f"{op['target']} 不在字幕轨(text 轨);"
                              "字幕真相源在 wordline/ASS,改卡文本请确认工程含 text 轨")
     ti, ci = track_clip_pos(ctx.doc, track, clip)
-    label = f"{clip_kind_label(track, ti)} · {op['target']} 字幕文本"
-    set_fields(ctx, op, clip, _clip_ptr(ti, ci), [("text", norm["text"])], label)
+    plan = []
+    if "text" in norm:
+        plan.append(("text", norm["text"]))
+    if "huazi" in norm:
+        plan.append(("huazi", norm["huazi"]))
+    label = f"{clip_kind_label(track, ti)} · {op['target']} 字幕"
+    set_fields(ctx, op, clip, _clip_ptr(ti, ci), plan, label)
     ctx.dirty.add("S7")
 
 
@@ -1090,6 +1244,308 @@ def op_beat_snap(ctx: Ctx, op: dict, idx: int) -> None:
     ctx.dirty.add("S3")
 
 
+def _manifest_asset(asset_id: str, kind: str | None = None) -> dict:
+    """素材库 manifest.json 按 id 查条目(防御性,分册01/ADR-0053)。
+
+    manifest 缺失/坏档 → DEP_MISSING(M12 素材库未部署,显式提示,不猜路径);
+    id 不存在 / kind 不符 / commercial=false → BAD_VALUE(不可商用素材不得入轨)。
+    """
+    if not ASSETS_MANIFEST_PATH.is_file():
+        _fail("DEP_MISSING",
+              f"缺素材库清单:{ASSETS_MANIFEST_PATH}(M12 素材库未部署?"
+              "先跑 rs_asset.py check 生成 manifest.json)", exit_code=EXIT_DEP)
+    try:
+        manifest = json.loads(ASSETS_MANIFEST_PATH.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError) as exc:
+        _fail("INTERNAL", f"manifest.json 解析失败:{exc}", exit_code=EXIT_BLOCKED)
+    for e in manifest.get("assets") or []:
+        if isinstance(e, dict) and e.get("id") == asset_id:
+            if kind is not None and e.get("kind") != kind:
+                _fail("BAD_VALUE", f"素材 {asset_id} 的 kind 是 {e.get('kind')},"
+                                   f"此处需要 {kind}")
+            if e.get("commercial") is False:
+                _fail("BAD_VALUE", f"素材 {asset_id} 标记为不可商用(commercial=false),"
+                                   "不得入轨;换可商用的素材")
+            file = str(e.get("file") or "")
+            src = ASSETS_DIR / file
+            if not file or not src.is_file():
+                _fail("BAD_VALUE", f"素材 {asset_id} 的文件缺失:{file}(manifest 与目录不同步;"
+                                   "重跑 rs_asset.py check)")
+            return {**e, "_src": str(src)}
+    _fail("BAD_VALUE", f"素材库无此 id:{asset_id}(查 rs_asset.py list;"
+                       "id 一经发布不改名,注意别手打错)")
+
+
+def _element_clip(norm: dict) -> dict:
+    """element.add / overlay.add(element) 共用的元素贴图 clip 组装(时间字段由
+    调用方统一吸附帧网格)。
+
+    几何语义(人话映射「加个箭头指向那里 --x 0.6 --y 0.3」):x/y 是归一化中心点
+    → clip.position;w/h(像素)给出时 → clip.overlay 绝对落点(以 x/y 为中心折算);
+    都不给 → scale 兜底(ELEMENT_DEFAULT_SCALE),绝不整幅铺满。
+    """
+    clip: dict = {"src": norm["_src"], "assetId": norm["_id"],
+                  "startMs": float(norm["startMs"]), "durationMs": float(norm["durationMs"])}
+    if "w" in norm:
+        ov: dict = {"w": int(round(float(norm["w"])))}
+        if "h" in norm:
+            ov["h"] = int(round(float(norm["h"])))
+        clip["overlay"] = ov
+    else:
+        clip["scale"] = ELEMENT_DEFAULT_SCALE
+    if "x" in norm or "y" in norm:
+        clip["position"] = {"x": float(norm.get("x", 0.5)), "y": float(norm.get("y", 0.5))}
+    if "opacity" in norm:
+        clip["opacity"] = float(norm["opacity"])
+    if isinstance(norm.get("motion"), dict) and norm["motion"].get("fx"):
+        clip["motion"] = {"inFx": norm["motion"]["fx"]}    # 元素入场 fx(M13 注册表消费)
+    return clip
+
+
+def _overlay_track_for(ctx: Ctx, target: str):
+    """element.add 的 target 解析:覆盖轨 trackId(如 V2)或「overlay」(自动建)。
+    主轨(main/首个 video 轨)不允许挂元素 —— 元素是贴图层,压主轨属于寻址错。"""
+    tracks = ctx.doc.setdefault("tracks", [])
+    if target == "overlay":
+        ov = next((t for t in tracks if t.get("kind") == "video"
+                   and t.get("name") == "overlay"), None)
+        if ov is None:
+            ov = {"kind": "video", "name": "overlay", "clips": []}
+            tracks.append(ov)
+        return ov
+    hits = [t for t in tracks if t.get("kind") == "video"
+            and str(t.get("id") or "") == target]
+    if not hits:
+        _fail("NOT_FOUND", f"trackId {target!r} 不存在(用 context 视图的轨 id;"
+                           "或 target=overlay 自动建覆盖轨)")
+    ov = hits[0]
+    main_i = next((i for i, t in enumerate(tracks)
+                   if t.get("kind") == "video"), -1)
+    if tracks.index(ov) == main_i or ov.get("name") == "main":
+        _fail("BAD_ADDRESS", f"{target} 是主视频轨:元素贴图必须挂覆盖轨"
+                             "(target=overlay 自动建,或指到既有覆盖轨 id)")
+    return ov
+
+
+def op_element_add(ctx: Ctx, op: dict, idx: int) -> None:
+    """element.add(v2 分册04 §4.2):按素材 id 挂元素贴图(显式几何,比 overlay.add 细)。
+    素材经 manifest.json 解析(缺失 → DEP_MISSING);几何见 _element_clip。"""
+    norm = validate_after(op, idx)
+    for req in ("element", "startMs", "durationMs"):
+        if req not in norm:
+            _fail("BAD_VALUE", f"element.add.after.{req} 必填")
+    entry = _manifest_asset(norm["element"], kind="element")
+    ov = _overlay_track_for(ctx, op["target"])
+    clip = _element_clip({**norm, "_src": entry["_src"], "_id": entry["id"]})
+    for timed in ("startMs", "durationMs"):
+        clip[timed] = snap_ms(clip[timed], ctx.fps)      # 附录 B 约束 4:帧网格
+    clips = ov.setdefault("clips", [])
+    clips.append(clip)
+    clips.sort(key=lambda c: (c.get("startMs") or 0))
+    ti, ci = track_clip_pos(ctx.doc, ov, clip)
+    label = (f"覆盖轨 · 挂元素 {entry['id']} @ {_fmt_ms(clip['startMs'])}"
+             f"(源 {Path(clip['src']).name})")
+    ctx.push_pending(kind="insert", file="project.json", before=None, after=clip,
+                     ptrs=[_clip_ptr(ti, ci)], human=label,
+                     reason=str(op.get("reason")),
+                     rid=op.get("requestId") or ctx.request_id)
+    ctx.dirty.add("S4")
+
+
+def _element_clip_guard(ctx: Ctx, op: dict):
+    """element.remove / element.retime 的目标守卫:必须是元素段(assetId 且在覆盖轨)。"""
+    track, clip = resolve_clip(ctx.doc, op["target"])
+    if not clip.get("assetId"):
+        _fail("BAD_ADDRESS", f"{op['target']} 不是素材元素段(缺 assetId);"
+                             "普通片段用 clip.trim,卡片用 overlay.remove")
+    return track, clip
+
+
+def op_element_remove(ctx: Ctx, op: dict, idx: int) -> None:
+    validate_after(op, idx)
+    _element_clip_guard(ctx, op)
+    op_clip_delete(ctx, op, idx)
+    ctx.dirty.add("S4")
+
+
+def op_element_retime(ctx: Ctx, op: dict, idx: int) -> None:
+    """element.retime(v2):调元素时间;受帧网格约束,时长零漂移由「必须给正时长」把守。"""
+    norm = validate_after(op, idx)
+    if not norm:
+        _fail("BAD_VALUE", "element.retime.after 需要 startMs / durationMs 至少一个")
+    track, clip = _element_clip_guard(ctx, op)
+    ti, ci = track_clip_pos(ctx.doc, track, clip)
+    plan = []
+    if "startMs" in norm:
+        plan.append(("startMs", snap_ms(norm["startMs"], ctx.fps)))
+    if "durationMs" in norm:
+        plan.append(("durationMs", snap_ms(norm["durationMs"], ctx.fps)))
+    label = (f"{clip_kind_label(track, ti)} · 元素 {clip.get('assetId')} 重设时间")
+    set_fields(ctx, op, clip, _clip_ptr(ti, ci), plan, label)
+    ctx.dirty.add("S4")
+
+
+def op_huazi_set(ctx: Ctx, op: dict, idx: int) -> None:
+    """huazi.set(v2 分册04 §4.2/ADR-0057):换/挂花字模板(schema clip.huazi;
+    S7 rs_subtitle --huazi 消费,渲染端零新增通道)。"""
+    norm = validate_after(op, idx)
+    if "template" not in norm:
+        _fail("BAD_VALUE", "huazi.set.after.template 必填(huazi.* 模板 id)")
+    track, clip = resolve_clip(ctx.doc, op["target"])
+    if track.get("kind") != "text":
+        _fail("BAD_ADDRESS", f"{op['target']} 不在字幕轨(text 轨);"
+                             "花字挂在字幕卡上,先确认目标 clipId")
+    huazi: dict = {"template": norm["template"]}
+    if "params" in norm:
+        huazi["params"] = norm["params"]
+    ti, ci = track_clip_pos(ctx.doc, track, clip)
+    label = f"{clip_kind_label(track, ti)} · 花字 {norm['template']}"
+    set_fields(ctx, op, clip, _clip_ptr(ti, ci), [("huazi", huazi)], label)
+    ctx.dirty.add("S7")
+
+
+def op_huazi_clear(ctx: Ctx, op: dict, idx: int) -> None:
+    """huazi.clear(v2):去花字回普通 ASS;原本就没挂 → 幂等短路。"""
+    validate_after(op, idx)
+    track, clip = resolve_clip(ctx.doc, op["target"])
+    ti, ci = track_clip_pos(ctx.doc, track, clip)
+    old = clip.pop("huazi", None)
+    if old is None:
+        return                                    # after == before:幂等短路
+    ptr = _clip_ptr(ti, ci, "huazi")
+    label = f"{clip_kind_label(track, ti)} · 去花字(回普通 ASS)"
+    ctx.push_pending(kind="set", file="project.json", before={ptr: old},
+                     after={ptr: None}, ptrs=[ptr], human=label,
+                     reason=str(op.get("reason")),
+                     rid=op.get("requestId") or ctx.request_id)
+    ctx.dirty.add("S7")
+
+
+def op_font_set(ctx: Ctx, op: dict, idx: int) -> None:
+    """font.set(v2 分册04 §4.2):字体切换(字体唯一真相源在 artboard fonts/)。
+    target=project → 顶层 font.family(全链标脏 OUT);target=clipId → clip.font.family。
+    scope=style 归 S7 字幕样式契约,project.json 无承载 → OP_UNSUPPORTED(U7)。"""
+    norm = validate_after(op, idx)
+    if "family" not in norm:
+        _fail("BAD_VALUE", "font.set.after.family 必填(artboard 字体族名)")
+    scope = norm.get("scope")
+    target = op["target"].strip()
+    if scope == "style":
+        _fail("OP_UNSUPPORTED",
+              "font.set.scope=style:project.json 无字幕样式容器(样式归 S7 rs_subtitle"
+              " 契约),本轮不承诺,见 CONTEXT.md U7 与 rules/edit-op.md 覆盖表")
+    if target == "project":
+        if scope == "clip":
+            _fail("BAD_VALUE", "target=project 与 scope=clip 矛盾;"
+                               "clip 范围请把 target 指到 clipId")
+        if (ctx.doc.get("font") or {}).get("family") == norm["family"]:
+            return                                # after == before:幂等短路(不建容器)
+        holder, ptr, label_holder = ctx.doc, "/font", "工程字体"
+        dirty = "OUT"
+    else:
+        if scope == "project":
+            _fail("BAD_VALUE", "scope=project 请用 target=project;"
+                               "片段级字体请省略 scope 或用 scope=clip")
+        track, clip = resolve_clip(ctx.doc, target)
+        if (clip.get("font") or {}).get("family") == norm["family"]:
+            return                                # after == before:幂等短路
+        ti, ci = track_clip_pos(ctx.doc, track, clip)
+        holder, ptr = clip, _clip_ptr(ti, ci, "font")
+        label_holder = f"{clip_kind_label(track, ti)} · {target} 字体"
+        dirty = "S7"
+    set_fields(ctx, op, holder.setdefault("font", {}), ptr,
+               [("family", norm["family"])], label_holder)
+    ctx.dirty.add(dirty)
+
+
+def op_asset_swap(ctx: Ctx, op: dict, idx: int) -> None:
+    """asset.swap(v2 分册04 §4.2):换素材,保留时间与参数(只换 src/assetId)。
+    target=clipId(音效段)或 bgm;kind 按被换对象判定,manifest 校验 kind 一致。"""
+    norm = validate_after(op, idx)
+    if "assetId" not in norm:
+        _fail("BAD_VALUE", "asset.swap.after.assetId 必填")
+    if op["target"].strip() == "bgm":
+        bgm = ctx.doc.get("bgm") or {}
+        if not bgm.get("src"):
+            _fail("BAD_VALUE", "工程还没有 BGM(bgm.src 缺失);先 bgm.set 再换")
+        entry = _manifest_asset(norm["assetId"], kind="bgm")
+        plan = [("src", entry["_src"]), ("assetId", entry["id"])]
+        set_fields(ctx, op, bgm, "/bgm", plan, f"BGM 换素材 → {entry['id']}")
+        ctx.dirty.add("S6")
+        return
+    track, clip = resolve_clip(ctx.doc, op["target"])
+    if track.get("kind") != "audio":
+        _fail("BAD_ADDRESS", "asset.swap 只支持音效段(音频轨 clip)或 target=bgm;"
+                             "视频/字幕素材请重新组卡")
+    entry = _manifest_asset(norm["assetId"], kind="sfx")
+    ti, ci = track_clip_pos(ctx.doc, track, clip)
+    plan = [("src", entry["_src"]), ("assetId", entry["id"])]
+    label = f"音效换素材 {clip.get('assetId') or clip.get('src', '')} → {entry['id']}"
+    set_fields(ctx, op, clip, _clip_ptr(ti, ci), plan, label)
+    ctx.dirty.add("S6")
+
+
+def op_fx_apply(ctx: Ctx, op: dict, idx: int) -> None:
+    """fx.apply(v2 分册04 §4.2):给单 clip 挂特效(slot in|out|combo;比 clip.motion
+    通用,覆盖组合特效)。写 schema clip.fx[slot]={fx, params};M13 注册表消费,
+    未注册 fxId 渲染端降级 WARN + fxDegraded 留痕(零静默)。"""
+    norm = validate_after(op, idx)
+    for req in ("slot", "fx"):
+        if req not in norm:
+            _fail("BAD_VALUE", f"fx.apply.after.{req} 必填")
+    track, clip = resolve_clip(ctx.doc, op["target"])
+    ti, ci = track_clip_pos(ctx.doc, track, clip)
+    entry: dict = {"fx": norm["fx"]}
+    if "params" in norm:
+        entry["params"] = norm["params"]
+    slot = str(norm["slot"])
+    if (clip.get("fx") or {}).get(slot) == entry:
+        return                                    # after == before:幂等短路(不建容器)
+    fx_box = clip.setdefault("fx", {})
+    label = f"{clip_kind_label(track, ti)} · 特效[{norm['slot']}] {norm['fx']}"
+    set_fields(ctx, op, fx_box, _clip_ptr(ti, ci, "fx"), [(slot, entry)], label)
+    ctx.dirty.add("S3")
+
+
+def op_fx_clear(ctx: Ctx, op: dict, idx: int) -> None:
+    """fx.clear(v2):去特效(slot 必填);原本就没挂 → 幂等短路;容器清空即摘除。"""
+    norm = validate_after(op, idx)
+    if "slot" not in norm:
+        _fail("BAD_VALUE", "fx.clear.after.slot 必填(in|out|combo)")
+    track, clip = resolve_clip(ctx.doc, op["target"])
+    ti, ci = track_clip_pos(ctx.doc, track, clip)
+    fx_box = clip.get("fx") or {}
+    slot = str(norm["slot"])
+    if slot not in fx_box:
+        return                                    # after == before:幂等短路
+    old = fx_box.pop(slot)
+    if not fx_box:
+        clip.pop("fx", None)                      # 空容器摘除(不留幽灵键)
+    ptr = f"{_clip_ptr(ti, ci, 'fx')}/{slot}"
+    label = f"{clip_kind_label(track, ti)} · 去特效[{slot}]"
+    ctx.push_pending(kind="set", file="project.json", before={ptr: old},
+                     after={ptr: None}, ptrs=[ptr], human=label,
+                     reason=str(op.get("reason")),
+                     rid=op.get("requestId") or ctx.request_id)
+    ctx.dirty.add("S3")
+
+
+def op_effect_glsl_enable(ctx: Ctx, op: dict, idx: int) -> None:
+    """effect.glsl.enable(v2 分册04 §4.2):显式开关 T2 GLSL 渲染(schema 顶层
+    effects.glsl;false → 全部 T2 效果降级最接近的 T1 近似,渲染端留痕)。"""
+    norm = validate_after(op, idx)
+    if op["target"].strip() != "project":
+        _fail("BAD_ADDRESS", "effect.glsl.enable.target 固定为「project」")
+    if "on" not in norm:
+        _fail("BAD_VALUE", "effect.glsl.enable.after.on 必填(布尔)")
+    if (ctx.doc.get("effects") or {}).get("glsl") == norm["on"]:
+        return                                    # after == before:幂等短路(不建容器)
+    set_fields(ctx, op, ctx.doc.setdefault("effects", {}), "/effects",
+               [("glsl", norm["on"])],
+               f"T2 GLSL 渲染 {'开启' if norm['on'] else '关闭(降级 T1 近似)'}")
+    ctx.dirty.add("S8")
+
+
 HANDLERS = {
     "clip.trim": op_simple_clip_fields,
     "clip.move": op_simple_clip_fields,
@@ -1112,6 +1568,17 @@ HANDLERS = {
     "note.add": op_note_add,
     "output.set": op_output_set,
     "beat.snap": op_beat_snap,
+    # ---- v2 M14 新增 op(分册04 §4.2)----
+    "fx.apply": op_fx_apply,
+    "fx.clear": op_fx_clear,
+    "element.add": op_element_add,
+    "element.remove": op_element_remove,
+    "element.retime": op_element_retime,
+    "huazi.set": op_huazi_set,
+    "huazi.clear": op_huazi_clear,
+    "font.set": op_font_set,
+    "asset.swap": op_asset_swap,
+    "effect.glsl.enable": op_effect_glsl_enable,
 }
 
 
@@ -1208,7 +1675,7 @@ def _ptr_map(v) -> dict | None:
 
 # undo 删叶字段后,这些 schema 可选容器若被清空则一并摘除(免留 "motion": {} 幽灵键)
 PRUNABLE_CONTAINERS = {"motion", "reframe", "transition", "overlay", "fade",
-                       "punchIn", "position"}
+                       "punchIn", "position", "fx", "huazi", "font", "effects"}
 
 
 def _invert(entry_op: dict, docs: dict[str, dict | None]) -> list[str]:
@@ -1284,13 +1751,12 @@ def _dirty_advice(dirty: set[str]) -> list[dict]:
 # ---------------------------------------------------------------- apply / undo / diff
 
 def _load_ir(root: Path) -> dict:
-    pj = rs_paths.project_json(root)
-    if not pj.is_file():
-        _fail("DEP_MISSING", f"缺 IR:{pj}", exit_code=EXIT_DEP)
+    """统一 IR 载入(rs_common.load_ir,R09/R41):路径定位 + 解析 + version 校验
+    + 迁移引导;IrError → EditError(退出码与 code 语义保持本脚本口径)。"""
     try:
-        return json.loads(pj.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError, UnicodeDecodeError) as exc:
-        _fail("INTERNAL", f"project.json 解析失败:{exc}", exit_code=EXIT_BLOCKED)
+        return load_ir(root)
+    except IrError as exc:
+        _fail(exc.code, exc.message, exc.data, exit_code=exc.exit_code)
 
 
 def _write_side_file(root: Path, name: str, doc) -> None:
@@ -1703,6 +2169,173 @@ def _degrade_table(root: Path) -> str:
     return "\n".join(lines)
 
 
+_EFFECT_GROUP_LABELS = {"in": "入场", "out": "出场", "transition": "转场", "combo": "组合"}
+_FX_PREFIX_GROUP = (("fx.in.", "in"), ("fx.out.", "out"), ("tr.", "transition"))
+_ASSET_KIND_LABELS = {"sfx": "音效", "element": "元素", "huazi": "花字", "bgm": "BGM"}
+_ASSET_USAGE_LABELS = {"transition": "转场", "punchline": "强调", "enumeration": "枚举",
+                       "ending": "收尾", "chapter": "章节", "emotion": "情绪",
+                       "ui": "界面", "decor": "装饰", "data": "数据"}
+
+
+def _effects_available() -> str:
+    """可用特效段(分册04 §4.4):读效果目录 catalog.json,只列 status=可执行 的条目。
+
+    目录文件 M13 才落 —— 缺失/坏档时显示占位提示(防御性读取,绝不崩 context);
+    T2 条目单列一行并标注降级档(ADR-0054 三级分级;fx.glsl 缺失 → T1 近似)。
+    """
+    lines = ["## 可用特效(据当前风格包 + 已部署能力;只列 status=可执行)"]
+    catalog: dict | list | None = None
+    if EFFECTS_CATALOG_PATH.is_file():
+        try:
+            catalog = json.loads(EFFECTS_CATALOG_PATH.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError, UnicodeDecodeError):
+            catalog = None
+    if catalog is None:
+        lines.append(
+            "- (效果目录未部署:M13 落地后此处列出 status=可执行 的 fxId;"
+            "当前 fx.apply / transition.set --fx 可写契约,渲染端未注册 fxId 会降级并留痕)")
+        return "\n".join(lines)
+    entries = catalog.get("effects") if isinstance(catalog, dict) else catalog
+    if not isinstance(entries, list):
+        entries = []
+    groups: dict[str, list[str]] = {"in": [], "out": [], "transition": [], "combo": []}
+    t2: list[str] = []
+    for e in entries:
+        if not isinstance(e, dict) or str(e.get("status") or "") != "可执行":
+            continue
+        fx = str(e.get("fxId") or e.get("id") or "")
+        if not fx:
+            continue
+        label = str(e.get("label") or "")
+        text = f"{fx}({label})" if label else fx
+        for prefix, g in _FX_PREFIX_GROUP:
+            if fx.startswith(prefix):
+                groups[g].append(text)
+                break
+        else:
+            groups["combo"].append(text)
+        if str(e.get("tier") or "") == "T2":
+            t2.append(fx)
+    for g in ("in", "out", "transition", "combo"):
+        if groups[g]:
+            lines.append(f"- {_EFFECT_GROUP_LABELS[g]}:" + " / ".join(groups[g][:8])
+                         + (" / …" if len(groups[g]) > 8 else ""))
+    if t2:
+        lines.append("⚠ T2 不可用(fx.glsl 缺失,已降级为 T1 近似):" + " / ".join(t2[:8]))
+    return "\n".join(lines)
+
+
+def _fx_prescription(root: Path) -> dict:
+    """工程的效果处方(intent_decisions.json resolved.effectsPrescription;缺 → {})。"""
+    p = rs_paths.resolve(root, "brief") / "intent_decisions.json"
+    if not p.is_file():
+        return {}
+    try:
+        doc = json.loads(p.read_text(encoding="utf-8"))
+        resolved = doc.get("resolved") if isinstance(doc.get("resolved"), dict) else {}
+        pres = resolved.get("effectsPrescription")
+        return pres if isinstance(pres, dict) and pres else {}
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError):
+        return {}
+
+
+def _fx_usage_counts(doc: dict) -> dict:
+    """IR 内已用的效果计数(与 rs_verify.check_effects_usage 同口径,轻量版)。"""
+    n_tr = n_in = n_out = 0
+    tracks = [t for t in doc.get("tracks", []) if t.get("kind") == "video"]
+    clips = (tracks[0].get("clips") or []) if tracks else []
+    for c in clips:
+        tr = c.get("transition") or {}
+        if tr and str(tr.get("type", "fade")).lower() not in ("cut", "none", ""):
+            n_tr += 1
+        elif tr.get("fx") and str(tr.get("fx")) != "tr.cut":
+            n_tr += 1
+        m = c.get("motion") or {}
+        box = c.get("fx") or {}
+        if m.get("inFx") or (box.get("in") or {}).get("fx") or (box.get("combo") or {}).get("fx"):
+            n_in += 1
+        if m.get("outFx") or (box.get("out") or {}).get("fx"):
+            n_out += 1
+    return {"transitions": n_tr, "in": n_in, "out": n_out}
+
+
+def _fx_plan_section(root: Path, doc: dict) -> str:
+    """「本工程该用的特效」段(ADR-0059/分册06 §9.4):把处方变成 Agent 每轮可见的待办。
+
+    无处方 → 防御性提示(门禁不生效,NO_PRESCRIPTION 同口径);有处方 →
+    必备 / 已用进度 / 缺口 / 禁用 四行,进度按 IR 机械计数。"""
+    pres = _fx_prescription(root)
+    if not pres:
+        return ("## 本工程该用的特效\n"
+                "- (工程未声明 effects_prescription:风格包无处方或未跑 rs_intent compile,"
+                "EFFECTS_* 门禁不生效;可用特效见上节)")
+    counts = _fx_usage_counts(doc)
+    tr = pres.get("transition") or {}
+    ins = pres.get("in") or {}
+    outs = pres.get("out") or {}
+    lines = ["## 本工程该用的特效(据风格包 effects_prescription,分册06 §9.4)"]
+    lines.append(f"- 必备:过渡 {tr.get('min', 0)} 处 → 建议 {'、'.join((tr.get('prefer') or [])[:3]) or '硬切'};"
+                 f"入场 {ins.get('min', 0)} 处 → {'、'.join((ins.get('prefer') or [])[:3]) or '—'};"
+                 f"出场 {outs.get('min', 0)} 处 → {'、'.join((outs.get('prefer') or [])[:3]) or '—'}")
+    lines.append(f"- 已用:过渡 {counts['transitions']}/{tr.get('min', 0)}"
+                 f" ｜ 入场 {counts['in']}/{ins.get('min', 0)}"
+                 f" ｜ 出场 {counts['out']}/{outs.get('min', 0)}")
+    gaps = []
+    if counts["transitions"] < int(tr.get("min") or 0):
+        gaps.append(f"显式转场尚未达标(处方 ≥{tr.get('min')})")
+    if counts["in"] < int(ins.get("min") or 0):
+        gaps.append(f"入场动画尚未使用(处方 ≥{ins.get('min')})")
+    if counts["out"] < int(outs.get("min") or 0):
+        gaps.append(f"出场动画尚未使用(处方 ≥{outs.get('min')})")
+    if gaps:
+        lines.append("- ⚠ 缺口:" + ";".join(gaps))
+    else:
+        lines.append("- 缺口:无(已达处方下限;少用且用得准同样合格,分册06 §5.3)")
+    forbid = sorted({str(f) for k in ("transition", "in", "out")
+                     for f in ((pres.get(k) or {}).get("forbid") or [])})
+    flashy = pres.get("flashy_max")
+    if forbid or flashy is not None:
+        lines.append(f"- 禁用/上限:{'、'.join(forbid) if forbid else '(无显式 forbid)'}"
+                     + (f";花哨类全片 ≤{flashy} 处" if flashy is not None else ""))
+    return "\n".join(lines)
+
+
+def _assets_available() -> str:
+    """可用素材段(分册04 §4.4):读素材库 manifest.json,按 kind+usage 分组各列前 5。
+
+    manifest 是 M12 的产物 —— 缺失/坏档时显示占位提示(防御性读取,绝不崩 context)。
+    """
+    lines = ["## 可用素材(按 usage 分组,各列前 5 条)"]
+    manifest: dict | None = None
+    if ASSETS_MANIFEST_PATH.is_file():
+        try:
+            doc = json.loads(ASSETS_MANIFEST_PATH.read_text(encoding="utf-8"))
+            manifest = doc if isinstance(doc, dict) else None
+        except (json.JSONDecodeError, OSError, UnicodeDecodeError):
+            manifest = None
+    if manifest is None:
+        lines.append(
+            "- (素材库 manifest 未部署:M12 落地后此处按 usage 分组列出;"
+            "sfx.add --assetId / element.add / asset.swap 届时可引用,"
+            "内置 7 音效的 name 别名仍可用)")
+        return "\n".join(lines)
+    groups: dict[tuple[str, str], list[str]] = {}
+    for e in manifest.get("assets") or []:
+        if not isinstance(e, dict) or not e.get("id"):
+            continue
+        kind = str(e.get("kind") or "?")
+        usages = [str(u) for u in (e.get("usage") or ["?"]) if u]
+        for u in usages or ["?"]:
+            groups.setdefault((kind, u), []).append(str(e["id"]))
+    for (kind, usage), ids in sorted(groups.items()):
+        k = _ASSET_KIND_LABELS.get(kind, kind)
+        u = _ASSET_USAGE_LABELS.get(usage, usage)
+        lines.append(f"- {k}·{u}:" + " / ".join(ids[:5]) + (" / …" if len(ids) > 5 else ""))
+    if len(lines) == 1:
+        lines.append("- (manifest 存在但无条目:先跑 rs_asset.py scan/add 入库)")
+    return "\n".join(lines)
+
+
 def _clip_params(c: dict) -> str:
     bits = []
     if c.get("speed") is not None:
@@ -1745,12 +2378,12 @@ def _track_table(ti: int, t: dict, is_main: bool) -> str:
         lines += ["| clipId | 时间窗 | 文本 | 可改字段 |", "|---|---|---|---|"]
         for c in t.get("clips", []):
             lines.append(f"| {cid_of(c)} | {span_of(c)} | {clip_desc(c) or '—'} "
-                         f"| subtitle.set/retime/highlight |")
+                         f"| subtitle.set/retime · huazi.set/clear |")
         return "\n".join(lines)
     if kind == "video":
         lines += ["| clipId | 时间窗 | 源 | 文本 | 参数 | 可改字段 |",
                   "|---|---|---|---|---|---|"]
-        editable = ("trim/move/split/delete/speed/reframe/motion/freeze"
+        editable = ("trim/move/split/delete/speed/reframe/motion/freeze/fx.apply"
                     + ("/overlay.remove" if not is_main else ""))
     else:
         lines += ["| clipId | 时间窗 | 源 | 角色 | 参数 | 可改字段 |",
@@ -1802,6 +2435,9 @@ def build_context(root: Path, scope: str, budget: int) -> tuple[str, dict]:
     if scope == "project":
         sections.append(("protect", _protect_table(root), 3))
         sections.append(("ops", _ops_available(root), 2))
+        sections.append(("effects", _effects_available(), 2))
+        sections.append(("fxplan", _fx_plan_section(root, doc), 2))
+        sections.append(("assets", _assets_available(), 2))
         d = _degrade_table(root)
         if d:
             sections.append(("degrade", d, 2))

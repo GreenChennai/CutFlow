@@ -85,7 +85,8 @@ def test_tail_equals_next_join_transition():
 
 def test_step_segment_uses_tails_and_quantization():
     src = inspect.getsource(rs_render.step_segment)
-    assert "_resolve_transitions" in src and "tailMs" in src
+    # M13:转场解析改走注册表版 resolve_joins(旧 _resolve_transitions 为兼容薄壳)
+    assert ("resolve_joins" in src or "_resolve_transitions" in src) and "tailMs" in src
     assert "q_in_ms" in src and "q_out_ms" in src
 
 

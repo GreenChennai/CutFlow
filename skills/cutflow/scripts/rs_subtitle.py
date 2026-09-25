@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import re
 import sys
 from pathlib import Path
 
@@ -71,21 +72,78 @@ VOICE_COMMENTARY, VOICE_DIALOGUE = "commentary", "dialogue"
 QUOTE_STYLE_NAME = "Quote"                     # ASS 第二 Style 段名
 QUOTE_COLOR = "&H0000E5FF"                     # 暖黄(BGR);与白字解说体一眼可分
 
+# ---------------------------------------------------------------- 字体(链接 artboard,不自建;分册01 §5 / ADR-0053)
+# 唯一真相源 = artboard 的 fonts/;本仓只存索引与对拍表 templates/fonts.json
+# (由 tools/synth_assets.py --fonts-only 生成,**禁手改**)。STYLES 的 font 字段
+# 恒为 None 哨兵,写入 ASS 时经 resolve_font() 查表——不再硬编码任何系统字体名。
+FONTS_JSON = Path(__file__).resolve().parents[1] / "templates" / "fonts.json"
+FONT_FALLBACK = "Noto Sans SC"    # 内置兜底(开源可嵌;fonts.json 缺失/坏表时 + WARN)
+_font_state: dict = {"family": None, "degraded": False, "reason": ""}
+
+
+def load_fonts() -> dict | None:
+    """读字体索引表;缺失/损坏 → None(调用方降级 + 留痕,不臆测)。"""
+    if not FONTS_JSON.is_file():
+        return None
+    try:
+        doc = json.loads(FONTS_JSON.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError):
+        return None
+    return doc if isinstance(doc, dict) and isinstance(doc.get("fonts"), list) else None
+
+
+def resolve_font() -> str:
+    """ASS Style 的 Fontname(查表兜底,全链唯一解析口)。
+
+    链条:fonts.json 的 default.subtitle(artboard 字体目录名)→ 该目录代表款
+    的字体内部家族名(family 字段,生成时由 FreeType 实读)。查表任何一步落空
+    → FONT_FALLBACK + WARN(fontDegraded 留痕;回滚档:删 fonts.json 即回到此)。
+    """
+    if _font_state["family"] is not None:
+        return _font_state["family"]
+    fonts = load_fonts()
+    family = None
+    if fonts:
+        dkey = (fonts.get("default") or {}).get("subtitle")
+        hit = next((f for f in fonts["fonts"] if f.get("dir") == dkey), None) if dkey else None
+        if hit and hit.get("family"):
+            family = str(hit["family"])
+            if not hit.get("file") or not (Path(str(fonts.get("artboardLockedPath", "")))
+                                           / "fonts" / dkey / str(hit["file"])).is_file():
+                # 代表款本地缺席(artboard 按需下载机制):仍写家族名(装上即生效),但留痕
+                _font_state["reason"] = f"artboard 代表款未下载:{dkey}/{hit.get('file')}(fetch_font 可补)"
+                print(f"[rs_subtitle] WARN fontDegraded-pending {_font_state['reason']}",
+                      file=sys.stderr)
+    if family is None:
+        family = FONT_FALLBACK
+        _font_state["degraded"] = True
+        _font_state["reason"] = (f"templates/fonts.json 缺失或 default.subtitle 无 family,"
+                                 f"降级内置兜底 {FONT_FALLBACK}")
+        print(f"[rs_subtitle] WARN fontDegraded {_font_state['reason']}", file=sys.stderr)
+    _font_state["family"] = family
+    return family
+
+
+def font_state() -> dict:
+    """字体解析留痕(CLI data / 测试断言用);resolve_font 后取值。"""
+    return dict(_font_state)
+
+
 STYLES = {
     "talkshow-bold": {
-        "font": "Microsoft YaHei", "size": {"9x16": 78, "3x4": 72, "16x9": 64},
+        "font": None, "size": {"9x16": 78, "3x4": 72, "16x9": 64},
         "primary": "&H00FFFFFF", "outline": "&H00101010", "back": "&H80000000",
         "outline_w": 3, "shadow": 1, "margin_v": {"9x16": 500, "3x4": 400, "16x9": 120},
         "align": 2, "bold": 1,
     },
     "tutorial-clean": {
-        "font": "Microsoft YaHei", "size": {"9x16": 62, "3x4": 58, "16x9": 56},
+        "font": None, "size": {"9x16": 62, "3x4": 58, "16x9": 56},
         "primary": "&H00FFFFFF", "outline": "&H00000000", "back": "&H60000000",
         "outline_w": 2, "shadow": 0, "margin_v": {"9x16": 520, "3x4": 430, "16x9": 90},
         "align": 2, "bold": 0, "border_style": 3,
     },
     "subtitle-white": {
-        "font": "Microsoft YaHei", "size": {"9x16": 68, "3x4": 64, "16x9": 58},
+        "font": None, "size": {"9x16": 68, "3x4": 64, "16x9": 58},
         "primary": "&H00FFFFFF", "outline": "&H00000000", "back": "&H00000000",
         "outline_w": 2, "shadow": 1, "margin_v": {"9x16": 320, "3x4": 280, "16x9": 110},
         "align": 2, "bold": 1,
@@ -903,10 +961,17 @@ def write_srt(events: list[dict], path: Path) -> None:
     path.write_text(body, encoding="utf-8")
 
 
-def _style_line(name: str, st: dict, ratio: str, secondary: str, italic: int = 0) -> str:
-    """一条 ASS Style 行(双 Style 的 Main/Quote 共用同一拼装,保证字段同构)。"""
+def _style_line(name: str, st: dict, ratio: str, secondary: str, italic: int = 0,
+                font: str | None = None, size: int | None = None) -> str:
+    """一条 ASS Style 行(双 Style 的 Main/Quote 共用同一拼装,保证字段同构)。
+
+    font 缺省走 resolve_font() 查表(分册01 §5);花字模板 Style 可显式传
+    font/size 覆写(仍以查表值为字体来源,模板只给字号/粗细等视觉参数)。
+    """
     margin_r, margin_l = 60, 60
-    return (f"Style: {name},{st['font']},{st['size'][ratio]},{st['primary']},{secondary},"
+    fam = font or resolve_font()
+    fsize = size if size is not None else st["size"][ratio]
+    return (f"Style: {name},{fam},{fsize},{st['primary']},{secondary},"
             f"{st['outline']},{st['back']},{st['bold']},{italic},0,0,100,100,0,0,"
             f"{st.get('border_style', 1)},{st['outline_w']},{st['shadow']},{st['align']},"
             f"{margin_l},{margin_r},{st['margin_v'][ratio]},1")
@@ -921,7 +986,8 @@ def quote_text(e: dict) -> str:
 
 
 def write_ass(events: list[dict], path: Path, style_name: str, ratio: str, canvas: str,
-              karaoke: bool = False, dual_style: bool = False) -> bool:
+              karaoke: bool = False, dual_style: bool = False,
+              huazi_tpl: dict | None = None) -> bool:
     """karaoke=True 时生成逐字卡拉OK:Primary=已唱色(黄),Secondary=未唱色(白),
     每字一个 \\kf 标签(时长=厘秒,取自字级时间戳;字间停顿计入前字)。
 
@@ -960,12 +1026,26 @@ Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour,
         st_q = dict(st)
         st_q["primary"] = QUOTE_COLOR
         header += _style_line(QUOTE_STYLE_NAME, st_q, ratio, secondary, italic=1) + "\n"
+    has_hz = any(e.get("_huazi") for e in events)
+    if has_hz:
+        # 花字主样式(ADR-0057 基础档):字号取模板 HuaziMain(缺省 = 基础样式 +14),
+        # 字体仍走 resolve_font() 查表;标签动画在 Dialogue body,不改卡文本
+        hz_st = dict(st, bold=1, outline_w=int((huazi_tpl or {}).get("style", {}).get("outline_w") or 10))
+        hz_size = (huazi_tpl or {}).get("style", {}).get("size") or st["size"][ratio] + 14
+        header += _style_line("HuaziMain", hz_st, ratio, secondary,
+                              font=resolve_font(), size=hz_size) + "\n"
     header += f"""
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
     lines = []
     for e in events:
+        if e.get("_huazi"):
+            # 花字卡(ADR-0057):body 由模板效果生成(标签只进 override,正文原样),
+            # 卡文本不变 → 必并/合规校验与剥 {...} 后的文本匹配口径都不受影响
+            lines.append(f"Dialogue: 1,{_ts_ass(e['start'])},{_ts_ass(e['end'])},HuaziMain,"
+                         f",0,0,0,,{e['_huazi']}\n")
+            continue
         style = QUOTE_STYLE_NAME if _is_dlg(e) else "Main"
         if karaoke:
             body = _kar_text(e)
@@ -1056,6 +1136,131 @@ def _karaoke_ready(wl: dict) -> tuple[bool, str]:
     return True, ""
 
 
+# ---------------------------------------------------------------- 花字基础档(ADR-0057,分册01 §4.3)
+# ASS 富文本:底衬(\bord + \p1 绘制)+ 逐字/逐词动画(\t)+ 淡入淡出(\fad)。
+# 模板存 assets/huazi/ass/(hz-* 元数据注释 + 示例 Dialogue);本侧只做解析与重排。
+# 硬规则 18 不变:任何 ASS Dialogue 文本匹配/计数前必须剥 {...} override;
+# 花字不改卡文本,因此 CPS ≤9 与每卡 ≤12 字(9:16)红线由既有约束天然继承。
+HUAZI_META_RE = re.compile(r"^; hz-([\w-]+): (.*)$", re.M)
+OVERRIDE_RE = re.compile(r"\{[^}]*\}")
+
+
+def strip_override(text: str) -> str:
+    """剥 {...} ASS override 标签(硬规则 18 的共享实现)。"""
+    return OVERRIDE_RE.sub("", str(text))
+
+
+def load_huazi_template(huazi_id: str) -> dict:
+    r"""花字 id → 模板数据(manifest 检索 → hz-* 元数据 + 示例 Style 参数)。
+
+    返回 {id, label, effect, params, file, usage, style};找不到/坏模板抛
+    KeyError/ValueError(CLI 层转 BAD_HUAZI,不静默退回普通字幕)。
+    """
+    import rs_asset
+    hit = rs_asset.find(huazi_id, "huazi")
+    src = rs_asset.file_of(hit) if hit is not None else None
+    if src is None:
+        # 索引缺席时的兜底:按 id 末两段直猜 huazi/ass/<名>.ass(旧工程容错)
+        guess = "_".join(huazi_id.split(".")[2:])
+        cand = Path(__file__).resolve().parents[1] / "assets" / "huazi" / "ass" / f"{guess}.ass"
+        src = cand if cand.is_file() else None
+    if src is None or not Path(src).is_file():
+        raise KeyError(f"花字模板不存在:{huazi_id}(rs_asset list --kind huazi 可查)")
+    text = Path(src).read_text(encoding="utf-8")
+    meta = dict(HUAZI_META_RE.findall(text))   # 键 = hz- 前缀后的短名(id/label/…)
+    if not meta.get("id"):
+        raise ValueError(f"花字模板缺 hz-id 元数据:{src}")
+    try:
+        params = json.loads(meta.get("params", "{}"))
+    except json.JSONDecodeError:
+        params = {}
+    style: dict = {}
+    m = re.search(r"^Style: HuaziMain,[^,]*,([^,]*),", text, re.M)
+    if m:
+        style["size"] = int(m.group(1))
+    m2 = re.search(r"^Style: HuaziBack,(?:[^,]*,){15}(\d+),", text, re.M)
+    if m2:
+        style["outline_w"] = int(m2.group(1))
+    return {"id": meta["id"], "label": meta.get("label", ""),
+            "effect": meta.get("effect", ""), "params": params,
+            "file": str(src), "usage": (meta.get("usage") or "").split(),
+            "style": style}
+
+
+def huazi_select(events: list[dict], keywords: list[str]) -> set[int]:
+    """选卡:keywords 命中(剥 override 后子串)的卡;空表 → 全选。
+
+    文本匹配一律走 strip_override(硬规则 18),杜绝 override 污染匹配。
+    """
+    if not keywords:
+        return set(range(len(events)))
+    out = set()
+    for i, e in enumerate(events):
+        plain = strip_override(e.get("text", ""))
+        if any(k and k in plain for k in keywords):
+            out.add(i)
+    return out
+
+
+def huazi_body(event: dict, effect: str, params: dict, canvas_w: int = 1080) -> str:
+    r"""单卡文本 → 花字 ASS body(标签只进 override,正文逐字原样)。
+
+    效果与 assets/huazi/ass/ 八套模板一一对应;动画幅度取模板 params
+    (overshoot ≤1.1,ADR-0057 进阶档纪律)。
+    """
+    text = event.get("text", "")
+    step = int(params.get("stepMs", 70))
+    if effect == "box":
+        color = str(params.get("color", "&H00E5FF00"))
+        return f"{{\\bord10\\bordcolor{color}}}{text}"
+    if effect == "brush":
+        # ASS 侧底衬(厚描边 + 微倾手写感);params.element 由 overlay 路径消费
+        color = str(params.get("color", "&H6E44FF"))
+        return f"{{\\bord16\\bordcolor{color}\\frz-2}}{text}"
+    if effect == "pop":
+        over = float(params.get("overshoot", 1.1))
+        o100 = int(over * 100)
+        parts = []
+        for i, ch in enumerate(text):
+            t0 = i * step
+            t1 = t0 + 120
+            t2 = t1 + 80
+            parts.append(f"{{\\fscx20\\fscy20\\t({t0},{t1},\\fscx{o100}\\fscy{o100})"
+                         f"\\t({t1},{t2},\\fscx100\\fscy100)}}{ch}")
+        return "".join(parts)
+    if effect == "slide":
+        dist = int(params.get("distPx", 80))
+        dur = int(params.get("durMs", 260))
+        x0 = max(0, canvas_w // 2 - dist // 2)
+        x1 = canvas_w // 2
+        y = 1500
+        return f"{{\\move({x0},{y},{x1},{y},0,{dur})\\fad(180,0)}}{text}"
+    if effect == "typewriter":
+        parts = []
+        for i, ch in enumerate(text):
+            t = i * step
+            parts.append(f"{{\\alpha&HFF&\\t({t},{t},\\alpha&H00&)}}{ch}")
+        return "".join(parts)
+    if effect == "count":
+        return f"{{\\t(0,90,\\fscx106\\fscy106)\\t(90,180,\\fscx100\\fscy100)}}{text}"
+    if effect == "tab":
+        skew = int(params.get("skew", 12))
+        color = str(params.get("color", "&H00E5FF00"))
+        return f"{{\\bord8\\bordcolor{color}\\frz-{skew // 3}}}{text}"
+    if effect == "subscribe":
+        fad = params.get("fadMs") or [200, 400]
+        return f"{{\\fad({int(fad[0])},{int(fad[1])})}}{text}"
+    raise ValueError(f"未知花字效果:{effect!r}")
+
+
+def apply_huazi(events: list[dict], tpl: dict, keywords: list[str]) -> set[int]:
+    """就地标记命中卡(事件挂 _huazi body);返回命中下标集(CLI 留痕/测试用)。"""
+    idx = huazi_select(events, keywords)
+    for i in idx:
+        events[i]["_huazi"] = huazi_body(events[i], tpl["effect"], tpl["params"])
+    return idx
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--from-wordline")
@@ -1080,6 +1285,11 @@ def main() -> int:
                          "无标记时降级为单 Style(留痕)")
     ap.add_argument("--allow-degraded", dest="allow_degraded", action="store_true",
                     help="卡拉OK 但 wordline 降级时,降级为普通字幕而不是报错")
+    ap.add_argument("--huazi", default=None,
+                    help="花字基础档(ADR-0057):模板 id(如 huazi.keyword.box,默认关);"
+                         "从 assets/huazi/ass/ 读模板,按效果给命中卡加 ASS 富文本动画")
+    ap.add_argument("--huazi-keywords", dest="huazi_keywords", default="",
+                    help="花字选卡关键词(逗号分隔;缺省=全部卡上花字)")
     ap.add_argument("--override", default=None,
                     help="Agent 复核修正文件(subtitles_override.json):按 span / text / "
                          "textPrefix+textSuffix 从 wordline 重建卡片;支持部分替换(未提及卡沿用 DP),"
@@ -1187,6 +1397,21 @@ def main() -> int:
         if karaoke and not meta.get("karaokeAttached"):
             karaoke = False
             kar_note = "卡拉OK 降级:字级时间未覆盖任何字幕卡"
+    # 花字(ADR-0057):事件定形后套模板;不改卡文本,红线(必并/CPS/字数)天然继承
+    huazi_idx: set = set()
+    if a.huazi:
+        try:
+            huazi_tpl = load_huazi_template(a.huazi)
+        except (KeyError, ValueError) as exc:
+            return emit(False, "BAD_HUAZI", str(exc), exit_code=2)
+        keywords = [k.strip() for k in a.huazi_keywords.split(",") if k.strip()]
+        huazi_idx = apply_huazi(events, huazi_tpl, keywords)
+        meta["huazi"] = {"id": huazi_tpl["id"], "effect": huazi_tpl["effect"],
+                         "appliedCards": len(huazi_idx),
+                         "keywords": keywords}
+        if not huazi_idx:
+            meta["degradeReasons"] = list(meta.get("degradeReasons") or []) + [
+                f"花字选卡 0 张(关键词 {keywords} 未命中任何卡)"]
     if kar_note:
         meta["degradeReasons"] = list(meta.get("degradeReasons") or []) + [kar_note]
     if not a.no_snap:
@@ -1204,7 +1429,9 @@ def main() -> int:
     out.mkdir(parents=True, exist_ok=True)
     write_srt(events, out / "master.srt")
     dual_applied = write_ass(events, out / "subtitles.ass", style, ratio, canvas,
-                             karaoke=karaoke, dual_style=dual_style)
+                             karaoke=karaoke, dual_style=dual_style,
+                             huazi_tpl=(load_huazi_template(a.huazi) if a.huazi and huazi_idx
+                                        else None))
 
     if meta["candidates"]:
         (out / "segments_candidates.json").write_text(
@@ -1239,6 +1466,9 @@ def main() -> int:
     gc = meta.get("ghostCards") or {}
     if gc.get("merged") or gc.get("dropped"):
         msg += f";P28-2 幽灵卡:并卡 {gc.get('merged', 0)} / 丢弃 {len(gc.get('dropped', []))}"
+    if meta.get("huazi"):
+        msg += (f";花字 {meta['huazi']['id']} 命中 {meta['huazi']['appliedCards']} 卡"
+                f"({meta['huazi']['effect']})")
     if meta["ambiguous"]:
         msg += f";{meta['ambiguous']} 句切分歧义(见 segments_candidates.json)"
     if meta["violations"]:
@@ -1253,6 +1483,9 @@ def main() -> int:
                  "canvas": canvas, "count": len(events),
                  "dualStyle": dual_style,
                  "dualStyleApplied": bool(dual_applied),
+                 "huazi": meta.get("huazi"),
+                 "font": resolve_font(),
+                 "fontDegraded": font_state()["degraded"],
                  "overrideApplied": bool(meta.get("overrideApplied")),
                  "maxChars": max_chars, "ambiguous": meta["ambiguous"],
                  "violations": meta["violations"][:20], "degraded": meta["degraded"],

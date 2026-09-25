@@ -917,6 +917,25 @@ def _reconcile_publish(root: Path, base: dict, deliver: Path,
     add("说明书存在(--auto 时含决策说明书)", not m5,
         "交付说明书" + (" + 决策说明书" if (notes / "决策说明书.md").is_file() else ""), m5)
 
+    # ⑤b 素材归因:素材归因.md 必在(publish 生成)且与实际引用双向一致(M12/R42)
+    import rs_asset
+    refs = rs_asset.collect_project_refs(root)
+    attr = notes / "素材归因.md"
+    mb = []
+    if not attr.is_file():
+        mb.append("说明书:素材归因.md 未生成")
+    else:
+        listed = rs_asset.asset_ids_in(attr.read_text(encoding="utf-8", errors="replace"))
+        wanted = {r["id"] for r in refs}
+        if listed != wanted:
+            mb.append(f"说明书:素材归因与引用不一致(文件多出 {sorted(listed - wanted)};"
+                      f"引用缺登 {sorted(wanted - listed)})")
+        nc = [r["id"] for r in refs if not r.get("commercial", True)]
+        if nc:
+            mb.append(f"商用:归因清单含不可商用素材 {nc}(不得进入交付)")
+    add("素材归因.md 与实际引用双向一致", not mb,
+        f"{len(refs)} 条引用" if attr.is_file() else "缺失", mb)
+
     # ⑥ 降级诚实:有 degraded 的产物必须在交付说明书列明原因与影响
     wl = _load_json(rs_paths.wordline_json(root))
     m6 = []
@@ -1000,6 +1019,11 @@ def publish(root: Path) -> dict:
     has_decision = (out / "决策说明书.md").is_file()
     if has_decision:
         shutil.copy2(out / "决策说明书.md", notes / "决策说明书.md")
+    # M12(ADR-0053/R45):素材归因清单——由统一索引汇总本工程**实际引用**的素材,
+    # 含四许可字段与 aiGenerated 标识;rs_verify L0 对交付再跑一次双向对拍。
+    import rs_asset
+    asset_refs = rs_asset.collect_project_refs(root)
+    write_text_atomic(notes / "素材归因.md", rs_asset.build_attribution_md(root, asset_refs))
     write_text_atomic(deliver / "半成品入口.md", build_pointer_md(root))
     # 5) §4.3 扩展对账 + 对账.md
     items, extended = _reconcile_publish(root, base, deliver, has_decision)

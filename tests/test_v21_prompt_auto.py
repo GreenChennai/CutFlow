@@ -174,7 +174,8 @@ def test_compile_styleref_matches_registry_entry(tmp_path):
     ids = [d["id"] for d in doc["decisions"]]
     assert len(ids) == len(set(ids)), "决策 id 必须唯一"
     for d in doc["decisions"]:
-        assert d["source"] in ("user", "registry", "default") and "inferred" in d
+        # M13/ADR-0059:source 族扩至 library(曲库)与 prescription(效果处方)
+        assert d["source"] in ("user", "registry", "default", "library", "prescription")             and "inferred" in d
     by_id = {d["id"]: d for d in doc["decisions"]}
     assert by_id["intent:videoType"]["source"] == "user" and not by_id["intent:videoType"]["inferred"]
     assert by_id["intent:maxChars"]["inferred"] and by_id["intent:maxChars"]["source"] == "registry"
@@ -714,7 +715,9 @@ def test_e2e_prompt_to_film_auto_unattended(tmp_path):
     # ---- 留痕与证据
     pj1 = json.loads((root / "05_时间线工程" / "pipeline.json").read_text(encoding="utf-8"))
     log1 = pj1["decision_log"]
-    assert log1 and all(d.get("source") in ("user", "registry", "default", "auto")
+    # M13/ADR-0059:source 族扩 library/prescription(rs_intent 曲库选曲/效果处方)
+    assert log1 and all(d.get("source") in ("user", "registry", "default", "auto",
+                                            "library", "prescription")
                         for d in log1), "每条决策必须带来源"
     ids1 = {d["id"] for d in log1}
     assert any(i.startswith("intent:") for i in ids1) and any(i.startswith("auto:") for i in ids1)

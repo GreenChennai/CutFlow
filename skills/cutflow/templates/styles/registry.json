@@ -20,7 +20,8 @@
   "  drama(含影视解说,方案 §5.5.3)= text.broll / sub.pair / drama.hook;screen-recording(§5.5.4)= screen.*。",
   "  film-commentary(影视解说)暂无独立 videoTypes 键(编译经 templates/prompts/film-commentary.md",
   "  按 talking-head 回退),其双 Style 字幕与版权门禁能力随 drama 登记;版权判据在 rs_verify L0。",
-  "  诚实纪律不变:未落地的能力不得提前登记。"
+  "  诚实纪律不变:未落地的能力不得提前登记。",
+  "v2 M13/ADR-0059:videoTypes.capabilities 增登记 fx.* 家族(描述符见 templates/capabilities/,stage S8/detector rs_render.py 为阶段自有不重复执行,产物 timeline/fx_report.json;fx.transition.audio 仅音画错位语义相关类型声明;fx.usage-plan/fx.usage-context/fx.catalog 为查询/计划层描述符,真实存在但不进挂载声明——挂载器只执行阶段外置 detector)。"
  ],
  "videoTypes": {
   "talking-head": {
@@ -29,7 +30,15 @@
    "capabilities": [
     "vision.greenscreen",
     "cut.dead-air",
-    "qc.black-frame"
+    "qc.black-frame",
+    "fx.transition",
+    "fx.transition.t2",
+    "fx.entry",
+    "fx.combo",
+    "fx.text",
+    "fx.prescription",
+    "fx.usage-gate",
+    "fx.safety-flash"
    ]
   },
   "talking-head+animation": {
@@ -38,14 +47,30 @@
    "capabilities": [
     "vision.greenscreen",
     "cut.dead-air",
-    "qc.black-frame"
+    "qc.black-frame",
+    "fx.transition",
+    "fx.transition.t2",
+    "fx.entry",
+    "fx.combo",
+    "fx.text",
+    "fx.prescription",
+    "fx.usage-gate",
+    "fx.safety-flash"
    ]
   },
   "pure-animation": {
    "label": "纯动画",
    "doc": "rules/video-types/纯动画.md",
    "capabilities": [
-    "qc.black-frame"
+    "qc.black-frame",
+    "fx.transition",
+    "fx.transition.t2",
+    "fx.entry",
+    "fx.combo",
+    "fx.text",
+    "fx.prescription",
+    "fx.usage-gate",
+    "fx.safety-flash"
    ]
   },
   "vlog": {
@@ -56,7 +81,16 @@
     "qc.black-frame",
     "vision.shot",
     "vision.track",
-    "vision.reframe"
+    "vision.reframe",
+    "fx.transition",
+    "fx.transition.t2",
+    "fx.entry",
+    "fx.combo",
+    "fx.text",
+    "fx.prescription",
+    "fx.usage-gate",
+    "fx.safety-flash",
+    "fx.transition.audio"
    ]
   },
   "混剪": {
@@ -66,7 +100,16 @@
     "qc.black-frame",
     "audio.beat",
     "audio.downbeat",
-    "audio.stem"
+    "audio.stem",
+    "fx.transition",
+    "fx.transition.t2",
+    "fx.entry",
+    "fx.combo",
+    "fx.text",
+    "fx.prescription",
+    "fx.usage-gate",
+    "fx.safety-flash",
+    "fx.transition.audio"
    ]
   },
   "drama": {
@@ -75,7 +118,16 @@
    "capabilities": [
     "text.broll",
     "sub.pair",
-    "drama.hook"
+    "drama.hook",
+    "fx.transition",
+    "fx.transition.t2",
+    "fx.entry",
+    "fx.combo",
+    "fx.text",
+    "fx.prescription",
+    "fx.usage-gate",
+    "fx.safety-flash",
+    "fx.transition.audio"
    ]
   },
   "screen-recording": {
@@ -85,7 +137,15 @@
     "screen.cursor",
     "screen.zoom",
     "screen.keys",
-    "screen.redact"
+    "screen.redact",
+    "fx.transition",
+    "fx.transition.t2",
+    "fx.entry",
+    "fx.combo",
+    "fx.text",
+    "fx.prescription",
+    "fx.usage-gate",
+    "fx.safety-flash"
    ]
   }
  },
@@ -178,7 +238,12 @@
     "template": "info",
     "density": "少"
    },
-   "bgmLibrary": null,
+   "bgmLibrary": {
+    "enabled": false,
+    "gainDb": -18,
+    "mood": "明亮",
+    "pacingFit": "fast"
+   },
    "match": {
     "keywords": [
      "知识口播",
@@ -220,7 +285,12 @@
     "template": "chapter",
     "density": "少"
    },
-   "bgmLibrary": null,
+   "bgmLibrary": {
+    "enabled": false,
+    "gainDb": -20,
+    "mood": "闲适",
+    "pacingFit": "slow"
+   },
    "match": {
     "keywords": [
      "教程",
@@ -266,7 +336,12 @@
      3
     ]
    },
-   "bgmLibrary": null,
+   "bgmLibrary": {
+    "enabled": false,
+    "gainDb": -18,
+    "mood": "明亮",
+    "pacingFit": "normal"
+   },
    "match": {
     "keywords": [
      "口播+动画",
@@ -308,7 +383,9 @@
    },
    "bgmLibrary": {
     "enabled": true,
-    "gainDb": -18
+    "gainDb": -18,
+    "mood": "温暖",
+    "pacingFit": "normal"
    },
    "match": {
     "keywords": [
@@ -351,7 +428,9 @@
    },
    "bgmLibrary": {
     "enabled": true,
-    "gainDb": -18
+    "gainDb": -18,
+    "mood": "闲适",
+    "pacingFit": "normal"
    },
    "match": {
     "keywords": [
@@ -397,7 +476,9 @@
    },
    "bgmLibrary": {
     "enabled": true,
-    "gainDb": -12
+    "gainDb": -12,
+    "mood": "鼓动",
+    "pacingFit": "music"
    },
    "match": {
     "keywords": [
@@ -438,7 +519,12 @@
     "template": "info",
     "density": "少"
    },
-   "bgmLibrary": null,
+   "bgmLibrary": {
+    "enabled": false,
+    "gainDb": -18,
+    "mood": "明亮",
+    "pacingFit": "fast"
+   },
    "match": {
     "keywords": [
      "小红书",
@@ -480,7 +566,9 @@
    },
    "bgmLibrary": {
     "enabled": true,
-    "gainDb": -18
+    "gainDb": -18,
+    "mood": "紧张",
+    "pacingFit": "fast"
    },
    "pack": "drama-vertical",
    "match": {
@@ -523,7 +611,12 @@
     "template": "chapter",
     "density": "少"
    },
-   "bgmLibrary": null,
+   "bgmLibrary": {
+    "enabled": false,
+    "gainDb": -20,
+    "mood": "闲适",
+    "pacingFit": "slow"
+   },
    "pack": "screen-tutorial",
    "match": {
     "keywords": [

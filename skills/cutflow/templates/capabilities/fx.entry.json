@@ -1,0 +1,28 @@
+{
+ "id": "fx.entry",
+ "label": "入场/出场特效(单片段 T1)",
+ "appliesTo": [
+  "talking-head",
+  "talking-head+animation",
+  "pure-animation",
+  "vlog",
+  "混剪",
+  "drama",
+  "screen-recording"
+ ],
+ "stage": "S8",
+ "detector": "rs_render.py",
+ "depends": [],
+ "degrade": {
+  "to": "none",
+  "trace": "fxDegraded",
+  "message": "段级特效注册表未部署;fxId 声明报错不静默(FX_UNREGISTERED)"
+ },
+ "params": {
+  "generators": 27,
+  "flashMaxMs": 300
+ },
+ "artifact": "timeline/fx_report.json",
+ "verify": "tests/test_effects.py",
+ "notes": "M13(分册02 §3.1–3.3):clip.fx{in,out,combo}/motion.inFx/outFx → rs_fx.registry CLIP_FX 生成器(fade/flash/zoompan/blur/slide/rotate/pixel/glitch/…)。消费点 rs_render.step_segment plan 阶段;未注册 fxId 报错(FX_UNREGISTERED),T2/元素域占位 fxDegraded 留痕。flash 类参数档内置 ≤300ms 光敏上限。"
+}

@@ -1,0 +1,23 @@
+{
+ "id": "fx.transition.audio",
+ "label": "音频域转场(J/L-Cut 家族)",
+ "appliesTo": [
+  "混剪",
+  "drama",
+  "vlog"
+ ],
+ "stage": "S8",
+ "detector": "rs_render.py",
+ "depends": [],
+ "degrade": {
+  "to": "concat",
+  "trace": "fxDegraded",
+  "message": "拼接图不可用;回退无损 concat(音画同切)并留痕"
+ },
+ "params": {
+  "defaultDurMs": 400
+ },
+ "artifact": "timeline/fx_report.json",
+ "verify": "tests/test_effects.py",
+ "notes": "M13(分册02 §6.1):tr.lcut/tr.jcut/tr.audio.crossfade/tr.invisible.cut/tr.match.cut——视频 concat 硬切 + 音频三段交叉(acrossfade tri);帧级精确零漂移,leadMs/lagMs 错位量待 IR 升版(rs_edit U7 已登记)。"
+}

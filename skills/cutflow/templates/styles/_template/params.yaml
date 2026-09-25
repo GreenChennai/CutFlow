@@ -18,3 +18,14 @@ cards: {density: 少, template: info}   # [内部] registry.entries[].cards(dens
 capabilities: []                     # [内部] templates/capabilities/ 已登记描述符;未登记不声明(诚实纪律,M8 补)
 artboard: {styles: [ARTBOARD-SLUG], templates: ["opener:1", "endcard:1"]}
 #          ↑ [内部] 一次借 1–2 个真实 artboard 风格 slug(references/styles/<slug>.md);templates 为「卡片:数量」
+
+# v2 M13/ADR-0059:效果处方(分册06 §9.1 体例;既是推荐也是 rs_verify EFFECTS_* 门禁依据)。
+# 新包必须自带本段(门禁 test_stylepack 校验字段完整:min≤max、prefer∩forbid=∅、fxId 在目录)。
+# 模板值为最保守档(min 全 0 =「少用也合格」的合法出口);按分册06 §7 各型表格照抄后覆盖。
+effects_prescription:
+  transition: {min: 0, max_per_8s: 1, prefer: [tr.dissolve.cross], forbid: []}   # min=0:硬切是默认值,特效是例外
+  in: {min: 0, max: 12, prefer: [in.fade.up]}
+  out: {min: 0, max: 12, prefer: [out.fade.up]}
+  sfx: {min: 0, max: 20, per15s: 2, noRepeatWithinMs: 10000}   # [内部] 分册01 §4.1 音效密度红线
+  flashy_max: 0                                                # 花哨类(flash/whip/punch/glitch)全片上限
+  require_reason: true                                         # 每处效果必须带能一句话解释的 reason(分册06 §5.2)

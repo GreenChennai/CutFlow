@@ -40,6 +40,12 @@ FIELD_CONSUMERS = {
     "punchIn": ["rs_render.py"],
     "freezeMs": ["rs_render.py"],
     "matte": ["rs_render.py"],
+    # v2 M14(分册04 §4/ADR-0055):声明消费链 —— rs_edit 是读写口;fx 渲染端
+    # 已消费(fxDegraded 留痕),huazi/font/assetId 的下游在 S7 字幕链/换素材链
+    "assetId": ["rs_edit.py"],
+    "fx": ["rs_edit.py", "rs_render.py"],
+    "font": ["rs_edit.py"],
+    "huazi": ["rs_edit.py"],
 }
 TOP_CONSUMERS = {
     "markers": ["rs_common.py", "rs_sfx.py", "rs_meta.py"],

@@ -183,7 +183,8 @@ def resolve_src(src: str, base_dir: Path) -> Path:
     """IR src → 绝对路径;assets_sfx: 伪协议解析到内置音效库(J4)。"""
     s = str(src or "")
     if s.startswith("assets_sfx:"):
-        return rs_common.REPO_ROOT / "assets" / "sfx" / (s.split(":", 1)[1] + ".mp3")
+        import rs_asset   # M12:素材索引统一解析口(id/组名/旧名三级,ADR-0053)
+        return rs_asset.resolve_sfx_ref(s.split(":", 1)[1])
     p = Path(s)
     return p if p.is_absolute() else base_dir / p
 

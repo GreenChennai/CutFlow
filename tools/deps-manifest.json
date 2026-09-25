@@ -99,6 +99,18 @@
    "pip": "git+https://github.com/openai/CLIP.git",
    "weights": "https://openaipublic.azureedge.net/clip/models/40d365715913c9da98579312b702a82c18be219cc2a73407c4526f58eba950af/ViT-B-32.pt",
    "notes": "官方仓库 openai/CLIP;无正式 pip 发行(pip 名 clip 是无关包,绝不可用),git 直装与权重直链采用前须一手核实。安装目标 tools/.venv-torch。"
+  },
+  "moderngl": {
+   "capability": "fx.glsl",
+   "label": "GLSL 转场渲染(T2/B3)",
+   "version": "pending",
+   "sizeMb": 5,
+   "sha256": "",
+   "verify": "pending",
+   "backend": "py",
+   "pip": "moderngl",
+   "notes": "M13/ADR-0054(分册02 §1.2 B3):rs_fx/t2_glsl.py 用 moderngl 预渲 gl-transitions(MIT)重叠区;缺失即降级注册表声明的最接近 T1 xfade 并 fxDegraded 留痕(ADR-0049 三态);needs GPU/GL 上下文,无 GL 环境装了也不可用(诚实探针 rs_fx.t2_glsl.available)。采用前须一手核实。",
+   "weights": ""
   }
  }
 }

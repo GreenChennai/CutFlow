@@ -1,0 +1,7016 @@
+{
+ "version": 1,
+ "kind": "cutflow-effect-catalog",
+ "sourceDoc": "sources/剪映效果名-原始清单.md",
+ "stats": {
+  "total": 317,
+  "status": {
+   "不实现": 78,
+   "可执行": 186,
+   "登记待实现": 53
+  },
+  "tier": {
+   "T1": 162,
+   "T2": 77,
+   "T3": 78
+  },
+  "source": {
+   "用户清单": 257,
+   "补充清单": 60
+  },
+  "subclass": {
+   "T2候选": 40,
+   "基础": 110,
+   "已确认删除": 42,
+   "标准NLE": 41,
+   "特效": 53,
+   "组合": 11,
+   "运镜": 19,
+   "遮罩": 1
+  },
+  "domain": {
+   "artboard": 37,
+   "audio": 5,
+   "element": 7,
+   "render": 260,
+   "subtitle": 8
+  },
+  "category": {
+   "combo": 17,
+   "in": 54,
+   "out": 27,
+   "transition": 141,
+   "unknown": 78
+  },
+  "executable": 186
+ },
+ "effects": [
+  {
+   "id": "blur.axis",
+   "label": "纵拉模糊",
+   "category": "in",
+   "subclass": "运镜",
+   "aliases": [
+    "垂直模糊",
+    "纵拉模糊"
+   ],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "blur.axis",
+   "params": {
+    "dir": "v",
+    "durMs": 500
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": "avgblur 各向异性(sizeX/sizeY);gblur 无方向",
+   "originName": null
+  },
+  {
+   "id": "blur.axis.h",
+   "label": "横拉模糊出场",
+   "category": "out",
+   "subclass": "运镜",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "blur.axis.h",
+   "params": {
+    "dir": "h",
+    "durMs": 500
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "blur.in.focus",
+   "label": "模糊聚焦",
+   "category": "in",
+   "subclass": "运镜",
+   "aliases": [
+    "模糊放大",
+    "模糊聚焦",
+    "模糊收缩"
+   ],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "blur.in.focus",
+   "params": {
+    "durMs": 700,
+    "sigma": 14
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": "模糊+缩放组合的 T1 近似(纯模糊档)",
+   "originName": null
+  },
+  {
+   "id": "dissolve.in",
+   "label": "叠化入场",
+   "category": "in",
+   "subclass": "基础",
+   "aliases": [
+    "叠化(单片段)",
+    "溶解(单片段)",
+    "熄灭"
+   ],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "dissolve.in",
+   "params": {
+    "durMs": 500,
+    "alpha": true
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": "叠化本质是转场;单片段 alpha 版,拼接场景用 tr.dissolve.cross",
+   "originName": null
+  },
+  {
+   "id": "dither.out",
+   "label": "飘散消散",
+   "category": "out",
+   "subclass": "基础",
+   "aliases": [
+    "飘散",
+    "散景消散",
+    "消散成花"
+   ],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "dither.out",
+   "params": {
+    "durMs": 600,
+    "sigma": 12
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": "近似档:淡出+模糊;真飘散粒子 T2",
+   "originName": null
+  },
+  {
+   "id": "effect.chroma.split",
+   "label": "色散重影",
+   "category": "combo",
+   "subclass": "特效",
+   "aliases": [
+    "色散重影",
+    "色差扩光",
+    "色差 RGB",
+    "色差流波"
+   ],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "effect.chroma.split",
+   "params": {
+    "shift": 4
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "effect.drip.ink",
+   "label": "水墨(近似)",
+   "category": "in",
+   "subclass": "特效",
+   "aliases": [
+    "滴墨入画",
+    "泼墨开场",
+    "墨水",
+    "水墨(入场)"
+   ],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "effect.drip.ink",
+   "params": {
+    "durMs": 800,
+    "sigma": 10
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": "近似档;真水墨 T2(分册02 §3.3 注明近似)",
+   "originName": null
+  },
+  {
+   "id": "effect.exposure.bloom",
+   "label": "过曝消散",
+   "category": "in",
+   "subclass": "特效",
+   "aliases": [
+    "过曝消散",
+    "曝光拉丝",
+    "光幕爆发",
+    "强光擦除",
+    "过曝模糊"
+   ],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "effect.exposure.bloom",
+   "params": {
+    "durMs": 700
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "effect.freeze.frame",
+   "label": "拍照定格",
+   "category": "in",
+   "subclass": "特效",
+   "aliases": [
+    "拍照定格",
+    "定格"
+   ],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "effect.freeze.frame",
+   "params": {
+    "freezeMs": 600
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": "与 freezeMs(ADR-0027)同一能力,合并登记",
+   "originName": null
+  },
+  {
+   "id": "effect.glitch.exit",
+   "label": "故障退出",
+   "category": "out",
+   "subclass": "特效",
+   "aliases": [
+    "故障退出"
+   ],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "effect.glitch.exit",
+   "params": {
+    "durMs": 500,
+    "shift": 8
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "effect.glitch.rgb",
+   "label": "RGB 故障入场",
+   "category": "in",
+   "subclass": "特效",
+   "aliases": [
+    "变色故障",
+    "RGB故障",
+    "信号失真",
+    "故障抖动"
+   ],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "effect.glitch.rgb",
+   "params": {
+    "durMs": 500,
+    "shift": 8
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "effect.glow.halo",
+   "label": "辉光光晕",
+   "category": "in",
+   "subclass": "特效",
+   "aliases": [
+    "辉光渐消",
+    "纵深光晕",
+    "光尘弹跳"
+   ],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "effect.glow.halo",
+   "params": {
+    "durMs": 600,
+    "sigma": 20,
+    "brightness": 0.15
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "effect.ice.frost",
+   "label": "冰晶(近似)",
+   "category": "in",
+   "subclass": "特效",
+   "aliases": [
+    "冰块(入场)",
+    "冰雪融化",
+    "冰棱消散",
+    "冰冻"
+   ],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "effect.ice.frost",
+   "params": {
+    "durMs": 700
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": "近似档(分册02 §3.3):真冰晶属拟物类不实现;此为冷调去饱和近似",
+   "originName": null
+  },
+  {
+   "id": "effect.light.streak",
+   "label": "流光扫过",
+   "category": "in",
+   "subclass": "特效",
+   "aliases": [
+    "流金",
+    "拉丝滑入",
+    "光流喷射",
+    "星芒收東"
+   ],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "effect.light.streak",
+   "params": {
+    "dir": "h",
+    "durMs": 600
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "effect.mosaic.dissolve",
+   "label": "马赛克消融出场",
+   "category": "out",
+   "subclass": "特效",
+   "aliases": [
+    "多方格拼图",
+    "马赛克(出场)",
+    "块状消融",
+    "网格消退"
+   ],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "effect.mosaic.dissolve",
+   "params": {
+    "durMs": 600
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "effect.page.flip",
+   "label": "翻页(透视近似)",
+   "category": "in",
+   "subclass": "特效",
+   "aliases": [
+    "胶片翻转",
+    "拍立得翻转",
+    "翻入",
+    "右翻",
+    "翻书",
+    "打开书籍",
+    "纸张展开",
+    "纸张揭开",
+    "折叠展开"
+   ],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "effect.page.flip",
+   "params": {
+    "durMs": 600
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": "近似档;真 3D 翻页 T2",
+   "originName": null
+  },
+  {
+   "id": "effect.pixel.reveal",
+   "label": "像素扩散入场",
+   "category": "in",
+   "subclass": "特效",
+   "aliases": [
+    "像素扩散",
+    "像索扩散",
+    "马赛克入场",
+    "像素湮灭"
+   ],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "effect.pixel.reveal",
+   "params": {
+    "durMs": 600
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": "像素族统一一条(含 马赛克/块状消融 同族合并)",
+   "originName": null
+  },
+  {
+   "id": "effect.speed.ramp",
+   "label": "变速时空",
+   "category": "in",
+   "subclass": "特效",
+   "aliases": [
+    "变速时空"
+   ],
+   "tier": "T2",
+   "status": "登记待实现",
+   "fxId": "effect.speed.ramp",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": "T2 候选(需着色器/素材/字幕侧逐元素表达);本轮未落地,登记待实现",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": "setpts 变速改段时长,与零漂移硬约束冲突;待 IR 变速区间表达升版",
+   "originName": null
+  },
+  {
+   "id": "effect.split.grid",
+   "label": "分屏网格入场",
+   "category": "in",
+   "subclass": "特效",
+   "aliases": [
+    "分屏翻转",
+    "立方铺开",
+    "网格渐进",
+    "方块合并",
+    "六列弹入",
+    "条纹排列"
+   ],
+   "tier": "T2",
+   "status": "登记待实现",
+   "fxId": "effect.split.grid",
+   "params": {
+    "durMs": 600
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": "T2 候选(需着色器/素材/字幕侧逐元素表达);本轮未落地,登记待实现",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": "xstack 分块错峰(>6 块成本显著上升,分册02 §3.3);待 fc 分块扩展",
+   "originName": null
+  },
+  {
+   "id": "effect.tv.off",
+   "label": "电视息屏",
+   "category": "out",
+   "subclass": "特效",
+   "aliases": [
+    "电视息屏",
+    "关机"
+   ],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "effect.tv.off",
+   "params": {
+    "durMs": 600
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": "纵向收缩版待 fc 扩展;先落噪声+暗角近似档",
+   "originName": null
+  },
+  {
+   "id": "effect.tv.old",
+   "label": "老电视",
+   "category": "in",
+   "subclass": "特效",
+   "aliases": [
+    "老电视",
+    "录像带分屏"
+   ],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "effect.tv.old",
+   "params": {
+    "durMs": 700
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "effect.wipe.scan",
+   "label": "雨刷扫光",
+   "category": "in",
+   "subclass": "特效",
+   "aliases": [
+    "雨刷",
+    "擦除开场",
+    "条带扫光",
+    "垂直扫光",
+    "左移扫光"
+   ],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "effect.wipe.scan",
+   "params": {
+    "dir": "up",
+    "durMs": 500
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": "单片段 crop/遮罩版;双片段拼接用 tr.wipe.* / tr.slice.*",
+   "originName": null
+  },
+  {
+   "id": "fade.in",
+   "label": "渐显",
+   "category": "in",
+   "subclass": "基础",
+   "aliases": [
+    "渐显"
+   ],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "fade.in",
+   "params": {
+    "durMs": 500
+   },
+   "usage": [
+    "talking-head",
+    "tutorial",
+    "vlog"
+   ],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "fade.in.soft",
+   "label": "柔光渐显",
+   "category": "in",
+   "subclass": "基础",
+   "aliases": [
+    "柔光渐显"
+   ],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "fade.in.soft",
+   "params": {
+    "durMs": 600,
+    "soft": true
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": "中间调提亮近似柔光",
+   "originName": null
+  },
+  {
+   "id": "fade.out",
+   "label": "渐隐",
+   "category": "in",
+   "subclass": "基础",
+   "aliases": [
+    "渐隐",
+    "渐隐消散",
+    "完全消散"
+   ],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "fade.out",
+   "params": {
+    "durMs": 500
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "flash.in.black",
+   "label": "闪黑入场",
+   "category": "in",
+   "subclass": "基础",
+   "aliases": [
+    "闪黑(入场)",
+    "黑屏骤现",
+    "镜头渐显"
+   ],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "flash.in.black",
+   "params": {
+    "durMs": 240,
+    "color": "black"
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "flash.in.white",
+   "label": "闪白入场",
+   "category": "in",
+   "subclass": "基础",
+   "aliases": [
+    "闪白(入场)",
+    "闪烁"
+   ],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "flash.in.white",
+   "params": {
+    "durMs": 240,
+    "color": "white"
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "flash.out.black",
+   "label": "闪黑出场",
+   "category": "out",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "flash.out.black",
+   "params": {
+    "durMs": 240,
+    "color": "black"
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "flash.out.white",
+   "label": "闪白出场",
+   "category": "out",
+   "subclass": "基础",
+   "aliases": [
+    "光线闪白",
+    "闪白滑出",
+    "闪光闭幕"
+   ],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "flash.out.white",
+   "params": {
+    "durMs": 240,
+    "color": "white"
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "fx.chromatic",
+   "label": "色差(整段)",
+   "category": "combo",
+   "subclass": "组合",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "fx.chromatic",
+   "params": {
+    "shift": 3
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "fx.compare.slider",
+   "label": "对比滑块(前后对比)",
+   "category": "combo",
+   "subclass": "标准NLE",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "fx.compare.slider",
+   "params": {
+    "graded": true
+   },
+   "usage": [
+    "tutorial",
+    "screen-recording"
+   ],
+   "commonness": "中",
+   "why": null,
+   "source": "补充清单",
+   "license": null,
+   "domain": "render",
+   "note": "右半调色示意『后』;教程/测评/带货最高频(分册02 §6.4)",
+   "originName": null
+  },
+  {
+   "id": "fx.film.grain",
+   "label": "胶片颗粒",
+   "category": "combo",
+   "subclass": "组合",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "fx.film.grain",
+   "params": {
+    "alls": 7
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "fx.float",
+   "label": "悬浮微动",
+   "category": "combo",
+   "subclass": "组合",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "fx.float",
+   "params": {
+    "curve": "breathe",
+    "amp": 0.015
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "fx.freeze.hold",
+   "label": "定格持住",
+   "category": "combo",
+   "subclass": "组合",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "fx.freeze.hold",
+   "params": {
+    "freezeMs": 800
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "fx.kenburns",
+   "label": "Ken Burns 慢推",
+   "category": "combo",
+   "subclass": "组合",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "fx.kenburns",
+   "params": {
+    "z0": 1.0,
+    "z1": 1.08
+   },
+   "usage": [
+    "vlog",
+    "talking-head"
+   ],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "fx.lut.cool",
+   "label": "冷调",
+   "category": "combo",
+   "subclass": "组合",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "fx.lut.cool",
+   "params": {
+    "temp": "cool"
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "fx.lut.warm",
+   "label": "暖调",
+   "category": "combo",
+   "subclass": "组合",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "fx.lut.warm",
+   "params": {
+    "temp": "warm"
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "fx.pip",
+   "label": "画中画",
+   "category": "combo",
+   "subclass": "组合",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "fx.pip",
+   "params": {
+    "scale": 0.3,
+    "pos": "br"
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "fx.shake.emphasis",
+   "label": "强调抖动",
+   "category": "combo",
+   "subclass": "组合",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "fx.shake.emphasis",
+   "params": {
+    "amp": 4,
+    "freq": 12,
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "fx.split.screen",
+   "label": "分屏对比",
+   "category": "combo",
+   "subclass": "组合",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "fx.split.screen",
+   "params": {
+    "graded": false
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "fx.spotlight",
+   "label": "聚光灯跟随",
+   "category": "combo",
+   "subclass": "标准NLE",
+   "aliases": [],
+   "tier": "T2",
+   "status": "登记待实现",
+   "fxId": "fx.spotlight",
+   "params": {},
+   "usage": [],
+   "commonness": "中",
+   "why": "T2 候选(需着色器/素材/字幕侧逐元素表达);本轮未落地,登记待实现",
+   "source": "补充清单",
+   "license": null,
+   "domain": "render",
+   "note": "radial 遮罩位移需 fc/mask;禁 geq(ADR-0022)→ 待 fc 遮罩扩展",
+   "originName": null
+  },
+  {
+   "id": "fx.transition.三屏放大",
+   "label": "三屏放大",
+   "category": "transition",
+   "subclass": "T2候选",
+   "aliases": [
+    "三屏放大"
+   ],
+   "tier": "T2",
+   "status": "登记待实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "T2 候选转场(GLSL 遮罩/3D/粒子);gl-transitions 未收录或逐条验证未过",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "三屏放大"
+  },
+  {
+   "id": "fx.transition.上下翻页",
+   "label": "上下翻页",
+   "category": "transition",
+   "subclass": "T2候选",
+   "aliases": [
+    "上下翻页"
+   ],
+   "tier": "T2",
+   "status": "登记待实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "T2 候选转场(GLSL 遮罩/3D/粒子);gl-transitions 未收录或逐条验证未过",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "上下翻页"
+  },
+  {
+   "id": "fx.transition.卡片翻转",
+   "label": "卡片翻转",
+   "category": "transition",
+   "subclass": "T2候选",
+   "aliases": [
+    "卡片翻转"
+   ],
+   "tier": "T2",
+   "status": "登记待实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "T2 候选转场(GLSL 遮罩/3D/粒子);gl-transitions 未收录或逐条验证未过",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "卡片翻转"
+  },
+  {
+   "id": "fx.transition.名片揭开",
+   "label": "名片揭开",
+   "category": "transition",
+   "subclass": "T2候选",
+   "aliases": [
+    "名片揭开"
+   ],
+   "tier": "T2",
+   "status": "登记待实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "T2 候选转场(GLSL 遮罩/3D/粒子);gl-transitions 未收录或逐条验证未过",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "名片揭开"
+  },
+  {
+   "id": "fx.transition.圆幕闪现",
+   "label": "圆幕闪现",
+   "category": "transition",
+   "subclass": "T2候选",
+   "aliases": [
+    "圆幕闪现"
+   ],
+   "tier": "T2",
+   "status": "登记待实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "T2 候选转场(GLSL 遮罩/3D/粒子);gl-transitions 未收录或逐条验证未过",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "圆幕闪现"
+  },
+  {
+   "id": "fx.transition.圆形遮罩 I",
+   "label": "圆形遮罩 I",
+   "category": "transition",
+   "subclass": "T2候选",
+   "aliases": [
+    "圆形遮罩 I"
+   ],
+   "tier": "T2",
+   "status": "登记待实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "T2 候选转场(GLSL 遮罩/3D/粒子);gl-transitions 未收录或逐条验证未过",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "圆形遮罩 I"
+  },
+  {
+   "id": "fx.transition.复古放映",
+   "label": "复古放映",
+   "category": "transition",
+   "subclass": "T2候选",
+   "aliases": [
+    "复古放映"
+   ],
+   "tier": "T2",
+   "status": "登记待实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "T2 候选转场(GLSL 遮罩/3D/粒子);gl-transitions 未收录或逐条验证未过",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "复古放映"
+  },
+  {
+   "id": "fx.transition.字母拼贴",
+   "label": "字母拼贴",
+   "category": "transition",
+   "subclass": "T2候选",
+   "aliases": [
+    "字母拼贴"
+   ],
+   "tier": "T2",
+   "status": "登记待实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "T2 候选转场(GLSL 遮罩/3D/粒子);gl-transitions 未收录或逐条验证未过",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "字母拼贴"
+  },
+  {
+   "id": "fx.transition.封套撕裂",
+   "label": "封套撕裂",
+   "category": "transition",
+   "subclass": "T2候选",
+   "aliases": [
+    "封套撕裂"
+   ],
+   "tier": "T2",
+   "status": "登记待实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "T2 候选转场(GLSL 遮罩/3D/粒子);gl-transitions 未收录或逐条验证未过",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "封套撕裂"
+  },
+  {
+   "id": "fx.transition.抖动(转场)",
+   "label": "抖动(转场)",
+   "category": "transition",
+   "subclass": "T2候选",
+   "aliases": [
+    "抖动(转场)"
+   ],
+   "tier": "T2",
+   "status": "登记待实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "T2 候选转场(GLSL 遮罩/3D/粒子);gl-transitions 未收录或逐条验证未过",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "抖动(转场)"
+  },
+  {
+   "id": "fx.transition.拍摄器眨眼",
+   "label": "拍摄器眨眼",
+   "category": "transition",
+   "subclass": "T2候选",
+   "aliases": [
+    "拍摄器眨眼"
+   ],
+   "tier": "T2",
+   "status": "登记待实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "T2 候选转场(GLSL 遮罩/3D/粒子);gl-transitions 未收录或逐条验证未过",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "拍摄器眨眼"
+  },
+  {
+   "id": "fx.transition.撕拉转场",
+   "label": "撕拉转场",
+   "category": "transition",
+   "subclass": "T2候选",
+   "aliases": [
+    "撕拉转场"
+   ],
+   "tier": "T2",
+   "status": "登记待实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "T2 候选转场(GLSL 遮罩/3D/粒子);gl-transitions 未收录或逐条验证未过",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "撕拉转场"
+  },
+  {
+   "id": "fx.transition.撕纸拉屏",
+   "label": "撕纸拉屏",
+   "category": "transition",
+   "subclass": "T2候选",
+   "aliases": [
+    "撕纸拉屏"
+   ],
+   "tier": "T2",
+   "status": "登记待实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "T2 候选转场(GLSL 遮罩/3D/粒子);gl-transitions 未收录或逐条验证未过",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "撕纸拉屏"
+  },
+  {
+   "id": "fx.transition.撕纸揭除",
+   "label": "撕纸揭除",
+   "category": "transition",
+   "subclass": "T2候选",
+   "aliases": [
+    "撕纸揭除"
+   ],
+   "tier": "T2",
+   "status": "登记待实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "T2 候选转场(GLSL 遮罩/3D/粒子);gl-transitions 未收录或逐条验证未过",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "撕纸揭除"
+  },
+  {
+   "id": "fx.transition.放映机",
+   "label": "放映机",
+   "category": "transition",
+   "subclass": "T2候选",
+   "aliases": [
+    "放映机"
+   ],
+   "tier": "T2",
+   "status": "登记待实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "T2 候选转场(GLSL 遮罩/3D/粒子);gl-transitions 未收录或逐条验证未过",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "放映机"
+  },
+  {
+   "id": "fx.transition.方片翻转",
+   "label": "方片翻转",
+   "category": "transition",
+   "subclass": "T2候选",
+   "aliases": [
+    "方片翻转"
+   ],
+   "tier": "T2",
+   "status": "登记待实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "T2 候选转场(GLSL 遮罩/3D/粒子);gl-transitions 未收录或逐条验证未过",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "方片翻转"
+  },
+  {
+   "id": "fx.transition.旋转圆盘",
+   "label": "旋转圆盘",
+   "category": "transition",
+   "subclass": "T2候选",
+   "aliases": [
+    "旋转圆盘"
+   ],
+   "tier": "T2",
+   "status": "登记待实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "T2 候选转场(GLSL 遮罩/3D/粒子);gl-transitions 未收录或逐条验证未过",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "旋转圆盘"
+  },
+  {
+   "id": "fx.transition.旋转翻页",
+   "label": "旋转翻页",
+   "category": "transition",
+   "subclass": "T2候选",
+   "aliases": [
+    "旋转翻页"
+   ],
+   "tier": "T2",
+   "status": "登记待实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "T2 候选转场(GLSL 遮罩/3D/粒子);gl-transitions 未收录或逐条验证未过",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "旋转翻页"
+  },
+  {
+   "id": "fx.transition.星星吸入",
+   "label": "星星吸入",
+   "category": "transition",
+   "subclass": "T2候选",
+   "aliases": [
+    "星星吸入"
+   ],
+   "tier": "T2",
+   "status": "登记待实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "T2 候选转场(GLSL 遮罩/3D/粒子);gl-transitions 未收录或逐条验证未过",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "星星吸入"
+  },
+  {
+   "id": "fx.transition.星星空间推近",
+   "label": "星星空间推近",
+   "category": "transition",
+   "subclass": "T2候选",
+   "aliases": [
+    "星星空间推近"
+   ],
+   "tier": "T2",
+   "status": "登记待实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "T2 候选转场(GLSL 遮罩/3D/粒子);gl-transitions 未收录或逐条验证未过",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "星星空间推近"
+  },
+  {
+   "id": "fx.transition.毛边展开",
+   "label": "毛边展开",
+   "category": "transition",
+   "subclass": "T2候选",
+   "aliases": [
+    "毛边展开"
+   ],
+   "tier": "T2",
+   "status": "登记待实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "T2 候选转场(GLSL 遮罩/3D/粒子);gl-transitions 未收录或逐条验证未过",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "毛边展开"
+  },
+  {
+   "id": "fx.transition.水墨晕开",
+   "label": "水墨晕开",
+   "category": "transition",
+   "subclass": "T2候选",
+   "aliases": [
+    "水墨晕开"
+   ],
+   "tier": "T2",
+   "status": "登记待实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "T2 候选转场(GLSL 遮罩/3D/粒子);gl-transitions 未收录或逐条验证未过",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "水墨晕开"
+  },
+  {
+   "id": "fx.transition.水幕散落",
+   "label": "水幕散落",
+   "category": "transition",
+   "subclass": "T2候选",
+   "aliases": [
+    "水幕散落"
+   ],
+   "tier": "T2",
+   "status": "登记待实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "T2 候选转场(GLSL 遮罩/3D/粒子);gl-transitions 未收录或逐条验证未过",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "水幕散落"
+  },
+  {
+   "id": "fx.transition.水波",
+   "label": "水波",
+   "category": "transition",
+   "subclass": "T2候选",
+   "aliases": [
+    "水波"
+   ],
+   "tier": "T2",
+   "status": "登记待实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "T2 候选转场(GLSL 遮罩/3D/粒子);gl-transitions 未收录或逐条验证未过",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "水波"
+  },
+  {
+   "id": "fx.transition.水流",
+   "label": "水流",
+   "category": "transition",
+   "subclass": "T2候选",
+   "aliases": [
+    "水流"
+   ],
+   "tier": "T2",
+   "status": "登记待实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "T2 候选转场(GLSL 遮罩/3D/粒子);gl-transitions 未收录或逐条验证未过",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "水流"
+  },
+  {
+   "id": "fx.transition.波纹掠过",
+   "label": "波纹掠过",
+   "category": "transition",
+   "subclass": "T2候选",
+   "aliases": [
+    "波纹掠过"
+   ],
+   "tier": "T2",
+   "status": "登记待实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "T2 候选转场(GLSL 遮罩/3D/粒子);gl-transitions 未收录或逐条验证未过",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "波纹掠过"
+  },
+  {
+   "id": "fx.transition.烟雾吹散",
+   "label": "烟雾吹散",
+   "category": "transition",
+   "subclass": "T2候选",
+   "aliases": [
+    "烟雾吹散"
+   ],
+   "tier": "T2",
+   "status": "登记待实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "T2 候选转场(GLSL 遮罩/3D/粒子);gl-transitions 未收录或逐条验证未过",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "烟雾吹散"
+  },
+  {
+   "id": "fx.transition.画笔擦除",
+   "label": "画笔擦除",
+   "category": "transition",
+   "subclass": "T2候选",
+   "aliases": [
+    "画笔擦除"
+   ],
+   "tier": "T2",
+   "status": "登记待实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "T2 候选转场(GLSL 遮罩/3D/粒子);gl-transitions 未收录或逐条验证未过",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "画笔擦除"
+  },
+  {
+   "id": "fx.transition.相机眨眼",
+   "label": "相机眨眼",
+   "category": "transition",
+   "subclass": "T2候选",
+   "aliases": [
+    "相机眨眼"
+   ],
+   "tier": "T2",
+   "status": "登记待实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "T2 候选转场(GLSL 遮罩/3D/粒子);gl-transitions 未收录或逐条验证未过",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "相机眨眼"
+  },
+  {
+   "id": "fx.transition.窗格",
+   "label": "窗格",
+   "category": "transition",
+   "subclass": "T2候选",
+   "aliases": [
+    "窗格"
+   ],
+   "tier": "T2",
+   "status": "登记待实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "T2 候选转场(GLSL 遮罩/3D/粒子);gl-transitions 未收录或逐条验证未过",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "窗格"
+  },
+  {
+   "id": "fx.transition.立体翻面雾气飘散",
+   "label": "立体翻面雾气飘散",
+   "category": "transition",
+   "subclass": "T2候选",
+   "aliases": [
+    "立体翻面雾气飘散"
+   ],
+   "tier": "T2",
+   "status": "登记待实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "T2 候选转场(GLSL 遮罩/3D/粒子);gl-transitions 未收录或逐条验证未过",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "立体翻面雾气飘散"
+  },
+  {
+   "id": "fx.transition.立方体",
+   "label": "立方体",
+   "category": "transition",
+   "subclass": "T2候选",
+   "aliases": [
+    "立方体"
+   ],
+   "tier": "T2",
+   "status": "登记待实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "T2 候选转场(GLSL 遮罩/3D/粒子);gl-transitions 未收录或逐条验证未过",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "立方体"
+  },
+  {
+   "id": "fx.transition.竖栅开合",
+   "label": "竖栅开合",
+   "category": "transition",
+   "subclass": "T2候选",
+   "aliases": [
+    "竖栅开合"
+   ],
+   "tier": "T2",
+   "status": "登记待实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "T2 候选转场(GLSL 遮罩/3D/粒子);gl-transitions 未收录或逐条验证未过",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "竖栅开合"
+  },
+  {
+   "id": "fx.transition.笔刷",
+   "label": "笔刷",
+   "category": "transition",
+   "subclass": "T2候选",
+   "aliases": [
+    "笔刷"
+   ],
+   "tier": "T2",
+   "status": "登记待实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "T2 候选转场(GLSL 遮罩/3D/粒子);gl-transitions 未收录或逐条验证未过",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "笔刷"
+  },
+  {
+   "id": "fx.transition.网格闪白",
+   "label": "网格闪白",
+   "category": "transition",
+   "subclass": "T2候选",
+   "aliases": [
+    "网格闪白"
+   ],
+   "tier": "T2",
+   "status": "登记待实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "T2 候选转场(GLSL 遮罩/3D/粒子);gl-transitions 未收录或逐条验证未过",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "网格闪白"
+  },
+  {
+   "id": "fx.transition.翻篇",
+   "label": "翻篇",
+   "category": "transition",
+   "subclass": "T2候选",
+   "aliases": [
+    "翻篇"
+   ],
+   "tier": "T2",
+   "status": "登记待实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "T2 候选转场(GLSL 遮罩/3D/粒子);gl-transitions 未收录或逐条验证未过",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "翻篇"
+  },
+  {
+   "id": "fx.transition.视频通话",
+   "label": "视频通话",
+   "category": "transition",
+   "subclass": "T2候选",
+   "aliases": [
+    "视频通话"
+   ],
+   "tier": "T2",
+   "status": "登记待实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "T2 候选转场(GLSL 遮罩/3D/粒子);gl-transitions 未收录或逐条验证未过",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "视频通话"
+  },
+  {
+   "id": "fx.transition.边纹扩散",
+   "label": "边纹扩散",
+   "category": "transition",
+   "subclass": "T2候选",
+   "aliases": [
+    "边纹扩散"
+   ],
+   "tier": "T2",
+   "status": "登记待实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "T2 候选转场(GLSL 遮罩/3D/粒子);gl-transitions 未收录或逐条验证未过",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "边纹扩散"
+  },
+  {
+   "id": "fx.transition.雾化抽象",
+   "label": "雾化抽象",
+   "category": "transition",
+   "subclass": "T2候选",
+   "aliases": [
+    "雾化抽象"
+   ],
+   "tier": "T2",
+   "status": "登记待实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "T2 候选转场(GLSL 遮罩/3D/粒子);gl-transitions 未收录或逐条验证未过",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "雾化抽象"
+  },
+  {
+   "id": "fx.transition.雾化擦除",
+   "label": "雾化擦除",
+   "category": "transition",
+   "subclass": "T2候选",
+   "aliases": [
+    "雾化擦除"
+   ],
+   "tier": "T2",
+   "status": "登记待实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "T2 候选转场(GLSL 遮罩/3D/粒子);gl-transitions 未收录或逐条验证未过",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "雾化擦除"
+  },
+  {
+   "id": "fx.unknown.Dally Vlog",
+   "label": "Dally Vlog",
+   "category": "unknown",
+   "subclass": "特效",
+   "aliases": [
+    "Dally Vlog"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "品牌模板类(疑为 Daily Vlog),有形象风险",
+   "source": "用户清单",
+   "license": null,
+   "domain": "artboard",
+   "note": "逃生口:artboard 场景卡",
+   "originName": "Dally Vlog"
+  },
+  {
+   "id": "fx.unknown.NEWS开场",
+   "label": "NEWS开场",
+   "category": "unknown",
+   "subclass": "特效",
+   "aliases": [
+    "NEWS开场"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "品牌/界面模板类,有商标与形象风险",
+   "source": "用户清单",
+   "license": null,
+   "domain": "artboard",
+   "note": "逃生口:artboard 场景卡",
+   "originName": "NEWS开场"
+  },
+  {
+   "id": "fx.unknown.PASSION",
+   "label": "PASSION",
+   "category": "unknown",
+   "subclass": "已确认删除",
+   "aliases": [
+    "PASSION"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "语义不明(原文含 OCR 噪声),用户确认删除",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "PASSION"
+  },
+  {
+   "id": "fx.unknown.iPhonef片",
+   "label": "iPhonef片",
+   "category": "unknown",
+   "subclass": "特效",
+   "aliases": [
+    "iPhonef片"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "品牌/界面模板类(OCR 疑为「iPhone照片」),有商标与形象风险",
+   "source": "用户清单",
+   "license": null,
+   "domain": "artboard",
+   "note": "逃生口:artboard 场景卡",
+   "originName": "iPhonef片"
+  },
+  {
+   "id": "fx.unknown.iPhone状态栏",
+   "label": "iPhone状态栏",
+   "category": "unknown",
+   "subclass": "特效",
+   "aliases": [
+    "iPhone状态栏"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "品牌/界面模板类,有商标与形象风险且画幅/语言强绑定",
+   "source": "用户清单",
+   "license": null,
+   "domain": "artboard",
+   "note": "逃生口:artboard 场景卡",
+   "originName": "iPhone状态栏"
+  },
+  {
+   "id": "fx.unknown.iPhone相片",
+   "label": "iPhone相片",
+   "category": "unknown",
+   "subclass": "特效",
+   "aliases": [
+    "iPhone相片"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "品牌/界面模板类,有商标与形象风险",
+   "source": "用户清单",
+   "license": null,
+   "domain": "artboard",
+   "note": "逃生口:artboard 场景卡",
+   "originName": "iPhone相片"
+  },
+  {
+   "id": "fx.unknown.summy",
+   "label": "summy",
+   "category": "unknown",
+   "subclass": "已确认删除",
+   "aliases": [
+    "summy"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "语义不明(原文含 OCR 噪声),用户确认删除",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "summy"
+  },
+  {
+   "id": "fx.unknown.东放0",
+   "label": "东放0",
+   "category": "unknown",
+   "subclass": "已确认删除",
+   "aliases": [
+    "东放0"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "语义不明(原文含 OCR 噪声),用户确认删除",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "东放0"
+  },
+  {
+   "id": "fx.unknown.中精",
+   "label": "中精",
+   "category": "unknown",
+   "subclass": "已确认删除",
+   "aliases": [
+    "中精"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "语义不明(原文含 OCR 噪声),用户确认删除",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "中精"
+  },
+  {
+   "id": "fx.unknown.克虹聚爆",
+   "label": "克虹聚爆",
+   "category": "unknown",
+   "subclass": "已确认删除",
+   "aliases": [
+    "克虹聚爆"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "语义不明(原文含 OCR 噪声),用户确认删除",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "克虹聚爆"
+  },
+  {
+   "id": "fx.unknown.克虹逐显",
+   "label": "克虹逐显",
+   "category": "unknown",
+   "subclass": "已确认删除",
+   "aliases": [
+    "克虹逐显"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "语义不明(原文含 OCR 噪声),用户确认删除",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "克虹逐显"
+  },
+  {
+   "id": "fx.unknown.动漫火焰",
+   "label": "动漫火焰",
+   "category": "unknown",
+   "subclass": "特效",
+   "aliases": [
+    "动漫火焰"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "具象造型类,与内容强绑定",
+   "source": "用户清单",
+   "license": null,
+   "domain": "artboard",
+   "note": "逃生口:artboard 场景卡",
+   "originName": "动漫火焰"
+  },
+  {
+   "id": "fx.unknown.动漫闪电",
+   "label": "动漫闪电",
+   "category": "unknown",
+   "subclass": "特效",
+   "aliases": [
+    "动漫闪电"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "具象造型类,与内容强绑定",
+   "source": "用户清单",
+   "license": null,
+   "domain": "artboard",
+   "note": "逃生口:artboard 场景卡",
+   "originName": "动漫闪电"
+  },
+  {
+   "id": "fx.unknown.匹方幻影",
+   "label": "匹方幻影",
+   "category": "unknown",
+   "subclass": "已确认删除",
+   "aliases": [
+    "匹方幻影"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "语义不明(原文含 OCR 噪声),用户确认删除",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "匹方幻影"
+  },
+  {
+   "id": "fx.unknown.因弧展开",
+   "label": "因弧展开",
+   "category": "unknown",
+   "subclass": "已确认删除",
+   "aliases": [
+    "因弧展开"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "语义不明(原文含 OCR 噪声),用户确认删除",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "因弧展开"
+  },
+  {
+   "id": "fx.unknown.因形叠出",
+   "label": "因形叠出",
+   "category": "unknown",
+   "subclass": "已确认删除",
+   "aliases": [
+    "因形叠出"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "语义不明(原文含 OCR 噪声),用户确认删除",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "因形叠出"
+  },
+  {
+   "id": "fx.unknown.因形淡黑",
+   "label": "因形淡黑",
+   "category": "unknown",
+   "subclass": "已确认删除",
+   "aliases": [
+    "因形淡黑"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "语义不明(原文含 OCR 噪声),用户确认删除",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "因形淡黑"
+  },
+  {
+   "id": "fx.unknown.因形闭幕",
+   "label": "因形闭幕",
+   "category": "unknown",
+   "subclass": "已确认删除",
+   "aliases": [
+    "因形闭幕"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "语义不明(原文含 OCR 噪声),用户确认删除",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "因形闭幕"
+  },
+  {
+   "id": "fx.unknown.因环收缩",
+   "label": "因环收缩",
+   "category": "unknown",
+   "subclass": "已确认删除",
+   "aliases": [
+    "因环收缩"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "语义不明(原文含 OCR 噪声),用户确认删除",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "因环收缩"
+  },
+  {
+   "id": "fx.unknown.声波放大",
+   "label": "声波放大",
+   "category": "unknown",
+   "subclass": "已确认删除",
+   "aliases": [
+    "声波放大"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "语义不明(原文含 OCR 噪声),用户确认删除",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "声波放大"
+  },
+  {
+   "id": "fx.unknown.夏字入画",
+   "label": "夏字入画",
+   "category": "unknown",
+   "subclass": "已确认删除",
+   "aliases": [
+    "夏字入画"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "语义不明(原文含 OCR 噪声),用户确认删除",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "夏字入画"
+  },
+  {
+   "id": "fx.unknown.官格归位",
+   "label": "官格归位",
+   "category": "unknown",
+   "subclass": "已确认删除",
+   "aliases": [
+    "官格归位"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "语义不明(原文含 OCR 噪声),用户确认删除",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "官格归位"
+  },
+  {
+   "id": "fx.unknown.屏幕倒计时",
+   "label": "屏幕倒计时",
+   "category": "unknown",
+   "subclass": "特效",
+   "aliases": [
+    "屏幕倒计时"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "界面模拟类",
+   "source": "用户清单",
+   "license": null,
+   "domain": "artboard",
+   "note": "逃生口:artboard 场景卡",
+   "originName": "屏幕倒计时"
+  },
+  {
+   "id": "fx.unknown.岁月的痕迹",
+   "label": "岁月的痕迹",
+   "category": "unknown",
+   "subclass": "特效",
+   "aliases": [
+    "岁月的痕迹"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "语义不明风险高且与内容强绑定,不实现",
+   "source": "用户清单",
+   "license": null,
+   "domain": "artboard",
+   "note": "逃生口:artboard 场景卡",
+   "originName": "岁月的痕迹"
+  },
+  {
+   "id": "fx.unknown.岐碎消散",
+   "label": "岐碎消散",
+   "category": "unknown",
+   "subclass": "已确认删除",
+   "aliases": [
+    "岐碎消散"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "语义不明(原文含 OCR 噪声),用户确认删除",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "岐碎消散"
+  },
+  {
+   "id": "fx.unknown.川",
+   "label": "川",
+   "category": "unknown",
+   "subclass": "已确认删除",
+   "aliases": [
+    "川"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "语义不明(原文含 OCR 噪声),用户确认删除",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "川"
+  },
+  {
+   "id": "fx.unknown.川东放0",
+   "label": "川东放0",
+   "category": "unknown",
+   "subclass": "已确认删除",
+   "aliases": [
+    "川东放0"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "语义不明(原文含 OCR 噪声),用户确认删除",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "川东放0"
+  },
+  {
+   "id": "fx.unknown.川水波卷动",
+   "label": "川水波卷动",
+   "category": "unknown",
+   "subclass": "已确认删除",
+   "aliases": [
+    "川水波卷动"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "语义不明(原文含 OCR 噪声),用户确认删除",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "川水波卷动"
+  },
+  {
+   "id": "fx.unknown.川立方体",
+   "label": "川立方体",
+   "category": "unknown",
+   "subclass": "已确认删除",
+   "aliases": [
+    "川立方体"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "语义不明(原文含 OCR 噪声),用户确认删除",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "川立方体"
+  },
+  {
+   "id": "fx.unknown.川绕圈圈",
+   "label": "川绕圈圈",
+   "category": "unknown",
+   "subclass": "已确认删除",
+   "aliases": [
+    "川绕圈圈"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "语义不明(原文含 OCR 噪声),用户确认删除",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "川绕圈圈"
+  },
+  {
+   "id": "fx.unknown.开机打卡",
+   "label": "开机打卡",
+   "category": "unknown",
+   "subclass": "特效",
+   "aliases": [
+    "开机打卡"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "界面模拟类",
+   "source": "用户清单",
+   "license": null,
+   "domain": "artboard",
+   "note": "逃生口:artboard 场景卡",
+   "originName": "开机打卡"
+  },
+  {
+   "id": "fx.unknown.心形撕纸",
+   "label": "心形撕纸",
+   "category": "unknown",
+   "subclass": "特效",
+   "aliases": [
+    "心形撕纸"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "图形遮罩类(爱心系列)且与内容强绑定;artboard 一次性定制更划算",
+   "source": "用户清单",
+   "license": null,
+   "domain": "artboard",
+   "note": "逃生口:artboard 场景卡",
+   "originName": "心形撕纸"
+  },
+  {
+   "id": "fx.unknown.心形放大",
+   "label": "心形放大",
+   "category": "unknown",
+   "subclass": "特效",
+   "aliases": [
+    "心形放大"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "图形遮罩类(爱心系列)且与内容强绑定;artboard 一次性定制更划算",
+   "source": "用户清单",
+   "license": null,
+   "domain": "artboard",
+   "note": "逃生口:artboard 场景卡",
+   "originName": "心形放大"
+  },
+  {
+   "id": "fx.unknown.快门速度",
+   "label": "快门速度",
+   "category": "unknown",
+   "subclass": "已确认删除",
+   "aliases": [
+    "快门速度"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "语义不明(原文含 OCR 噪声),用户确认删除",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "快门速度"
+  },
+  {
+   "id": "fx.unknown.感光度",
+   "label": "感光度",
+   "category": "unknown",
+   "subclass": "已确认删除",
+   "aliases": [
+    "感光度"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "语义不明(原文含 OCR 噪声),用户确认删除",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "感光度"
+  },
+  {
+   "id": "fx.unknown.手机开屏",
+   "label": "手机开屏",
+   "category": "unknown",
+   "subclass": "特效",
+   "aliases": [
+    "手机开屏"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "界面模拟类,画幅/语言强绑定",
+   "source": "用户清单",
+   "license": null,
+   "domain": "artboard",
+   "note": "逃生口:artboard 场景卡",
+   "originName": "手机开屏"
+  },
+  {
+   "id": "fx.unknown.报纸拼贴",
+   "label": "报纸拼贴",
+   "category": "unknown",
+   "subclass": "特效",
+   "aliases": [
+    "报纸拼贴"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "界面模板类,画幅/语言强绑定",
+   "source": "用户清单",
+   "license": null,
+   "domain": "artboard",
+   "note": "逃生口:artboard 场景卡",
+   "originName": "报纸拼贴"
+  },
+  {
+   "id": "fx.unknown.曝光补偿",
+   "label": "曝光补偿",
+   "category": "unknown",
+   "subclass": "已确认删除",
+   "aliases": [
+    "曝光补偿"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "语义不明(原文含 OCR 噪声),用户确认删除",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "曝光补偿"
+  },
+  {
+   "id": "fx.unknown.月亮遮罩",
+   "label": "月亮遮罩",
+   "category": "unknown",
+   "subclass": "特效",
+   "aliases": [
+    "月亮遮罩"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "图形遮罩类(月亮系列)且与内容强绑定;artboard 一次性定制更划算",
+   "source": "用户清单",
+   "license": null,
+   "domain": "artboard",
+   "note": "逃生口:artboard 场景卡",
+   "originName": "月亮遮罩"
+  },
+  {
+   "id": "fx.unknown.月圆无缺",
+   "label": "月圆无缺",
+   "category": "unknown",
+   "subclass": "已确认删除",
+   "aliases": [
+    "月圆无缺"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "语义不明(原文含 OCR 噪声),用户确认删除",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "月圆无缺"
+  },
+  {
+   "id": "fx.unknown.枫叶遮罩",
+   "label": "枫叶遮罩",
+   "category": "unknown",
+   "subclass": "特效",
+   "aliases": [
+    "枫叶遮罩"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "图形遮罩类且与内容强绑定;artboard 一次性定制更划算",
+   "source": "用户清单",
+   "license": null,
+   "domain": "artboard",
+   "note": "逃生口:artboard 场景卡",
+   "originName": "枫叶遮罩"
+  },
+  {
+   "id": "fx.unknown.桂香秋来",
+   "label": "桂香秋来",
+   "category": "unknown",
+   "subclass": "特效",
+   "aliases": [
+    "桂香秋来"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "节庆具象类,语义与内容强绑定",
+   "source": "用户清单",
+   "license": null,
+   "domain": "artboard",
+   "note": "逃生口:artboard 场景卡",
+   "originName": "桂香秋来"
+  },
+  {
+   "id": "fx.unknown.樱花飘落",
+   "label": "樱花飘落",
+   "category": "unknown",
+   "subclass": "特效",
+   "aliases": [
+    "樱花飘落"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "图形遮罩类且与内容强绑定;artboard 一次性定制更划算",
+   "source": "用户清单",
+   "license": null,
+   "domain": "artboard",
+   "note": "逃生口:artboard 场景卡",
+   "originName": "樱花飘落"
+  },
+  {
+   "id": "fx.unknown.水蛋花朵",
+   "label": "水蛋花朵",
+   "category": "unknown",
+   "subclass": "特效",
+   "aliases": [
+    "水蛋花朵"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "图形遮罩类且与内容强绑定(OCR 疑为「水滴花朵」);artboard 一次性定制更划算",
+   "source": "用户清单",
+   "license": null,
+   "domain": "artboard",
+   "note": "逃生口:artboard 场景卡",
+   "originName": "水蛋花朵"
+  },
+  {
+   "id": "fx.unknown.爱心 I",
+   "label": "爱心 I",
+   "category": "unknown",
+   "subclass": "特效",
+   "aliases": [
+    "爱心 I"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "图形遮罩类且与内容强绑定;artboard 一次性定制更划算",
+   "source": "用户清单",
+   "license": null,
+   "domain": "artboard",
+   "note": "逃生口:artboard 场景卡",
+   "originName": "爱心 I"
+  },
+  {
+   "id": "fx.unknown.爱心冲击",
+   "label": "爱心冲击",
+   "category": "unknown",
+   "subclass": "特效",
+   "aliases": [
+    "爱心冲击"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "图形遮罩类且与内容强绑定;造型固定只适用特定题材,artboard 一次性定制更划算",
+   "source": "用户清单",
+   "license": null,
+   "domain": "artboard",
+   "note": "逃生口:artboard 场景卡",
+   "originName": "爱心冲击"
+  },
+  {
+   "id": "fx.unknown.爱心扩散",
+   "label": "爱心扩散",
+   "category": "unknown",
+   "subclass": "特效",
+   "aliases": [
+    "爱心扩散"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "图形遮罩类(爱心系列)且与内容强绑定;artboard 一次性定制更划算",
+   "source": "用户清单",
+   "license": null,
+   "domain": "artboard",
+   "note": "逃生口:artboard 场景卡",
+   "originName": "爱心扩散"
+  },
+  {
+   "id": "fx.unknown.爱心碰撞",
+   "label": "爱心碰撞",
+   "category": "unknown",
+   "subclass": "特效",
+   "aliases": [
+    "爱心碰撞"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "图形遮罩类(爱心系列)且与内容强绑定;artboard 一次性定制更划算",
+   "source": "用户清单",
+   "license": null,
+   "domain": "artboard",
+   "note": "逃生口:artboard 场景卡",
+   "originName": "爱心碰撞"
+  },
+  {
+   "id": "fx.unknown.爱心翻出",
+   "label": "爱心翻出",
+   "category": "unknown",
+   "subclass": "特效",
+   "aliases": [
+    "爱心翻出"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "图形遮罩类(爱心系列)且与内容强绑定;artboard 一次性定制更划算",
+   "source": "用户清单",
+   "license": null,
+   "domain": "artboard",
+   "note": "逃生口:artboard 场景卡",
+   "originName": "爱心翻出"
+  },
+  {
+   "id": "fx.unknown.爱心螺旋",
+   "label": "爱心螺旋",
+   "category": "unknown",
+   "subclass": "特效",
+   "aliases": [
+    "爱心螺旋"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "图形遮罩类(爱心系列)且与内容强绑定;artboard 一次性定制更划算",
+   "source": "用户清单",
+   "license": null,
+   "domain": "artboard",
+   "note": "逃生口:artboard 场景卡",
+   "originName": "爱心螺旋"
+  },
+  {
+   "id": "fx.unknown.爱心解锁",
+   "label": "爱心解锁",
+   "category": "unknown",
+   "subclass": "特效",
+   "aliases": [
+    "爱心解锁"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "图形遮罩类(爱心系列)且与内容强绑定;artboard 一次性定制更划算",
+   "source": "用户清单",
+   "license": null,
+   "domain": "artboard",
+   "note": "逃生口:artboard 场景卡",
+   "originName": "爱心解锁"
+  },
+  {
+   "id": "fx.unknown.玫瑰遮罩",
+   "label": "玫瑰遮罩",
+   "category": "unknown",
+   "subclass": "特效",
+   "aliases": [
+    "玫瑰遮罩"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "图形遮罩类且与内容强绑定;造型固定只适用特定题材,artboard 一次性定制更划算",
+   "source": "用户清单",
+   "license": null,
+   "domain": "artboard",
+   "note": "逃生口:artboard 场景卡",
+   "originName": "玫瑰遮罩"
+  },
+  {
+   "id": "fx.unknown.画出爱心",
+   "label": "画出爱心",
+   "category": "unknown",
+   "subclass": "特效",
+   "aliases": [
+    "画出爱心"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "图形遮罩类(爱心系列)且与内容强绑定;artboard 一次性定制更划算",
+   "source": "用户清单",
+   "license": null,
+   "domain": "artboard",
+   "note": "逃生口:artboard 场景卡",
+   "originName": "画出爱心"
+  },
+  {
+   "id": "fx.unknown.白平衡",
+   "label": "白平衡",
+   "category": "unknown",
+   "subclass": "已确认删除",
+   "aliases": [
+    "白平衡"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "语义不明(原文含 OCR 噪声),用户确认删除",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "白平衡"
+  },
+  {
+   "id": "fx.unknown.盛金循坏",
+   "label": "盛金循坏",
+   "category": "unknown",
+   "subclass": "已确认删除",
+   "aliases": [
+    "盛金循坏"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "语义不明(原文含 OCR 噪声),用户确认删除",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "盛金循坏"
+  },
+  {
+   "id": "fx.unknown.矢车",
+   "label": "矢车",
+   "category": "unknown",
+   "subclass": "已确认删除",
+   "aliases": [
+    "矢车"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "语义不明(原文含 OCR 噪声),用户确认删除",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "矢车"
+  },
+  {
+   "id": "fx.unknown.穹环泵动",
+   "label": "穹环泵动",
+   "category": "unknown",
+   "subclass": "已确认删除",
+   "aliases": [
+    "穹环泵动"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "语义不明(原文含 OCR 噪声),用户确认删除",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "穹环泵动"
+  },
+  {
+   "id": "fx.unknown.穹脊巡游",
+   "label": "穹脊巡游",
+   "category": "unknown",
+   "subclass": "已确认删除",
+   "aliases": [
+    "穹脊巡游"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "语义不明(原文含 OCR 噪声),用户确认删除",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "穹脊巡游"
+  },
+  {
+   "id": "fx.unknown.立体爱心",
+   "label": "立体爱心",
+   "category": "unknown",
+   "subclass": "特效",
+   "aliases": [
+    "立体爱心"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "图形遮罩类(爱心系列)且与内容强绑定;artboard 一次性定制更划算",
+   "source": "用户清单",
+   "license": null,
+   "domain": "artboard",
+   "note": "逃生口:artboard 场景卡",
+   "originName": "立体爱心"
+  },
+  {
+   "id": "fx.unknown.算珠流转",
+   "label": "算珠流转",
+   "category": "unknown",
+   "subclass": "已确认删除",
+   "aliases": [
+    "算珠流转"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "语义不明(原文含 OCR 噪声),用户确认删除",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "算珠流转"
+  },
+  {
+   "id": "fx.unknown.箭羽环旋",
+   "label": "箭羽环旋",
+   "category": "unknown",
+   "subclass": "已确认删除",
+   "aliases": [
+    "箭羽环旋"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "语义不明(原文含 OCR 噪声),用户确认删除",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "箭羽环旋"
+  },
+  {
+   "id": "fx.unknown.篦浪环旋",
+   "label": "篦浪环旋",
+   "category": "unknown",
+   "subclass": "已确认删除",
+   "aliases": [
+    "篦浪环旋"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "语义不明(原文含 OCR 噪声),用户确认删除",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "篦浪环旋"
+  },
+  {
+   "id": "fx.unknown.篮脊恒旋",
+   "label": "篮脊恒旋",
+   "category": "unknown",
+   "subclass": "已确认删除",
+   "aliases": [
+    "篮脊恒旋"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "语义不明(原文含 OCR 噪声),用户确认删除",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "篮脊恒旋"
+  },
+  {
+   "id": "fx.unknown.粒子爱心",
+   "label": "粒子爱心",
+   "category": "unknown",
+   "subclass": "特效",
+   "aliases": [
+    "粒子爱心"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "图形遮罩类(爱心系列)且与内容强绑定;artboard 一次性定制更划算",
+   "source": "用户清单",
+   "license": null,
+   "domain": "artboard",
+   "note": "逃生口:artboard 场景卡",
+   "originName": "粒子爱心"
+  },
+  {
+   "id": "fx.unknown.粽叶展开",
+   "label": "粽叶展开",
+   "category": "unknown",
+   "subclass": "特效",
+   "aliases": [
+    "粽叶展开"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "图形遮罩类(节庆具象)且与内容强绑定;artboard 一次性定制更划算",
+   "source": "用户清单",
+   "license": null,
+   "domain": "artboard",
+   "note": "逃生口:artboard 场景卡",
+   "originName": "粽叶展开"
+  },
+  {
+   "id": "fx.unknown.红绸烟花",
+   "label": "红绸烟花",
+   "category": "unknown",
+   "subclass": "特效",
+   "aliases": [
+    "红绸烟花"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "图形遮罩类(节庆具象)且与内容强绑定;artboard 一次性定制更划算",
+   "source": "用户清单",
+   "license": null,
+   "domain": "artboard",
+   "note": "逃生口:artboard 场景卡",
+   "originName": "红绸烟花"
+  },
+  {
+   "id": "fx.unknown.纱并升阙",
+   "label": "纱并升阙",
+   "category": "unknown",
+   "subclass": "已确认删除",
+   "aliases": [
+    "纱并升阙"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "语义不明(原文含 OCR 噪声),用户确认删除",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "纱并升阙"
+  },
+  {
+   "id": "fx.unknown.美镜缩放",
+   "label": "美镜缩放",
+   "category": "unknown",
+   "subclass": "已确认删除",
+   "aliases": [
+    "美镜缩放"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "语义不明(原文含 OCR 噪声),用户确认删除",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "美镜缩放"
+  },
+  {
+   "id": "fx.unknown.花瓣蒙版",
+   "label": "花瓣蒙版",
+   "category": "unknown",
+   "subclass": "特效",
+   "aliases": [
+    "花瓣蒙版"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "图形遮罩类且与内容强绑定;artboard 一次性定制更划算",
+   "source": "用户清单",
+   "license": null,
+   "domain": "artboard",
+   "note": "逃生口:artboard 场景卡",
+   "originName": "花瓣蒙版"
+  },
+  {
+   "id": "fx.unknown.落叶遮罩",
+   "label": "落叶遮罩",
+   "category": "unknown",
+   "subclass": "特效",
+   "aliases": [
+    "落叶遮罩"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "图形遮罩类且与内容强绑定;artboard 一次性定制更划算",
+   "source": "用户清单",
+   "license": null,
+   "domain": "artboard",
+   "note": "逃生口:artboard 场景卡",
+   "originName": "落叶遮罩"
+  },
+  {
+   "id": "fx.unknown.藻井涡旋",
+   "label": "藻井涡旋",
+   "category": "unknown",
+   "subclass": "已确认删除",
+   "aliases": [
+    "藻井涡旋"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "语义不明(原文含 OCR 噪声),用户确认删除",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "藻井涡旋"
+  },
+  {
+   "id": "fx.unknown.蜂晶折旋",
+   "label": "蜂晶折旋",
+   "category": "unknown",
+   "subclass": "已确认删除",
+   "aliases": [
+    "蜂晶折旋"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "语义不明(原文含 OCR 噪声),用户确认删除",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "蜂晶折旋"
+  },
+  {
+   "id": "fx.unknown.订阅滑出",
+   "label": "订阅滑出",
+   "category": "unknown",
+   "subclass": "特效",
+   "aliases": [
+    "订阅滑出"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "平台 UI 模板;改走 elements/ 的通用元素(分册02 §4.1)",
+   "source": "用户清单",
+   "license": null,
+   "domain": "artboard",
+   "note": "逃生口:artboard 场景卡",
+   "originName": "订阅滑出"
+  },
+  {
+   "id": "fx.unknown.轻触解锁",
+   "label": "轻触解锁",
+   "category": "unknown",
+   "subclass": "特效",
+   "aliases": [
+    "轻触解锁"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "界面模拟类;平台 UI 走 elements/ 通用元素",
+   "source": "用户清单",
+   "license": null,
+   "domain": "artboard",
+   "note": "逃生口:artboard 场景卡",
+   "originName": "轻触解锁"
+  },
+  {
+   "id": "fx.unknown.陀瓣环转",
+   "label": "陀瓣环转",
+   "category": "unknown",
+   "subclass": "已确认删除",
+   "aliases": [
+    "陀瓣环转"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "语义不明(原文含 OCR 噪声),用户确认删除",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "陀瓣环转"
+  },
+  {
+   "id": "fx.unknown.陈晓",
+   "label": "陈晓",
+   "category": "unknown",
+   "subclass": "已确认删除",
+   "aliases": [
+    "陈晓"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "语义不明(原文含 OCR 噪声),用户确认删除",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "陈晓"
+  },
+  {
+   "id": "fx.unknown.鞍面旋切",
+   "label": "鞍面旋切",
+   "category": "unknown",
+   "subclass": "已确认删除",
+   "aliases": [
+    "鞍面旋切"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "语义不明(原文含 OCR 噪声),用户确认删除",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "鞍面旋切"
+  },
+  {
+   "id": "fx.unknown.黄法粒子",
+   "label": "黄法粒子",
+   "category": "unknown",
+   "subclass": "已确认删除",
+   "aliases": [
+    "黄法粒子"
+   ],
+   "tier": "T3",
+   "status": "不实现",
+   "fxId": null,
+   "params": null,
+   "usage": [],
+   "commonness": "低",
+   "why": "语义不明(原文含 OCR 噪声),用户确认删除",
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": "黄法粒子"
+  },
+  {
+   "id": "fx.vignette",
+   "label": "暗角",
+   "category": "combo",
+   "subclass": "组合",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "fx.vignette",
+   "params": {
+    "angle": "PI/5"
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "in.anchor.scale",
+   "label": "锚点缩放",
+   "category": "in",
+   "subclass": "标准NLE",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "in.anchor.scale",
+   "params": {
+    "z0": 0.94,
+    "z1": 1.0,
+    "anchorX": 0.5,
+    "anchorY": 0.5
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "补充清单",
+   "license": null,
+   "domain": "render",
+   "note": "锚点默认中心(center-framing,分册06 §6.1)",
+   "originName": null
+  },
+  {
+   "id": "in.blur.in",
+   "label": "模糊淡入",
+   "category": "in",
+   "subclass": "标准NLE",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "in.blur.in",
+   "params": {
+    "durMs": 600,
+    "sigma": 12
+   },
+   "usage": [
+    "talking-head",
+    "vlog"
+   ],
+   "commonness": "中",
+   "why": null,
+   "source": "补充清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "in.bounce.pop",
+   "label": "弹跳 Pop",
+   "category": "in",
+   "subclass": "标准NLE",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "in.bounce.pop",
+   "params": {
+    "curve": "pop"
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "补充清单",
+   "license": null,
+   "domain": "render",
+   "note": "超调 ≤1.1(与 artboard 动画十二法则一致)",
+   "originName": null
+  },
+  {
+   "id": "in.breathe",
+   "label": "呼吸/浮动",
+   "category": "combo",
+   "subclass": "标准NLE",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "in.breathe",
+   "params": {
+    "curve": "breathe",
+    "amp": 0.02
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "补充清单",
+   "license": null,
+   "domain": "render",
+   "note": "幅度 ≤2%(分册02 §6.2)",
+   "originName": null
+  },
+  {
+   "id": "in.clip.reveal",
+   "label": "裁切揭示",
+   "category": "in",
+   "subclass": "标准NLE",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "in.clip.reveal",
+   "params": {
+    "dir": "right",
+    "durMs": 550
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "补充清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "in.count.up",
+   "label": "数字滚动",
+   "category": "in",
+   "subclass": "标准NLE",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "in.count.up",
+   "params": {
+    "durMs": 600
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "补充清单",
+   "license": null,
+   "domain": "subtitle",
+   "note": "落点 分册01 huazi.data.count 数据卡",
+   "originName": null
+  },
+  {
+   "id": "in.cursor.click",
+   "label": "点击涟漪",
+   "category": "in",
+   "subclass": "标准NLE",
+   "aliases": [],
+   "tier": "T2",
+   "status": "登记待实现",
+   "fxId": "in.cursor.click",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": "T2 候选(需着色器/素材/字幕侧逐元素表达);本轮未落地,登记待实现",
+   "source": "补充清单",
+   "license": null,
+   "domain": "element",
+   "note": "落点 elements/ 涟漪序列帧(对应 v1 screen-recording);元素轨表达未接",
+   "originName": null
+  },
+  {
+   "id": "in.fade.down",
+   "label": "下沉淡入",
+   "category": "in",
+   "subclass": "标准NLE",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "in.fade.down",
+   "params": {
+    "dir": "down",
+    "durMs": 500
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "补充清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "in.fade.left",
+   "label": "左移淡入",
+   "category": "in",
+   "subclass": "标准NLE",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "in.fade.left",
+   "params": {
+    "dir": "left",
+    "durMs": 500
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "补充清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "in.fade.right",
+   "label": "右移淡入",
+   "category": "in",
+   "subclass": "标准NLE",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "in.fade.right",
+   "params": {
+    "dir": "right",
+    "durMs": 500
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "补充清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "in.fade.up",
+   "label": "上浮淡入",
+   "category": "in",
+   "subclass": "标准NLE",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "in.fade.up",
+   "params": {
+    "dir": "up",
+    "durMs": 500
+   },
+   "usage": [
+    "talking-head",
+    "vlog",
+    "drama"
+   ],
+   "commonness": "中",
+   "why": null,
+   "source": "补充清单",
+   "license": null,
+   "domain": "render",
+   "note": "文字/卡片最常用入场(分册02 §6.2:从下入=浮现,最中性)",
+   "originName": null
+  },
+  {
+   "id": "in.glow",
+   "label": "辉光入场",
+   "category": "in",
+   "subclass": "标准NLE",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "in.glow",
+   "params": {
+    "durMs": 500,
+    "sigma": 10,
+    "brightness": 0.12
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "补充清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "in.keystroke",
+   "label": "按键提示弹出",
+   "category": "in",
+   "subclass": "标准NLE",
+   "aliases": [],
+   "tier": "T2",
+   "status": "登记待实现",
+   "fxId": "in.keystroke",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": "T2 候选(需着色器/素材/字幕侧逐元素表达);本轮未落地,登记待实现",
+   "source": "补充清单",
+   "license": null,
+   "domain": "element",
+   "note": "screen.keys 卡已存在(v1);作为通用 fxId 的元素轨表达未接",
+   "originName": null
+  },
+  {
+   "id": "in.lower.third",
+   "label": "人名条",
+   "category": "in",
+   "subclass": "标准NLE",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "in.lower.third",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "补充清单",
+   "license": null,
+   "domain": "subtitle",
+   "note": "落点 S7 文本轨两行 lower third(标题+副题,访谈/新闻)",
+   "originName": null
+  },
+  {
+   "id": "in.mask.reveal",
+   "label": "遮罩揭示",
+   "category": "in",
+   "subclass": "标准NLE",
+   "aliases": [],
+   "tier": "T2",
+   "status": "登记待实现",
+   "fxId": "in.mask.reveal",
+   "params": {
+    "durMs": 500
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": "T2 候选(需着色器/素材/字幕侧逐元素表达);本轮未落地,登记待实现",
+   "source": "补充清单",
+   "license": null,
+   "domain": "element",
+   "note": "任意路径遮罩需 GLSL/形状遮罩;clip 级 T2 未落地",
+   "originName": null
+  },
+  {
+   "id": "in.progress.bar",
+   "label": "进度条生长",
+   "category": "in",
+   "subclass": "标准NLE",
+   "aliases": [],
+   "tier": "T2",
+   "status": "登记待实现",
+   "fxId": "in.progress.bar",
+   "params": {
+    "durMs": 500
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": "T2 候选(需着色器/素材/字幕侧逐元素表达);本轮未落地,登记待实现",
+   "source": "补充清单",
+   "license": null,
+   "domain": "element",
+   "note": "落点 elements/ 进度条元素 + 元素轨动画表达(未接,分册02 §6.2)",
+   "originName": null
+  },
+  {
+   "id": "in.ring.progress",
+   "label": "环形进度生长",
+   "category": "in",
+   "subclass": "标准NLE",
+   "aliases": [],
+   "tier": "T2",
+   "status": "登记待实现",
+   "fxId": "in.ring.progress",
+   "params": {
+    "durMs": 600
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": "T2 候选(需着色器/素材/字幕侧逐元素表达);本轮未落地,登记待实现",
+   "source": "补充清单",
+   "license": null,
+   "domain": "element",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "in.scale.pop",
+   "label": "缩放入场(无位移)",
+   "category": "in",
+   "subclass": "标准NLE",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "in.scale.pop",
+   "params": {
+    "z0": 0.9,
+    "z1": 1.0
+   },
+   "usage": [
+    "talking-head",
+    "drama"
+   ],
+   "commonness": "中",
+   "why": null,
+   "source": "补充清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "in.shadow.drop",
+   "label": "投影落下",
+   "category": "in",
+   "subclass": "标准NLE",
+   "aliases": [],
+   "tier": "T2",
+   "status": "登记待实现",
+   "fxId": "in.shadow.drop",
+   "params": {
+    "durMs": 450
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": "T2 候选(需着色器/素材/字幕侧逐元素表达);本轮未落地,登记待实现",
+   "source": "补充清单",
+   "license": null,
+   "domain": "element",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "in.skew",
+   "label": "斜切入场",
+   "category": "in",
+   "subclass": "标准NLE",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "in.skew",
+   "params": {
+    "durMs": 450
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "补充清单",
+   "license": null,
+   "domain": "render",
+   "note": "perspective 弱量档(与翻页同生成器,低幅度)",
+   "originName": null
+  },
+  {
+   "id": "in.slide.down",
+   "label": "下滑入场",
+   "category": "in",
+   "subclass": "运镜",
+   "aliases": [
+    "向下滑动",
+    "下滑"
+   ],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "in.slide.down",
+   "params": {
+    "dir": "down",
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "in.slide.left",
+   "label": "左滑入场",
+   "category": "in",
+   "subclass": "运镜",
+   "aliases": [
+    "向左滑动"
+   ],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "in.slide.left",
+   "params": {
+    "dir": "left",
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "in.slide.right",
+   "label": "右滑入场",
+   "category": "in",
+   "subclass": "运镜",
+   "aliases": [
+    "向右滑动",
+    "甩入"
+   ],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "in.slide.right",
+   "params": {
+    "dir": "right",
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "in.slide.up",
+   "label": "上滑入场",
+   "category": "in",
+   "subclass": "运镜",
+   "aliases": [
+    "向上滑动",
+    "向上闪入"
+   ],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "in.slide.up",
+   "params": {
+    "dir": "up",
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "in.stagger",
+   "label": "错峰入场",
+   "category": "in",
+   "subclass": "标准NLE",
+   "aliases": [],
+   "tier": "T2",
+   "status": "登记待实现",
+   "fxId": "in.stagger",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": "T2 候选(需着色器/素材/字幕侧逐元素表达);本轮未落地,登记待实现",
+   "source": "补充清单",
+   "license": null,
+   "domain": "subtitle",
+   "note": "多元素逐个 delay 80–150ms;需字幕/卡片侧逐元素动画表达(未接),总量 ≤800ms 纪律见分册02 §6.2",
+   "originName": null
+  },
+  {
+   "id": "in.stroke.draw",
+   "label": "描边绘制",
+   "category": "in",
+   "subclass": "标准NLE",
+   "aliases": [],
+   "tier": "T2",
+   "status": "登记待实现",
+   "fxId": "in.stroke.draw",
+   "params": {
+    "durMs": 600
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": "T2 候选(需着色器/素材/字幕侧逐元素表达);本轮未落地,登记待实现",
+   "source": "补充清单",
+   "license": null,
+   "domain": "artboard",
+   "note": "SVG stroke-dashoffset → artboard 更合适(分册02 §6.2)",
+   "originName": null
+  },
+  {
+   "id": "in.text.char",
+   "label": "逐字入场",
+   "category": "in",
+   "subclass": "标准NLE",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "in.text.char",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "补充清单",
+   "license": null,
+   "domain": "subtitle",
+   "note": "落点 S7 卡拉OK 逐字(\\kf);effects_plan 把它映射为 subtitle.karaoke",
+   "originName": null
+  },
+  {
+   "id": "in.text.line",
+   "label": "逐行入场",
+   "category": "in",
+   "subclass": "标准NLE",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "in.text.line",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "补充清单",
+   "license": null,
+   "domain": "subtitle",
+   "note": "落点 S7 分行 Dialogue(断行=stagger 三合一)",
+   "originName": null
+  },
+  {
+   "id": "in.text.word",
+   "label": "逐词入场",
+   "category": "in",
+   "subclass": "标准NLE",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "in.text.word",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "补充清单",
+   "license": null,
+   "domain": "subtitle",
+   "note": "落点 S7 逐字时间的词级聚合(近似)",
+   "originName": null
+  },
+  {
+   "id": "in.typewriter",
+   "label": "打字机",
+   "category": "in",
+   "subclass": "标准NLE",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "in.typewriter",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "补充清单",
+   "license": null,
+   "domain": "subtitle",
+   "note": "落点 S7 花字 \\t 逐字动画(huazi 基础档)",
+   "originName": null
+  },
+  {
+   "id": "in.wipe.dir",
+   "label": "擦除入场",
+   "category": "in",
+   "subclass": "遮罩",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "in.wipe.dir",
+   "params": {
+    "dir": "left",
+    "durMs": 500
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "jitter.shake",
+   "label": "轻微抖动",
+   "category": "combo",
+   "subclass": "运镜",
+   "aliases": [
+    "左右抖动",
+    "上下抖动",
+    "震动",
+    "轻微抖动"
+   ],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "jitter.shake",
+   "params": {
+    "amp": 3,
+    "freq": 9
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "out.blur.out",
+   "label": "模糊淡出",
+   "category": "out",
+   "subclass": "标准NLE",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "out.blur.out",
+   "params": {
+    "durMs": 600,
+    "sigma": 12
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "补充清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "out.collapse",
+   "label": "收拢",
+   "category": "out",
+   "subclass": "标准NLE",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "out.collapse",
+   "params": {
+    "durMs": 500
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "补充清单",
+   "license": null,
+   "domain": "render",
+   "note": "squeezeh/squeezev 的出场近似(动态收缩)",
+   "originName": null
+  },
+  {
+   "id": "out.fade.down",
+   "label": "下沉出场",
+   "category": "out",
+   "subclass": "标准NLE",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "out.fade.down",
+   "params": {
+    "dir": "down",
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "补充清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "out.fade.left",
+   "label": "左移出场",
+   "category": "out",
+   "subclass": "标准NLE",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "out.fade.left",
+   "params": {
+    "dir": "left",
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "补充清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "out.fade.right",
+   "label": "右移出场",
+   "category": "out",
+   "subclass": "标准NLE",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "out.fade.right",
+   "params": {
+    "dir": "right",
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "补充清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "out.fade.up",
+   "label": "上浮出场",
+   "category": "out",
+   "subclass": "标准NLE",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "out.fade.up",
+   "params": {
+    "dir": "up",
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "补充清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "out.letterbox",
+   "label": "信箱收黑",
+   "category": "out",
+   "subclass": "标准NLE",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "out.letterbox",
+   "params": {
+    "durMs": 600,
+    "band": 0.12
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "补充清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "out.mask.close",
+   "label": "遮罩收拢",
+   "category": "out",
+   "subclass": "标准NLE",
+   "aliases": [],
+   "tier": "T2",
+   "status": "登记待实现",
+   "fxId": "out.mask.close",
+   "params": {
+    "durMs": 500
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": "T2 候选(需着色器/素材/字幕侧逐元素表达);本轮未落地,登记待实现",
+   "source": "补充清单",
+   "license": null,
+   "domain": "element",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "out.scale.shrink",
+   "label": "收缩消失",
+   "category": "out",
+   "subclass": "标准NLE",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "out.scale.shrink",
+   "params": {
+    "z0": 1.0,
+    "z1": 0.92
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "补充清单",
+   "license": null,
+   "domain": "render",
+   "note": "分册02 §6.3:与 fade 成对",
+   "originName": null
+  },
+  {
+   "id": "out.slide.left",
+   "label": "左滑出场",
+   "category": "out",
+   "subclass": "运镜",
+   "aliases": [
+    "向左滑出"
+   ],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "out.slide.left",
+   "params": {
+    "dir": "left",
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "out.slide.off",
+   "label": "滑出画面",
+   "category": "out",
+   "subclass": "标准NLE",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "out.slide.off",
+   "params": {
+    "dir": "right",
+    "durMs": 450
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "补充清单",
+   "license": null,
+   "domain": "render",
+   "note": "分册02 §6.3;方向延续入场(artboard §九)",
+   "originName": null
+  },
+  {
+   "id": "out.slide.right",
+   "label": "右滑出场",
+   "category": "out",
+   "subclass": "运镜",
+   "aliases": [
+    "向右滑出"
+   ],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "out.slide.right",
+   "params": {
+    "dir": "right",
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "out.slide.up",
+   "label": "上滑出场",
+   "category": "out",
+   "subclass": "运镜",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "out.slide.up",
+   "params": {
+    "dir": "up",
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "out.spin.fade",
+   "label": "旋转淡出",
+   "category": "out",
+   "subclass": "标准NLE",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "out.spin.fade",
+   "params": {
+    "angle": 0.25,
+    "durMs": 450
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "补充清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "out.stagger",
+   "label": "错峰出场(反序)",
+   "category": "out",
+   "subclass": "标准NLE",
+   "aliases": [],
+   "tier": "T2",
+   "status": "登记待实现",
+   "fxId": "out.stagger",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": "T2 候选(需着色器/素材/字幕侧逐元素表达);本轮未落地,登记待实现",
+   "source": "补充清单",
+   "license": null,
+   "domain": "subtitle",
+   "note": "后进先出,骨架最后退(artboard §九);落点同 in.stagger",
+   "originName": null
+  },
+  {
+   "id": "out.wipe.dir",
+   "label": "擦除出场",
+   "category": "out",
+   "subclass": "标准NLE",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "out.wipe.dir",
+   "params": {
+    "dir": "right",
+    "durMs": 450
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "补充清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "pull.out",
+   "label": "拉远",
+   "category": "out",
+   "subclass": "运镜",
+   "aliases": [
+    "拉远",
+    "弹远",
+    "回吸"
+   ],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "pull.out",
+   "params": {
+    "z0": 1.12,
+    "z1": 1.0
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "push.in",
+   "label": "推近",
+   "category": "in",
+   "subclass": "运镜",
+   "aliases": [
+    "推近(入场)",
+    "推拉"
+   ],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "push.in",
+   "params": {
+    "z0": 1.0,
+    "z1": 1.12
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": "与 punch-in 手法共用参数;密度受 15s/≤3 约束",
+   "originName": null
+  },
+  {
+   "id": "rotate.in",
+   "label": "旋转入场",
+   "category": "in",
+   "subclass": "运镜",
+   "aliases": [
+    "旋转入场",
+    "旋转开场"
+   ],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "rotate.in",
+   "params": {
+    "angle": 0.3,
+    "durMs": 500
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "rotate.out",
+   "label": "旋转出场",
+   "category": "out",
+   "subclass": "运镜",
+   "aliases": [
+    "旋转出场",
+    "旋转放大",
+    "卷纸收拢"
+   ],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "rotate.out",
+   "params": {
+    "angle": 0.3,
+    "durMs": 450
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "stretch.zoom",
+   "label": "拉伸消散",
+   "category": "out",
+   "subclass": "运镜",
+   "aliases": [
+    "拉伸消散"
+   ],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "stretch.zoom",
+   "params": {
+    "amp": 0.3,
+    "durMs": 500
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": "fc 动态横拉;变形量 ≤30%",
+   "originName": null
+  },
+  {
+   "id": "swing.pendulum",
+   "label": "钟摆",
+   "category": "combo",
+   "subclass": "运镜",
+   "aliases": [
+    "钟摆",
+    "荡秋千"
+   ],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "swing.pendulum",
+   "params": {
+    "angle": 0.05
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.audio.crossfade",
+   "label": "音频交叉淡变",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.audio.crossfade",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "补充清单",
+   "license": null,
+   "domain": "audio",
+   "note": "acrossfade=tri 双曲线(既有实现;分册02 §6.1)",
+   "originName": null
+  },
+  {
+   "id": "tr.blur.dissolve",
+   "label": "模糊溶解",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [
+    "推镜虚化",
+    "叠化变焦",
+    "放射竖向模糊"
+   ],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.blur.dissolve",
+   "params": {
+    "durMs": 500
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "补充清单",
+   "license": null,
+   "domain": "render",
+   "note": "比硬溶解高级(分册02 §6.1)",
+   "originName": null
+  },
+  {
+   "id": "tr.circle.close",
+   "label": "圆形收拢",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [
+    "圆缩消失"
+   ],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.circle.close",
+   "params": {
+    "durMs": 500
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.circle.crop",
+   "label": "圆形遮罩",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [
+    "圆形遮罩(转场)"
+   ],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.circle.crop",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.circle.open",
+   "label": "圆形展开",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.circle.open",
+   "params": {
+    "durMs": 500
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.cover.down",
+   "label": "下覆盖",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [
+    "下滑拉开"
+   ],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.cover.down",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.cover.left",
+   "label": "左覆盖",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.cover.left",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.cover.right",
+   "label": "右覆盖",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.cover.right",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.cover.up",
+   "label": "上覆盖",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.cover.up",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.cut",
+   "label": "硬切",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.cut",
+   "params": {
+    "durMs": 0
+   },
+   "usage": [],
+   "commonness": "高",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": "显式硬切(tr.cut=无技巧转场的显式声明)",
+   "originName": null
+  },
+  {
+   "id": "tr.dissolve.cross",
+   "label": "交叉溶解",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [
+    "叠化(转场)",
+    "柔光叠化"
+   ],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.dissolve.cross",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "高",
+   "why": null,
+   "source": "补充清单",
+   "license": null,
+   "domain": "render",
+   "note": "NLE 默认转场(分册02 §6.1);与 tr.fade 同滤镜,fxId 分立保语义",
+   "originName": null
+  },
+  {
+   "id": "tr.dissolve.noise",
+   "label": "噪点溶解",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.dissolve.noise",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.dissolve.pixel",
+   "label": "像素溶解",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [
+    "像素块滑动"
+   ],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.dissolve.pixel",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.distance",
+   "label": "距离溶解",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.distance",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.fade",
+   "label": "叠化",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.fade",
+   "params": {
+    "durMs": 300
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.fade.black",
+   "label": "黑场过渡",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [
+    "闪黑(转场)",
+    "黑色反转片",
+    "后台切换"
+   ],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.fade.black",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "高",
+   "why": null,
+   "source": "补充清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.fade.fast",
+   "label": "频闪",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [
+    "频闪(转场)",
+    "交错闪白"
+   ],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.fade.fast",
+   "params": {
+    "durMs": 200
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": "花哨类(处方 flashy_max 管辖,分册06 §5.1)",
+   "originName": null
+  },
+  {
+   "id": "tr.fade.grays",
+   "label": "灰度过渡",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.fade.grays",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.fade.slow",
+   "label": "慢叠化",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.fade.slow",
+   "params": {
+    "durMs": 800
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.fade.white",
+   "label": "白场过渡",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [
+    "闪白(转场)"
+   ],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.fade.white",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "补充清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.film.burn",
+   "label": "烧片",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.film.burn",
+   "params": {
+    "durMs": 500
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "补充清单",
+   "license": null,
+   "domain": "render",
+   "note": "近似档:出段尾部烧白近似胶片烧蚀;颗粒叠加入待 T2(FilmBurn GLSL 已收录)",
+   "originName": null
+  },
+  {
+   "id": "tr.flash.zoom",
+   "label": "闪白变焦",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [
+    "闪白缩放(转场)"
+   ],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.flash.zoom",
+   "params": {
+    "durMs": 250
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "补充清单",
+   "license": null,
+   "domain": "render",
+   "note": "闪白由入段头部 fade(color=white)承担,变焦由 zoomin 承担;花哨类(处方 flashy_max 管辖,分册06 §5.1)",
+   "originName": null
+  },
+  {
+   "id": "tr.glitch.slice",
+   "label": "故障切片",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [
+    "震动向右",
+    "色差 RGB(转场)",
+    "电视故障"
+   ],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.glitch.slice",
+   "params": {
+    "durMs": 300
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "补充清单",
+   "license": null,
+   "domain": "render",
+   "note": "近似档:切片族承担故障语义;RGB 错位版待 T2 故障类;花哨类(处方 flashy_max 管辖,分册06 §5.1)",
+   "originName": null
+  },
+  {
+   "id": "tr.glsl.butterfly",
+   "label": "GLSL 蝶波扒蚀",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T2",
+   "status": "可执行",
+   "fxId": "tr.glsl.butterfly",
+   "params": {
+    "durMs": 600
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": "MIT",
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.glsl.circle.crop",
+   "label": "GLSL 圆形划像",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T2",
+   "status": "可执行",
+   "fxId": "tr.glsl.circle.crop",
+   "params": {
+    "durMs": 500
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": "MIT",
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.glsl.cross.zoom",
+   "label": "GLSL 交叉变焦",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T2",
+   "status": "可执行",
+   "fxId": "tr.glsl.cross.zoom",
+   "params": {
+    "durMs": 600
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": "MIT",
+   "domain": "render",
+   "note": "花哨类(处方 flashy_max 管辖,分册06 §5.1)",
+   "originName": null
+  },
+  {
+   "id": "tr.glsl.directional",
+   "label": "GLSL 方向位移",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T2",
+   "status": "可执行",
+   "fxId": "tr.glsl.directional",
+   "params": {
+    "durMs": 500
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": "MIT",
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.glsl.dissolve",
+   "label": "GLSL 噪点溶解",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T2",
+   "status": "可执行",
+   "fxId": "tr.glsl.dissolve",
+   "params": {
+    "durMs": 500
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": "MIT",
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.glsl.dreamy.zoom",
+   "label": "GLSL 梦幻变焦",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T2",
+   "status": "可执行",
+   "fxId": "tr.glsl.dreamy.zoom",
+   "params": {
+    "durMs": 600
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": "MIT",
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.glsl.film.burn",
+   "label": "GLSL 烧片",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T2",
+   "status": "可执行",
+   "fxId": "tr.glsl.film.burn",
+   "params": {
+    "durMs": 700
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": "MIT",
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.glsl.glitch",
+   "label": "GLSL 故障位移",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T2",
+   "status": "可执行",
+   "fxId": "tr.glsl.glitch",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": "MIT",
+   "domain": "render",
+   "note": "花哨类(处方 flashy_max 管辖,分册06 §5.1)",
+   "originName": null
+  },
+  {
+   "id": "tr.glsl.grid.flip",
+   "label": "GLSL 网格翻转",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T2",
+   "status": "可执行",
+   "fxId": "tr.glsl.grid.flip",
+   "params": {
+    "durMs": 600
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": "MIT",
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.glsl.hexagonalize",
+   "label": "GLSL 蜂巢溶解",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T2",
+   "status": "可执行",
+   "fxId": "tr.glsl.hexagonalize",
+   "params": {
+    "durMs": 600
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": "MIT",
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.glsl.linear.blur",
+   "label": "GLSL 线性模糊",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T2",
+   "status": "可执行",
+   "fxId": "tr.glsl.linear.blur",
+   "params": {
+    "durMs": 500
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": "MIT",
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.glsl.mosaic",
+   "label": "GLSL 马赛克块",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T2",
+   "status": "可执行",
+   "fxId": "tr.glsl.mosaic",
+   "params": {
+    "durMs": 600
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": "MIT",
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.glsl.overexposure",
+   "label": "GLSL 过曝",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T2",
+   "status": "可执行",
+   "fxId": "tr.glsl.overexposure",
+   "params": {
+    "durMs": 600
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": "MIT",
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.glsl.pinwheel",
+   "label": "GLSL 风车",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T2",
+   "status": "可执行",
+   "fxId": "tr.glsl.pinwheel",
+   "params": {
+    "durMs": 600
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": "MIT",
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.glsl.rect.crop",
+   "label": "GLSL 矩形划像",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T2",
+   "status": "可执行",
+   "fxId": "tr.glsl.rect.crop",
+   "params": {
+    "durMs": 500
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": "MIT",
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.glsl.simple.zoom",
+   "label": "GLSL 简单变焦",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T2",
+   "status": "可执行",
+   "fxId": "tr.glsl.simple.zoom",
+   "params": {
+    "durMs": 500
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": "MIT",
+   "domain": "render",
+   "note": "花哨类(处方 flashy_max 管辖,分册06 §5.1)",
+   "originName": null
+  },
+  {
+   "id": "tr.glsl.squares",
+   "label": "GLSL 方块走线",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T2",
+   "status": "可执行",
+   "fxId": "tr.glsl.squares",
+   "params": {
+    "durMs": 600
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": "MIT",
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.glsl.swap",
+   "label": "GLSL 交换滑动",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T2",
+   "status": "可执行",
+   "fxId": "tr.glsl.swap",
+   "params": {
+    "durMs": 500
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": "MIT",
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.glsl.swirl.radial",
+   "label": "GLSL 径向旋涡",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T2",
+   "status": "可执行",
+   "fxId": "tr.glsl.swirl.radial",
+   "params": {
+    "durMs": 600
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": "MIT",
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.glsl.water.drop",
+   "label": "GLSL 水滴波纹",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T2",
+   "status": "可执行",
+   "fxId": "tr.glsl.water.drop",
+   "params": {
+    "durMs": 600
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": "MIT",
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.glsl.windowblinds",
+   "label": "GLSL 百叶窗",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T2",
+   "status": "可执行",
+   "fxId": "tr.glsl.windowblinds",
+   "params": {
+    "durMs": 600
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": "MIT",
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.glsl.zoom.circles",
+   "label": "GLSL 同心圆变焦",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T2",
+   "status": "可执行",
+   "fxId": "tr.glsl.zoom.circles",
+   "params": {
+    "durMs": 600
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": "MIT",
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.gradient.wipe",
+   "label": "渐变擦除",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T2",
+   "status": "可执行",
+   "fxId": "tr.gradient.wipe",
+   "params": {
+    "durMs": 500
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "补充清单",
+   "license": "MIT",
+   "domain": "render",
+   "note": "灰度渐变控制擦除进度;以噪声阈值溶解近似(分册02 §6.1 T2)",
+   "originName": null
+  },
+  {
+   "id": "tr.hold.frame",
+   "label": "定格过渡",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.hold.frame",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "补充清单",
+   "license": null,
+   "domain": "render",
+   "note": "出段尾帧冻结(复用 freezeMs 机制)+ 溶解(分册02 §6.1)",
+   "originName": null
+  },
+  {
+   "id": "tr.horz.close",
+   "label": "横向收拢",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.horz.close",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.horz.open",
+   "label": "横向展开",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.horz.open",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.invisible.cut",
+   "label": "无缝转场",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.invisible.cut",
+   "params": {
+    "durMs": 120
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "补充清单",
+   "license": null,
+   "domain": "audio",
+   "note": "短交叉(≤4 帧量级)+ 素材运动匹配;运动匹配是 Agent 语义工作(分册06 §2.1 第 10 类)",
+   "originName": null
+  },
+  {
+   "id": "tr.iris.circle",
+   "label": "圈入圈出",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.iris.circle",
+   "params": {
+    "durMs": 500
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "补充清单",
+   "license": null,
+   "domain": "render",
+   "note": "NLE Iris(分册02 §6.1);复古/萌系,风格不符会出戏(分册06 §3)",
+   "originName": null
+  },
+  {
+   "id": "tr.iris.close",
+   "label": "圈出收拢",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.iris.close",
+   "params": {
+    "durMs": 500
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.jcut",
+   "label": "J-Cut(声音先入、画面后切)",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.jcut",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "补充清单",
+   "license": null,
+   "domain": "audio",
+   "note": "同 tr.lcut(声画先后由素材本身承担,机制=音频交叉)",
+   "originName": null
+  },
+  {
+   "id": "tr.lcut",
+   "label": "L-Cut(画面先切、声音延续)",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.lcut",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "补充清单",
+   "license": null,
+   "domain": "audio",
+   "note": "视频 concat 硬切 + 音频 acrossfade 交叉;leadMs/lagMs 错位量待 IR 升版(rs_edit U7 已登记),本轮以交叉淡变承担语义",
+   "originName": null
+  },
+  {
+   "id": "tr.light.leak",
+   "label": "漏光",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.light.leak",
+   "params": {
+    "durMs": 500
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "补充清单",
+   "license": null,
+   "domain": "render",
+   "note": "近似档:暖色闪入近似漏光;真漏光素材叠加待 T2",
+   "originName": null
+  },
+  {
+   "id": "tr.match.cut",
+   "label": "匹配剪辑",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.match.cut",
+   "params": {
+    "durMs": 200
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "补充清单",
+   "license": null,
+   "domain": "audio",
+   "note": "构图/动作匹配靠选材;机制=极短交叉(分册02 §6.1)",
+   "originName": null
+  },
+  {
+   "id": "tr.punch.zoom",
+   "label": "冲击变焦",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [
+    "推镜变焦",
+    "推近(转场)"
+   ],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.punch.zoom",
+   "params": {
+    "durMs": 200
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "补充清单",
+   "license": null,
+   "domain": "render",
+   "note": "花哨类(处方 flashy_max 管辖,分册06 §5.1)",
+   "originName": null
+  },
+  {
+   "id": "tr.push.down",
+   "label": "向下推移",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.push.down",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.push.left",
+   "label": "向左推移",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.push.left",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": "推移=两画面同时移动;与 slide 同滤镜,fxId 分立保语义(分册02 §6.1)",
+   "originName": null
+  },
+  {
+   "id": "tr.push.right",
+   "label": "向右推移",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.push.right",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.push.up",
+   "label": "向上推移",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.push.up",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.radial",
+   "label": "放射扫描",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [
+    "圆形扫描"
+   ],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.radial",
+   "params": {
+    "durMs": 500
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.rect.crop",
+   "label": "矩形遮罩",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.rect.crop",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.reveal.down",
+   "label": "下揭示",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.reveal.down",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.reveal.left",
+   "label": "左揭示",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.reveal.left",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.reveal.right",
+   "label": "右揭示",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.reveal.right",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.reveal.up",
+   "label": "上揭示",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [
+    "拉开"
+   ],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.reveal.up",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.roll.down",
+   "label": "向下卷动(软边)",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.roll.down",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.roll.left",
+   "label": "向左卷动(软边)",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.roll.left",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": "卷动=slide 的软边整幅版(分册02 §6.1)",
+   "originName": null
+  },
+  {
+   "id": "tr.roll.right",
+   "label": "向右卷动(软边)",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.roll.right",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.roll.up",
+   "label": "向上卷动(软边)",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.roll.up",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.shape.wipe",
+   "label": "形状擦除",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T2",
+   "status": "可执行",
+   "fxId": "tr.shape.wipe",
+   "params": {
+    "durMs": 500
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "补充清单",
+   "license": "MIT",
+   "domain": "render",
+   "note": "圆/星等形状遮罩;圆形档以 CircleCrop 承担,自定义路径待收录",
+   "originName": null
+  },
+  {
+   "id": "tr.slice.hl",
+   "label": "左亮切片",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [
+    "左移扫光(转场)"
+   ],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.slice.hl",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.slice.hr",
+   "label": "右亮切片",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [
+    "流光扫过(转场)"
+   ],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.slice.hr",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.slice.vd",
+   "label": "下亮切片",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.slice.vd",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.slice.vu",
+   "label": "上亮切片",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.slice.vu",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.slide.down",
+   "label": "下移",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [
+    "下移"
+   ],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.slide.down",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.slide.left",
+   "label": "左移",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [
+    "左移(转场)"
+   ],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.slide.left",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.slide.right",
+   "label": "右移",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [
+    "右移(转场)"
+   ],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.slide.right",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.slide.up",
+   "label": "上移",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [
+    "上移",
+    "空间上移"
+   ],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.slide.up",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.squeeze.h",
+   "label": "横向挤压",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [
+    "黑边拉镜",
+    "竖向分割"
+   ],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.squeeze.h",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.squeeze.v",
+   "label": "纵向挤压",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [
+    "分割 IV"
+   ],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.squeeze.v",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.vert.close",
+   "label": "纵向收拢",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.vert.close",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.vert.open",
+   "label": "纵向展开",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.vert.open",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.whip.pan",
+   "label": "甩镜",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [
+    "甩镜横移",
+    "甩动模糊",
+    "分层甩动"
+   ],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.whip.pan",
+   "params": {
+    "durMs": 300
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "补充清单",
+   "license": null,
+   "domain": "render",
+   "note": "花哨类(处方 flashy_max 管辖,分册06 §5.1)",
+   "originName": null
+  },
+  {
+   "id": "tr.wind.hl",
+   "label": "左风切",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.wind.hl",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.wind.hr",
+   "label": "右风切",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.wind.hr",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.wind.vd",
+   "label": "下风切",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.wind.vd",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.wind.vu",
+   "label": "上风切",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.wind.vu",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.wipe.bl",
+   "label": "左下擦除",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.wipe.bl",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.wipe.br",
+   "label": "右下擦除",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.wipe.br",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.wipe.diag.bl",
+   "label": "对角擦除(左下)",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.wipe.diag.bl",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.wipe.diag.br",
+   "label": "对角擦除(右下)",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.wipe.diag.br",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.wipe.diag.tl",
+   "label": "对角擦除(左上)",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.wipe.diag.tl",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.wipe.diag.tr",
+   "label": "对角擦除(右上)",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.wipe.diag.tr",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.wipe.down",
+   "label": "向下擦除",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [
+    "向下擦除"
+   ],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.wipe.down",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.wipe.left",
+   "label": "向左擦除",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [
+    "向左擦除"
+   ],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.wipe.left",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.wipe.right",
+   "label": "向右擦除",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [
+    "向右擦除"
+   ],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.wipe.right",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.wipe.tl",
+   "label": "左上擦除",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.wipe.tl",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.wipe.tr",
+   "label": "右上擦除",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.wipe.tr",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "tr.wipe.up",
+   "label": "向上擦除",
+   "category": "transition",
+   "subclass": "基础",
+   "aliases": [
+    "向上擦除"
+   ],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "tr.wipe.up",
+   "params": {
+    "durMs": 400
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "zoompan.in.slight",
+   "label": "轻微放大",
+   "category": "in",
+   "subclass": "运镜",
+   "aliases": [
+    "轻微放大",
+    "放大",
+    "动感放大"
+   ],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "zoompan.in.slight",
+   "params": {
+    "z0": 1.0,
+    "z1": 1.06
+   },
+   "usage": [
+    "talking-head",
+    "tutorial"
+   ],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": null,
+   "originName": null
+  },
+  {
+   "id": "zoompan.out.shrink",
+   "label": "缩小出场",
+   "category": "out",
+   "subclass": "运镜",
+   "aliases": [
+    "缩小",
+    "动感缩小"
+   ],
+   "tier": "T1",
+   "status": "可执行",
+   "fxId": "zoompan.out.shrink",
+   "params": {
+    "z0": 1.0,
+    "z1": 0.94
+   },
+   "usage": [],
+   "commonness": "中",
+   "why": null,
+   "source": "用户清单",
+   "license": null,
+   "domain": "render",
+   "note": "旋转版走 T2(登记待实现)",
+   "originName": null
+  }
+ ]
+}

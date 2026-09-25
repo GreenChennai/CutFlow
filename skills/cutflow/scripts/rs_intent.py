@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -64,31 +65,105 @@ BGM_LIBRARY_DIR = Path(__file__).resolve().parents[1] / "assets" / "bgm"
 BGM_LIBRARY_RELPREFIX = "skills/cutflow/assets/bgm"
 
 
-def bgm_library_pick(pacing: str) -> dict | None:
-    """曲库按节奏档选曲:pacingFit 命中当前档的首条,否则第一条(确定性)。
-
-    曲库缺失/坏 JSON/空表 → None(调用方留痕 bgm.src=null,渲染端不加 BGM,不臆测)。
-    返回 {name, file, repoRelPath, bpm, durationSec, gainHintDb, mood}。
-    """
+def _bgm_tracks() -> list[dict]:
+    """曲库全量曲目(M12 真相源 = 统一索引 skills/cutflow/assets/manifest.json 的
+    kind=bgm;旧兼容件 bgm/manifest.json 兜底,R42 闭环的取数口)。"""
+    import rs_asset
+    tracks = [{"id": str(a.get("id")), "name": str(a.get("label", "")),
+               "file": str(a.get("file", "")).rsplit("/", 1)[-1],
+               "pacingFit": list(a.get("pacingFit") or []),
+               "gainHintDb": a.get("gainHintDb", -18), "mood": str(a.get("mood", "")),
+               "durationSec": a.get("durationSec"), "bpm": a.get("bpm"),
+               "commercial": bool(a.get("commercial", True))}
+              for a in rs_asset.assets("bgm")]
+    if tracks:
+        return tracks
     man = BGM_LIBRARY_DIR / "manifest.json"
     if not man.is_file():
-        return None
+        return []
     try:
-        tracks = json.loads(man.read_text(encoding="utf-8")).get("tracks") or []
+        raw = json.loads(man.read_text(encoding="utf-8")).get("tracks") or []
     except (json.JSONDecodeError, OSError, UnicodeDecodeError):
-        return None
+        return []
+    out = []
+    for t in raw:
+        if isinstance(t, dict):
+            out.append({**t, "id": str(t.get("id") or t.get("name") or ""),
+                        "commercial": bool(t.get("commercial", True))})
+    return out
+
+
+def bgm_library_pick(pacing: str, mood: str | None = None) -> dict | None:
+    """曲库按节奏档(可选 mood 语义)选曲,确定性:
+
+    ① pacingFit 含当前档;② 有 mood 时优先 mood 命中(曲目 mood 串含该词)的首条;
+    ③ 否则 pacing 命中首条;④ 都没有 → 首条(同输入字节级同选)。
+    曲库缺失/坏 JSON/空表 → None(调用方留痕 bgm.src=null,渲染端不加 BGM,不臆测)。
+    返回 {id, name, file, repoRelPath, bpm, durationSec, gainHintDb, mood, commercial}。
+    """
+    tracks = [t for t in _bgm_tracks() if t.get("commercial", True)]
     if not tracks:
         return None
-    hit = next((t for t in tracks if pacing in (t.get("pacingFit") or [])), tracks[0])
-    return {"name": str(hit.get("name", "")), "file": str(hit.get("file", "")),
+    hits = [t for t in tracks if pacing in (t.get("pacingFit") or [])]
+    pool = hits or tracks
+    if mood:
+        hit = next((t for t in pool if mood in str(t.get("mood", ""))), None)
+        if hit is not None:
+            pool = [hit]
+    hit = pool[0]
+    return {"id": hit.get("id", ""), "name": str(hit.get("name", "")),
+            "file": str(hit.get("file", "")),
             "repoRelPath": f"{BGM_LIBRARY_RELPREFIX}/{hit.get('file', '')}",
             "bpm": hit.get("bpm"), "durationSec": hit.get("durationSec"),
-            "gainHintDb": hit.get("gainHintDb", -18), "mood": str(hit.get("mood", ""))}
+            "gainHintDb": hit.get("gainHintDb", -18), "mood": str(hit.get("mood", "")),
+            "commercial": hit.get("commercial", True)}
 
 
 def _alias(name: str) -> str:
     """平台别名 → 规范键(与 rs_run 参数解析同一张表,单一真相源)。"""
     return _PLATFORM_ALIASES.get(str(name), _PLATFORM_ALIASES.get(str(name).lower(), name))
+
+
+def _fx_executable(fx_id: str) -> bool:
+    """fxId 在效果目录中是否可执行(防御性:目录缺失/坏档 → False,不臆测)。"""
+    try:
+        import rs_effects  # noqa: PLC0415 — 懒加载防重导入开销
+    except Exception:  # noqa: BLE001
+        return False
+    return rs_effects.is_executable(fx_id)
+
+
+def build_effects_plan(prescription: dict, brief: dict) -> dict:
+    """效果计划草案(ADR-0059/分册06 §9.2):按处方 + 纸面结构在开工前规划"该在哪用什么"。
+
+    确定性:structure 分段数、prefer 首个【可执行】fxId(catalog 查证,登记待实现
+    的跳过)共同决定,同输入同输出。草案是推荐,不是强制 —— apply 侧仍走 EditOp。
+    """
+    structure = str(brief.get("structure") or "")
+    segs = [s.strip() for s in re.split(r"→|->", structure) if s.strip()]
+    n_bounds = max(len(segs) - 1, 0)
+    tr = prescription.get("transition") or {}
+    tr_pref = [f for f in (tr.get("prefer") or []) if _fx_executable(str(f))]
+    trans: list[dict] = []
+    if tr_pref and n_bounds > 0:
+        # 章节切换点 = 结构分段边界(全部列出;min 是下限,边界是上限,不虚构)
+        trans.append({"atChapters": list(range(1, n_bounds + 1)),
+                      "fx": tr_pref[0],
+                      "reason": "章节切换(结构分段边界;分册06 §3 时空跳跃/段落切换语义)"})
+    ins = prescription.get("in") or {}
+    outs = prescription.get("out") or {}
+    in_pref = [f for f in (ins.get("prefer") or []) if _fx_executable(str(f))]
+    out_pref = [f for f in (outs.get("prefer") or []) if _fx_executable(str(f))]
+    sfx = prescription.get("sfx") or {}
+    return {
+        "transitions": trans,
+        "in": ([{"scope": "subtitle_bar", "fx": in_pref[0]}] if in_pref else []),
+        "out": ([{"scope": "subtitle_bar", "fx": out_pref[0]}] if out_pref else []),
+        "sfx": ([{"usage": "transition",
+                  "density": f"per15s<={sfx.get('per15s', 2)}"}] if sfx else []),
+        "flashyMax": prescription.get("flashy_max"),
+        "requireReason": bool(prescription.get("require_reason", True)),
+    }
 
 
 def load_registry() -> dict:
@@ -434,13 +509,19 @@ def compile_intent(brief: dict, plan: dict, prompt_text: str,
     # (仓库相对路径)写进 resolved.bgm.src,decision_log source=library 留痕。
     # 增益仍以节奏档/风格包为准(pick.gainHintDb 只是曲库参考值,不覆盖)。
     if bgm_mode == "auto":
-        pick = bgm_library_pick(pace_key)
+        # R42(M12):风格包 bgmLibrary 声明的 mood 语义参与选曲(仍是确定性首条),
+        # 选中素材 id 写进 resolved.bgm.assetId → 交付归因/rs_verify 商用对拍同源。
+        lib_rule = (entry.get("bgmLibrary") or {}) if entry else {}
+        pick = bgm_library_pick(pace_key, mood=lib_rule.get("mood"))
         resolved["bgm"]["src"] = pick["repoRelPath"] if pick else None
+        resolved["bgm"]["assetId"] = pick["id"] if pick else None
         resolved["bgm"]["pick"] = pick
         dec("bgm.pick", pick, "library",
-            (f"曲库按节奏档 {pace_key} 选曲:{pick['name']}({pick['file']},"
-             f"bpm {pick['bpm']});自产合成,无版权约束") if pick else
-            f"曲库缺失或为空({BGM_LIBRARY_DIR}),未选曲(bgm.src=null)")
+            (f"曲库按节奏档 {pace_key}"
+             + (f"+mood {lib_rule['mood']}" if lib_rule.get("mood") else "")
+             + f" 选曲:{pick['name']}({pick['file']},"
+             f"bpm {pick['bpm']});来源 {pick.get('commercial', True) and '可商用' or '不可商用'}")
+            if pick else f"曲库缺失或为空({BGM_LIBRARY_DIR}),未选曲(bgm.src=null)")
 
     # 风格包留痕(ADR-0051):pack 命中时逐字段并入 resolved + decision_log;
     # pack 缺失/条目无 pack 时本块整体缺席,resolved 与落地前字节一致(回退可复现)。
@@ -465,6 +546,20 @@ def compile_intent(brief: dict, plan: dict, prompt_text: str,
             f"风格包 {pack_slug}/params.yaml transition({psrc.get('transition', '')})")
         dec("artboard", resolved["artboard"], "registry",
             f"风格包 {pack_slug} 的 artboard 借格(卡片视觉来源;cases 与 packs/{pack_slug}/cards.yaml 同源)")
+
+    # ADR-0059(分册06 §7/§9):效果处方进 resolved + 效果计划草案;
+    # 处方是 rs_verify EFFECTS_* 门禁与 rs_edit context「该用的特效」段的依据;
+    # 无处方 → 门禁跳过留痕 NO_PRESCRIPTION,旧工程行为不变(防御性缺省)。
+    pres = pp.get("effects_prescription")
+    if isinstance(pres, dict) and pres:
+        resolved["effectsPrescription"] = pres
+        eplan = build_effects_plan(pres, brief)
+        resolved["effectsPlan"] = eplan
+        dec("effectsPrescription", pres, "prescription",
+            f"风格包 {pack_slug}/params.yaml effects_prescription"
+            "(分册06 §7;处方既是推荐也是门禁依据)")
+        dec("effectsPlan", eplan, "prescription",
+            "效果计划草案(处方+纸面结构;效果开工前规划,非最后才想起)")
 
     return {"resolved": resolved, "decisions": decisions, "entry": entry,
             "warnings": pack_warns}
@@ -536,7 +631,8 @@ def render_brief_md(r: dict) -> str:
 def render_table(r: dict, decisions: list[dict]) -> str:
     """推断表:字段 → 值 → 来源 → 是否推断 → 依据(--dry-run 打印,不落盘)。"""
     src_txt = {"user": "用户明说", "registry": "注册表/预设缺省", "default": "全局缺省",
-               "template": "模板预填", "library": "内置曲库(M8 bgm=auto)"}
+               "template": "模板预填", "library": "内置曲库(M8 bgm=auto)",
+               "prescription": "效果处方(风格包,ADR-0059)"}
     head = f"{'字段':<14}{'值':<28}{'来源':<12}{'推断':<6}依据"
     rows = [head, "-" * 96]
     for d in decisions:

@@ -1,0 +1,475 @@
+{
+ "version": 1,
+ "_doc": "字体索引与对拍表(分册01 §5/ADR-0053):由 artboard fonts/README.md 生成,唯一真相源在 artboard;**禁手改**——重跑 tools/synth_assets.py --fonts-only。",
+ "artboardLockedPath": "E:\\平日资料\\GitHub\\.agents\\skills\\artboard",
+ "generatedFrom": "artboard/fonts/README.md",
+ "default": {
+  "subtitle": "source-han-sans",
+  "subtitleFallback": "Noto Sans SC",
+  "note": "rs_subtitle 查 default.subtitle 对应字体的家族名;该字体在artboard fonts/ 代表款缺失时回退 subtitleFallback,均缺则降级内置兜底并留痕 fontDegraded。"
+ },
+ "fonts": [
+  {
+   "dir": "source-han-sans",
+   "name": "思源黑体",
+   "category": "正文可读·大标题",
+   "keywords": [
+    "现代",
+    "中性",
+    "全能",
+    "数据感",
+    "可变字重"
+   ],
+   "weights": [
+    "可变 100-900"
+   ],
+   "family": "Noto Sans SC",
+   "file": "NotoSansSC-VF.ttf"
+  },
+  {
+   "dir": "source-han-serif",
+   "name": "思源宋体",
+   "category": "文艺人文·杂志标题",
+   "keywords": [
+    "人文",
+    "书卷",
+    "高级",
+    "编辑部"
+   ],
+   "weights": [
+    "可变 200-900"
+   ],
+   "family": "Noto Serif SC",
+   "file": "NotoSerifSC-VF.ttf"
+  },
+  {
+   "dir": "smiley-sans",
+   "name": "得意黑",
+   "category": "标题冲击",
+   "keywords": [
+    "冲刺",
+    "动势",
+    "促销",
+    "竞技"
+   ],
+   "weights": [
+    "Oblique 单字重"
+   ],
+   "family": "Smiley Sans",
+   "file": "SmileySans-Oblique.ttf"
+  },
+  {
+   "dir": "lxgw-wenkai",
+   "name": "霞鹜文楷",
+   "category": "文艺人文·手写批注",
+   "keywords": [
+    "温润",
+    "手写",
+    "信笺",
+    "小清新"
+   ],
+   "weights": [
+    "Regular 单字重"
+   ],
+   "family": "LXGW WenKai",
+   "file": "LXGWWenKai-Regular.ttf"
+  },
+  {
+   "dir": "zcool-kuaile",
+   "name": "站酷快乐体",
+   "category": "标题冲击·可爱手账",
+   "keywords": [
+    "俏皮",
+    "圆润",
+    "零食感",
+    "童趣"
+   ],
+   "weights": [
+    "Regular 单字重"
+   ],
+   "family": "ZCOOL KuaiLe",
+   "file": "ZCOOLKuaiLe-Regular.ttf"
+  },
+  {
+   "dir": "misans",
+   "name": "MiSans",
+   "category": "正文可读·标题",
+   "keywords": [
+    "现代",
+    "圆润",
+    "中性",
+    "屏幕优化",
+    "小米生态"
+   ],
+   "weights": [
+    "Regular",
+    "Semibold",
+    "Bold(另 12 字重可加)"
+   ],
+   "family": "MiSans",
+   "file": "MiSans-Bold.ttf"
+  },
+  {
+   "dir": "alibaba-puhuiti",
+   "name": "阿里巴巴普惠体 3.0",
+   "category": "正文可读·标题",
+   "keywords": [
+    "现代",
+    "中性",
+    "电商",
+    "阿里生态",
+    "真字重"
+   ],
+   "weights": [
+    "Regular",
+    "Bold",
+    "Heavy(官方 9 字重可加)"
+   ],
+   "family": "Alibaba PuHuiTi 3.0",
+   "file": "AlibabaPuHuiTi-3-105-Heavy.ttf"
+  },
+  {
+   "dir": "harmonyos-sans",
+   "name": "HarmonyOS Sans SC",
+   "category": "正文可读·标题",
+   "keywords": [
+    "现代",
+    "鸿蒙",
+    "可变字体",
+    "数字優美"
+   ],
+   "weights": [
+    "可变字体 Regular~Bold 单文件"
+   ],
+   "family": "HarmonyOS Sans SC",
+   "file": "HarmonyOS_Sans_SC.ttf"
+  },
+  {
+   "dir": "cheese-oolong-song",
+   "name": "芝士奶盖乌龙宋",
+   "category": "文艺人文·标题",
+   "keywords": [
+    "宋体",
+    "奶酪感",
+    "圆头",
+    "食品",
+    "温暖",
+    "标题"
+   ],
+   "weights": [
+    "Bold(全量)",
+    "Lite-Bold(缩小字符集)"
+   ],
+   "family": "Cheese Foam Oolong Song",
+   "file": "CheeseFoamOolongSong-Bold.ttf"
+  },
+  {
+   "dir": "chill-zhuo-kai",
+   "name": "寒蝉拙楷",
+   "category": "文艺人文·手写",
+   "keywords": [
+    "楷体",
+    "拙朴",
+    "手写",
+    "温润",
+    "笔记"
+   ],
+   "weights": [
+    "Regular 单字重"
+   ],
+   "family": "ChillZhuoKai",
+   "file": "ChillZhuoKai_R.ttf"
+  },
+  {
+   "dir": "yao-yuan-ti",
+   "name": "耀圆体",
+   "category": "标题冲击·圆体",
+   "keywords": [
+    "圆润",
+    "可爱",
+    "寒蝉圆体改造",
+    "国标规范",
+    "标题"
+   ],
+   "weights": [
+    "Regular 单字重"
+   ],
+   "family": "KirakaraMaru",
+   "file": "KirakaraMaru.ttf"
+  },
+  {
+   "dir": "nano-tik-baz-hei",
+   "name": "纳挼崩音黑",
+   "category": "标题冲击",
+   "keywords": [
+    "抖音感",
+    "硬朗",
+    "方正",
+    "短视频标题"
+   ],
+   "weights": [
+    "Bold 单字重"
+   ],
+   "family": "NanoTikBazHei",
+   "file": "NanoTikBazHei-Bold.ttf"
+  },
+  {
+   "dir": "fanmei",
+   "name": "繁梅黑体/繁梅明体",
+   "category": "正文可读·繁体专属",
+   "keywords": [
+    "繁体",
+    "黑体",
+    "明体",
+    "书卷",
+    "0BSD"
+   ],
+   "weights": [
+    "Hei",
+    "Ming 各单字重"
+   ],
+   "family": "Fanmei Hei",
+   "file": "Fanmei-Hei.ttf"
+  },
+  {
+   "dir": "eqhi-sans",
+   "name": "嗷呜等高体",
+   "category": "正文可读·中英混排",
+   "keywords": [
+    "等高",
+    "中英混排",
+    "可变字体",
+    "参数表"
+   ],
+   "weights": [
+    "可变字体 Regular~Bold"
+   ],
+   "family": "Howling EqHi Sans",
+   "file": "HowlingEqHiSans-VF.ttf"
+  },
+  {
+   "dir": "insomnia-fangsong",
+   "name": "不寐仿宋",
+   "category": "文艺人文·仿宋",
+   "keywords": [
+    "仿宋",
+    "古典",
+    "公文",
+    "引文",
+    "三字重"
+   ],
+   "weights": [
+    "Book",
+    "Bold",
+    "Demi"
+   ],
+   "family": "Insomnia FangSong",
+   "file": "InsomniaFangSong-Bold.ttf"
+  },
+  {
+   "dir": "yshi-new-hei",
+   "name": "YShi新黑",
+   "category": "正文可读·古籍补全",
+   "keywords": [
+    "古籍",
+    "规范字",
+    "生僻字",
+    "庄重"
+   ],
+   "weights": [
+    "Regular 单字重"
+   ],
+   "family": "YShi NewHei GGJ",
+   "file": "YShiNewHeiGGJ-Regular.ttf"
+  },
+  {
+   "dir": "black-sugar-plum",
+   "name": "黑糖话梅",
+   "category": "标题冲击·可爱手写",
+   "keywords": [
+    "可爱",
+    "手写",
+    "糖果",
+    "手账",
+    "霞鹜作者"
+   ],
+   "weights": [
+    "Bold 单字重"
+   ],
+   "family": "Black Sugar Plum Candy",
+   "file": "BlackSugarPlumCandy-Bold.ttf"
+  },
+  {
+   "dir": "liyu-shoushu",
+   "name": "漓雨手书",
+   "category": "文艺人文·书法",
+   "keywords": [
+    "毛笔",
+    "楷书",
+    "国潮",
+    "书法标题"
+   ],
+   "weights": [
+    "Regular 单字重"
+   ],
+   "family": "Liyu Shoushu",
+   "file": "LiyuShoushu.ttf"
+  },
+  {
+   "dir": "english-roboto-flex",
+   "name": "Roboto Flex",
+   "category": "英文点缀·现代无衬线",
+   "keywords": [
+    "VF",
+    "现代",
+    "万能",
+    "数字",
+    "眉题"
+   ],
+   "weights": [
+    "可变字体(多轴)"
+   ],
+   "family": "Roboto Flex",
+   "file": "RobotoFlex-VF.ttf"
+  },
+  {
+   "dir": "english-shantell",
+   "name": "Shantell Sans",
+   "category": "英文点缀·手写圆润",
+   "keywords": [
+    "手写",
+    "圆润",
+    "bouncy",
+    "轻松"
+   ],
+   "weights": [
+    "Bouncy Regular(多变体可加)"
+   ],
+   "family": "Shantell Sans Bouncy",
+   "file": "ShantellSans-Bouncy-Regular.otf"
+  },
+  {
+   "dir": "english-eb-garamond",
+   "name": "EB Garamond",
+   "category": "英文点缀·古典衬线",
+   "keywords": [
+    "古典",
+    "衬线",
+    "优雅",
+    "正文"
+   ],
+   "weights": [
+    "Regular+Italic"
+   ],
+   "family": "EB Garamond",
+   "file": "EBGaramond-Italic.ttf"
+  },
+  {
+   "dir": "english-rozha-one",
+   "name": "Rozha One",
+   "category": "英文点缀·奢华展示",
+   "keywords": [
+    "Didone",
+    "奢华",
+    "大标题",
+    "高对比"
+   ],
+   "weights": [
+    "Regular"
+   ],
+   "family": "Rozha One",
+   "file": "RozhaOne-Regular.otf"
+  },
+  {
+   "dir": "english-sigmar",
+   "name": "Sigmar",
+   "category": "英文点缀·海报重显示",
+   "keywords": [
+    "重显示",
+    "海报",
+    "粗壮"
+   ],
+   "weights": [
+    "Regular"
+   ],
+   "family": "Sigmar",
+   "file": "Sigmar-Regular.ttf"
+  },
+  {
+   "dir": "english-chewy",
+   "name": "Chewy",
+   "category": "英文点缀·趣味圆润",
+   "keywords": [
+    "趣味",
+    "圆润",
+    "可爱"
+   ],
+   "weights": [
+    "Regular"
+   ],
+   "family": "Chewy",
+   "file": "Chewy-Regular.ttf"
+  },
+  {
+   "dir": "english-ranchers",
+   "name": "Ranchers",
+   "category": "英文点缀·窄体活力",
+   "keywords": [
+    "窄体",
+    "活力",
+    "运动感"
+   ],
+   "weights": [
+    "Regular"
+   ],
+   "family": "Ranchers",
+   "file": "Ranchers-Regular.ttf"
+  },
+  {
+   "dir": "english-frijole",
+   "name": "Frijole",
+   "category": "英文点缀·粗糙质感",
+   "keywords": [
+    "粗糙",
+    "质感",
+    "街头"
+   ],
+   "weights": [
+    "Regular"
+   ],
+   "family": "Frijole",
+   "file": "Frijole-Regular.ttf"
+  },
+  {
+   "dir": "english-trochut",
+   "name": "Trochut",
+   "category": "英文点缀·装饰几何",
+   "keywords": [
+    "装饰",
+    "几何",
+    "艺术"
+   ],
+   "weights": [
+    "Regular"
+   ],
+   "family": "Trochut",
+   "file": "Trochut-Regular.ttf"
+  },
+  {
+   "dir": "english-miss-fajardose",
+   "name": "Miss Fajardose",
+   "category": "英文点缀·优雅签名",
+   "keywords": [
+    "签名",
+    "手写",
+    "优雅",
+    "花体"
+   ],
+   "weights": [
+    "Regular"
+   ],
+   "family": "Miss Fajardose",
+   "file": "MissFajardose-Regular.ttf"
+  }
+ ]
+}

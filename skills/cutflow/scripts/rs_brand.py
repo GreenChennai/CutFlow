@@ -32,6 +32,17 @@ import rs_paths  # noqa: E402  — 阶段路径唯一真相源(ADR-0046),本文�
 
 SCRIPTS_DIR = Path(__file__).resolve().parent
 
+
+def default_jobs() -> int:
+    """变体并发的默认度(ADR-0056,与 rs_render 同口径):min(4, CPU/2),至少 1;
+    CUTFLOW_RENDER_JOBS 显式指定时封顶 16。"""
+    import os  # noqa: PLC0415 — 局部使用
+    env = os.environ.get("CUTFLOW_RENDER_JOBS", "").strip()
+    if env.isdigit() and int(env) > 0:
+        return min(int(env), 16)
+    cpu = os.cpu_count() or 2
+    return max(1, min(4, cpu // 2))
+
 ANCHORS = ("topLeft", "topRight", "bottomLeft", "bottomRight",
            "topCenter", "bottomCenter", "watermark")
 
@@ -289,6 +300,9 @@ def main() -> int:
     ap.add_argument("--out", default="")
     ap.add_argument("--profile", default="final")
     ap.add_argument("--plan", action="store_true")
+    ap.add_argument("--jobs", type=int, default=0,
+                    help="变体渲染并发(ADR-0056):0=自动 min(4,CPU/2),1=串行回退;"
+                         "结果顺序与矩阵声明顺序一致")
     ap.add_argument("--logo-src", default=rs_paths.p("assets") + "/branding/logos/{id}.png")
     a = ap.parse_args()
 
@@ -340,17 +354,22 @@ def main() -> int:
     vdir = outdir / "_variants"
     vdir.mkdir(parents=True, exist_ok=True)
 
-    results, plans, all_errs = [], [], []
-    for v in vdoc["matrix"]:
+    results: list = [None] * len(vdoc["matrix"])
+    plans: list = []
+    all_errs: list[str] = []
+
+    def _run_variant(idx: int, v: dict) -> None:
+        """单变体:IR 组装 → 安全区检查 → 写变体 IR → (--plan 之外)渲染。
+        ADR-0056:变体间无依赖,线程池并发;共享中间件使各变体只分叉最后一步。"""
         lg = logos.get(v["logo"])
         if not lg:
             all_errs.append(f"变体 {v['id']} 引用了不存在的 logo:{v['logo']}")
-            continue
+            return
         try:
             doc = variant_ir(ir, v, lg, v["ratio"], platform=platform)
         except (FileNotFoundError, ValueError) as exc:
             all_errs.append(f"{v['id']}: {exc}")
-            continue
+            return
         errs = check_safe_area(doc["_variant"]["logoRect"], doc["canvas"], platform=platform)
         if errs:
             all_errs.extend(f"{v['id']}: {e}" for e in errs)
@@ -363,21 +382,35 @@ def main() -> int:
         # 通过 --out 显式告知 rs_render —— 预测路径与实际写盘必须逐字一致。
         final = (outdir / f"成片_{v['ratio']}_{v['logo']}_{a.profile}.mp4").resolve()
         cmd = [sys.executable, str(SCRIPTS_DIR / "rs_render.py"), str(vp),
-               "--ratio", v["ratio"], "--profile", a.profile, "--out", str(final)]
+               "--ratio", v["ratio"], "--profile", a.profile,
+               "--jobs", str(max(1, jobs)), "--out", str(final)]
         plans.append({"variant": v["id"], "ir": str(vp), "output": str(final),
                       "cmd": " ".join(cmd)})
         if not a.plan:
             # P24-1:子进程显式 UTF-8 + 限时(变体渲染失败信息在 cp936 控制台不乱码)
             p = subprocess.run(cmd, capture_output=True, text=True,
                                encoding="utf-8", errors="replace", timeout=3600)
-            results.append({"variant": v["id"], "ok": p.returncode == 0,
+            results[idx] = {"variant": v["id"], "ok": p.returncode == 0,
                             "output": str(final) if p.returncode == 0 else None,
-                            "err": None if p.returncode == 0 else (p.stderr or p.stdout)[-200:]})
+                            "err": None if p.returncode == 0 else (p.stderr or p.stdout)[-200:]}
 
+    jobs = max(1, int(a.jobs or default_jobs()))
     if a.plan:
+        for idx, v in enumerate(vdoc["matrix"]):     # --plan 只出清单,串行即可
+            _run_variant(idx, v)
         for it in plans:
             print(f"{it['variant']}: {it['cmd']}")
         return emit(True, "BRAND_PLAN", f"{len(plans)} 个变体待渲染", {"plan": plans, "errors": all_errs})
+
+    if jobs == 1 or len(vdoc["matrix"]) <= 1:
+        for idx, v in enumerate(vdoc["matrix"]):
+            _run_variant(idx, v)
+    else:
+        # 变体级并发(ADR-0056);results 按矩阵下标回填,顺序与串行完全一致
+        from concurrent.futures import ThreadPoolExecutor  # noqa: PLC0415
+        with ThreadPoolExecutor(max_workers=min(jobs, len(vdoc["matrix"]))) as pool:
+            list(pool.map(lambda pair: _run_variant(*pair), enumerate(vdoc["matrix"])))
+    results = [r for r in results if r is not None]
 
     ok = sum(1 for r in results if r["ok"])
     msg = f"{ok}/{len(results)} 个变体渲染完成(共享中间件)"

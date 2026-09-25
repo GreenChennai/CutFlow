@@ -86,8 +86,9 @@ def validate(doc: dict, base_dir: Path) -> list[str]:
                 spans.append((start, start + dur))
             if clip.get("src") and kind != "text":
                 if clip["src"].startswith("assets_sfx:"):  # 内置音效库伪协议
-                    from rs_common import REPO_ROOT
-                    exists = (REPO_ROOT / "assets" / "sfx" / (clip["src"].split(":", 1)[1] + ".mp3")).is_file()
+                    import rs_asset   # M12:素材索引统一解析口(id/组名/旧名三级)
+                    exists = rs_asset.resolve_sfx_ref(
+                        clip["src"].split(":", 1)[1]) is not None
                 else:
                     pp = Path(clip["src"])
                     exists = (pp if pp.is_absolute() else base_dir / pp).is_file()

@@ -1,0 +1,28 @@
+{
+ "id": "fx.safety-flash",
+ "label": "光敏安全底线(闪变 ≤3 次/秒)",
+ "appliesTo": [
+  "talking-head",
+  "talking-head+animation",
+  "pure-animation",
+  "vlog",
+  "混剪",
+  "drama",
+  "screen-recording"
+ ],
+ "stage": "S8",
+ "detector": "rs_render.py",
+ "depends": [],
+ "degrade": {
+  "to": "none",
+  "trace": "flashUnsafe",
+  "message": "安全底线不可回滚(分册02 §8.1 门禁 6)"
+ },
+ "params": {
+  "maxFlipsPerSecond": 3,
+  "flashMaxMs": 300
+ },
+ "artifact": "timeline/fx_report.json",
+ "verify": "tests/test_effects_usage.py",
+ "notes": "M13(分册02 §3.1/§8.1,WCAG 2.3.1 同口径):注册表参数档内置单次闪变 ≤300ms;rs_verify FLASH_UNSAFE 判据任一秒整幅明暗反转 ≤3 次。"
+}

@@ -115,6 +115,13 @@ CAPABILITY_DEPS: dict[str, dict] = {
         "probe": "import cv2", "degrade": "none",
         "degradeText": "不可降级(degrade none):缺组件即不启用对应检测",
     },
+    "fx.glsl": {
+        "label": "GLSL 转场渲染(T2/B3)", "use": "gl-transitions 特效转场(分册02 §1.2)",
+        "modules": ["moderngl"], "imports": ["moderngl"],
+        "size_mb": 5, "backend": "py",
+        "probe": "import moderngl", "degrade": "T1-xfade-fallback",
+        "degradeText": "最接近的 T1 xfade(注册表 fallback 声明)+ fxDegraded 留痕",
+    },
     "text.clip": {
         "label": "CLIP 图文语义", "use": "语义选卡/素材匹配",
         "modules": ["clip"], "imports": ["clip"],

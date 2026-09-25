@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CutFlow 效果目录(catalog.json)契约",
+  "description": "M13/ADR-0054(分册02 §2):剪映效果名规范化后的全量登记表,每条带三级分级与三态状态。字段约束见 properties;门禁(tests/test_effects.py)额外把守:可执行必有 fxId 且真实存在于 rs_fx 注册表、不实现必有 why、T2 必有 license、别名全局唯一。",
+  "type": "object",
+  "required": ["version", "kind", "effects"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {"const": 1},
+    "kind": {"const": "cutflow-effect-catalog"},
+    "sourceDoc": {
+      "type": "string",
+      "description": "原始清单相对路径(sources/ 下,逐字保留)"
+    },
+    "stats": {
+      "type": "object",
+      "description": "规范化报告摘要(条数统计,rs_effects coverage 同口径)",
+      "additionalProperties": true
+    },
+    "effects": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "label", "category", "subclass", "tier", "status",
+                     "commonness", "source", "domain"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^fx\\.|^tr\\.|^in\\.|^out\\.|^fade\\.|^dissolve\\.|^flash\\.|^dither\\.|^zoompan\\.|^push\\.|^pull\\.|^slide\\.|^rotate\\.|^blur\\.|^jitter\\.|^swing\\.|^stretch\\.|^effect\\.",
+            "description": "唯一 id;可执行条目 id == fxId(一经发布不得改名)"
+          },
+          "label": {"type": "string", "minLength": 1, "description": "中文名(人读,允许改)"},
+          "category": {"enum": ["in", "out", "combo", "transition"],
+                        "description": "四大类(入场/出场/组合/转场)"},
+          "subclass": {"type": "string",
+                        "description": "基础/运镜/特效/MG/幻灯片/遮罩/综艺/组合/标准NLE/已确认删除/非效果"},
+          "aliases": {
+            "type": "array",
+            "items": {"type": "string", "minLength": 1},
+            "description": "剪映原名与同义名(合并同类项的证据;全局唯一,search 据此反查)"
+          },
+          "tier": {"enum": ["T1", "T2", "T3"],
+                    "description": "三级可实现性分级(ADR-0054)"},
+          "status": {"enum": ["可执行", "登记待实现", "不实现"],
+                      "description": "三态(待确认已取消;删除项归不实现+why)"},
+          "fxId": {
+            "type": ["string", "null"],
+            "description": "渲染端注册表键(rs_fx.registry);可执行时必填且必须真实存在"
+          },
+          "params": {
+            "type": ["object", "null"],
+            "description": "参数档(同一滤镜的不同档合并为一条 fxId)"
+          },
+          "usage": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "适用 videoType(与 v1 videoTypes 键对齐;空=全类型)"
+          },
+          "commonness": {"enum": ["高", "中", "低"], "description": "常用度(经验值)"},
+          "why": {
+            "type": ["string", "null"],
+            "description": "不实现理由(status=不实现 时必填非空,含「用户确认删除」类)"
+          },
+          "source": {"enum": ["用户清单", "补充清单", "开源收录", "政策登记"],
+                      "description": "条目来源(§6 标准 NLE 为补充清单)"},
+          "license": {
+            "type": ["string", "null"],
+            "description": "T2 的 GLSL 许可(逐条读 license 头;非 MIT 单独标注)"
+          },
+          "domain": {
+            "enum": ["render", "subtitle", "audio", "element", "artboard"],
+            "description": "消费域:render=rs_render 段级;subtitle=S7 字幕链;audio=拼接音频侧;element/artboard=元素轨/预渲染"
+          },
+          "note": {"type": ["string", "null"], "description": "诚实标注(近似档必须注明近似)"},
+          "originName": {
+            "type": ["string", "null"],
+            "description": "已确认删除条目的剪映原名(sources/ 可查,证明「有意删除」而非「漏掉」)"
+          }
+        }
+      }
+    }
+  }
+}

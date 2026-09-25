@@ -12,5 +12,14 @@ bgm: {enabled: false, gainDb: -20, ducking: none}   # [内部] registry.pacingTi
 transition: {default: fade, allow: [hard_cut], snapToBeat: false}   # [经验] 章节切换用 fade,步骤内硬切;B站观众容忍度高于抖音但仍忌花哨
 subtitle: {style: tutorial-clean, maxChars: 22, cpsMax: 9, lyricOnly: false}   # [内部] registry 条目 style=tutorial-clean + platforms.bilibili.maxChars=22 + 全库 CPS≤9
 cards: {density: 少, template: chapter}   # [内部] registry.entries.tutorial-bilibili.cards
-capabilities: [vision.greenscreen, cut.dead-air, qc.black-frame]   # [内部] registry.videoTypes.talking-head.capabilities(描述符均已登记)
+capabilities: [vision.greenscreen, cut.dead-air, qc.black-frame, fx.transition, fx.transition.t2, fx.entry, fx.combo, fx.text, fx.prescription, fx.usage-gate, fx.safety-flash]   # [内部] registry.videoTypes 同源(M13 增 fx.* 家族)
 artboard: {styles: [data-longform], templates: ["opener:1", "section:3", "endcard:1"]}   # [内部] artboard references/styles/data-longform.md(报告型步骤感)
+
+# v2 M13/ADR-0059:效果处方(分册06 §7.1 纯口播档;B站教程节奏更慢,章节转场放宽到 fade.black)。
+effects_prescription:
+  transition: {min: 0, max_per_8s: 1, prefer: [tr.fade.black, tr.dissolve.cross], forbid: [tr.fade.fast, tr.whip.pan, tr.punch.zoom, tr.flash.zoom, tr.glitch.slice, rotate.in, rotate.out, effect.glitch.rgb]}   # [经验] §7.1 禁用类同口播;章节切换 fade.black(参数 400–800ms)
+  in: {min: 1, max: 12, prefer: [in.fade.up, in.text.line, fx.kenburns, in.lower.third]}   # [经验] 教程至少给字幕条/步骤标题一处入场(§7.1 常用 + §7.7 步骤条)
+  out: {min: 0, max: 12, prefer: [out.fade.up]}
+  sfx: {min: 0, max: 20, per15s: 2, noRepeatWithinMs: 10000}
+  flashy_max: 0                                                # [内部] 讲解类零花哨
+  require_reason: true

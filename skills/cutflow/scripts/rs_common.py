@@ -20,6 +20,27 @@ CONFIG_PATH = REPO_ROOT / "config.json"
 
 EXIT_OK, EXIT_INPUT, EXIT_DEP, EXIT_EXEC = 0, 2, 3, 4
 
+# artboard 技能路径锁定(M12/ADR-0053,用户 2026-09-26 确认):工作区级为唯一准绳。
+# 用户级 codebuddy 副本与它内容不一致,**不作准**;rs_doctor 检出 config.artboard_dir
+# 与本路径不一致时报错(锁定目录缺席的机器——如 CI——跳过此判据)。
+ARTBOARD_LOCKED_DIR = Path(r"E:\平日资料\GitHub\.agents\skills\artboard")
+
+# IR 版本唯一真相源(R09/R41):project.json 的 version 恒为 1(与两仓 schema 的
+# const 一致);schema 自身演进用 schemaVersion 表达,不动这个整数。
+IR_VERSION = 1
+
+
+class IrError(Exception):
+    """统一 IR 载入错误(R41):code/message/data/exit_code 随身,由各入口转 emit 协议。
+
+    rs_edit 包成 EditError、rs_render 直接 emit——两处共用同一份版本校验口径,
+    不再「各脚本各自解读」(R09 的病根)。
+    """
+
+    def __init__(self, code: str, message: str, data=None, exit_code: int = EXIT_INPUT):
+        super().__init__(message)
+        self.code, self.message, self.data, self.exit_code = code, message, data, exit_code
+
 # P17-1:封面文件名唯一真相源(硬规则 15「产物中文命名」)。清理白名单、交付清单、
 # 文档口径(SKILL.md S10 产物 / rules/cover.md)共用此常量;旧 `cover.png` 不再产出、
 # 不再被清成"缺失"。改名只能改这里。
@@ -192,6 +213,68 @@ def ffprobe_bin(cfg: dict | None = None) -> str:
     cfg = cfg or load_config()
     p = Path(cfg.get("ffmpeg_dir", "")) / "ffprobe.exe"
     return str(p) if p.is_file() else "ffprobe"
+
+
+def load_ir_path(ir_path: str | Path) -> dict:
+    """统一 IR 载入入口·路径版(R09/R41):解析 + version 校验 + 迁移引导。
+
+    version ≠ IR_VERSION 时给结构化错误 IR_VERSION_UNSUPPORTED(含当前值、期望值
+    与迁移指引),绝不「各脚本各自解读」;版本相符才返回 doc。缺文件 → NO_PROJECT,
+    坏 JSON → IR_INVALID(退出码语义与各入口既有口径一致)。
+    """
+    p = Path(ir_path)
+    if not p.is_file():
+        raise IrError("NO_PROJECT", f"IR 不存在:{p}", {"ir": str(p)}, EXIT_DEP)
+    try:
+        doc = json.loads(p.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError) as exc:
+        raise IrError("IR_INVALID", f"project.json 解析失败:{exc}",
+                      {"ir": str(p)}, EXIT_EXEC)
+    if not isinstance(doc, dict):
+        raise IrError("IR_INVALID", f"project.json 顶层须为对象,得到 {type(doc).__name__}",
+                      {"ir": str(p)}, EXIT_INPUT)
+    ver = doc.get("version")
+    if isinstance(ver, bool) or not isinstance(ver, int):
+        raise IrError("IR_VERSION_UNSUPPORTED",
+                      f"IR 缺合法 version 字段(期望整数 {IR_VERSION}):{p}",
+                      {"ir": str(p), "version": ver, "expected": IR_VERSION}, EXIT_INPUT)
+    if ver != IR_VERSION:
+        raise IrError(
+            "IR_VERSION_UNSUPPORTED",
+            f"IR version {ver} 与当前支持的 {IR_VERSION} 不一致:{p};"
+            "迁移指引:用 cutforge 侧迁移器升版(cutforge-cli 的 project 迁移器,"
+            "schemas/project.schema.json 的 schemaVersion 描述当前契约),"
+            "或确认工程未损坏后重试;各脚本不再各自解读版本(R09/R41)",
+            {"ir": str(p), "version": ver, "expected": IR_VERSION}, EXIT_INPUT)
+    return doc
+
+
+def load_ir(project: str | Path) -> dict:
+    """统一 IR 载入入口(R09/R41):传工程根,内部定位 05_时间线工程/project.json。
+
+    rs_render / rs_edit 已改走本入口;新脚本一律用它,禁止再手写
+    `json.loads(project_json.read_text())` 各自解读版本。
+    """
+    return load_ir_path(rs_paths.project_json(project))
+
+
+def proportional_timeout(duration_s: float, *, factor: float = 4.0, floor: int = 1800,
+                         env: str = "") -> int:
+    """R40 最小实现:子进程超时按素材时长比例计算 —— max(常量下限, 时长×系数)。
+
+    · `env` 给出环境变量名(如 CUTFLOW_SEG_TIMEOUT):显式设置且为正整数时完全
+      覆盖(手工兜底优先于自动推算);
+    · floor 是保守下限(小时级素材也不会低于既有常量),factor 覆盖慢机器余量。
+    """
+    if env:
+        raw = os.environ.get(env, "").strip()
+        if raw.isdigit() and int(raw) > 0:
+            return int(raw)
+    try:
+        dur = max(float(duration_s or 0.0), 0.0)
+    except (TypeError, ValueError):
+        dur = 0.0
+    return int(max(float(floor), dur * factor))
 
 
 def run(cmd: list[str], timeout: int = 3600, quiet: bool = True,

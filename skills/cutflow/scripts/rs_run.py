@@ -1173,12 +1173,19 @@ def build_cmd(root: Path, st: dict) -> list[str] | None:
     return out
 
 
-def record_stage_done(root: Path, st: dict) -> str | None:
-    """按当前盘面给阶段落 done 账(run_stage 成功尾与 --auto S2 后置步骤共用)。"""
+def record_stage_done(root: Path, st: dict, extra: dict | None = None) -> str | None:
+    """按当前盘面给阶段落 done 账(run_stage 成功尾与 --auto S2 后置步骤共用)。
+
+    extra(R39/R40):附加观测字段,如 elapsedMs(阶段墙钟)、renderJobs(渲染并发
+    留痕 —— 并发度不进缓存键,只进 pipeline.json 账)。
+    """
     parts = stage_parts(root, st, params_of(root), external_versions())
-    return write_state(root, st["id"], {"status": "done", "key": key_of(parts), "parts": parts,
-                                        "outHash": outputs_hash(root, st),
-                                        "ts": datetime.now(CST).isoformat(timespec="seconds")})
+    doc = {"status": "done", "key": key_of(parts), "parts": parts,
+           "outHash": outputs_hash(root, st),
+           "ts": datetime.now(CST).isoformat(timespec="seconds")}
+    if extra:
+        doc.update(extra)
+    return write_state(root, st["id"], doc)
 
 
 def run_stage(root: Path, st: dict, info: dict | None = None) -> tuple[bool, str]:
@@ -1206,6 +1213,8 @@ def run_stage(root: Path, st: dict, info: dict | None = None) -> tuple[bool, str
     if berr:
         # P13-2:旧备份清理失败不阻断本次运行,但必须如实上报、最终非零退出
         info["pruneFailed"] = berr
+    # R39:阶段墙钟起点 —— 子进程本身计时(含 ffmpeg/ASR 等实际开销)
+    _t_stage0 = time.monotonic()
     p, timeout_err = _run_subprocess(cmd, root, st)
     if timeout_err:
         _record_failed(root, st, timeout_err, info)
@@ -1214,6 +1223,7 @@ def run_stage(root: Path, st: dict, info: dict | None = None) -> tuple[bool, str
         msg = f"{st['id']} 失败(exit {p.returncode}):{(p.stderr or p.stdout or '')[-300:]}"
         _record_failed(root, st, msg, info)
         return False, msg
+    elapsed_ms = int((time.monotonic() - _t_stage0) * 1000)
     if st.get("post"):
         # v0.13:主命令成功后的附加步骤(如 S1 的能量校准);任一失败即阶段失败。
         # st["post"] 与 st["cmd"] 同构(首元素是脚本名)——BUGREPORT P9:
@@ -1234,7 +1244,25 @@ def run_stage(root: Path, st: dict, info: dict | None = None) -> tuple[bool, str
     if not ok_caps:
         _record_failed(root, st, caps_msg, info)
         return False, caps_msg
-    skip = record_stage_done(root, st)
+    # R39/R40:墙钟时间 + 渲染并发度留痕(并发度不进缓存键,只进 pipeline.json 账;
+    # rs_render 的 emit JSON data.jobs 是实际生效值,解析不出则不记)
+    extra: dict = {"elapsedMs": elapsed_ms}
+    for line in reversed((p.stdout or "").strip().splitlines()):
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            data = (json.loads(line) or {}).get("data") or {}
+        except json.JSONDecodeError:
+            break
+        if isinstance(data.get("jobs"), int) and data["jobs"] > 0:
+            extra["renderJobs"] = data["jobs"]
+        break
+    if info.get("verbose"):
+        print(f"[stage] {st['id']} done elapsed={elapsed_ms}ms"
+              + (f" renderJobs={extra.get('renderJobs')}" if "renderJobs" in extra else ""),
+              file=sys.stderr)
+    skip = record_stage_done(root, st, extra)
     if skip:
         info["stateSkipped"] = skip
         return True, f"{st['id']} ✓ {st['name']}(⚠ 状态未写盘:只读降级)"
@@ -1487,6 +1515,9 @@ def main() -> int:
     ap.add_argument("--explain")
     ap.add_argument("--mark")
     ap.add_argument("--plan", action="store_true", help="只打印将执行的命令")
+    ap.add_argument("--verbose", action="store_true",
+                    help="输出各阶段耗时/并发度(R39 日志规范;墙钟时间始终进 pipeline.json "
+                         "各阶段账的 elapsedMs)")
     ap.add_argument("--force", action="store_true",
                     help="强制重跑 --from/--only 指定的起点阶段(上游仍走缓存);"
                          "必须搭配 --from/--only,单独使用报错(P13-1)")
@@ -1629,7 +1660,7 @@ def main() -> int:
                 results.append({"stage": st["id"], "ok": True, "cached": True})
                 continue
             accounted.add(st["id"])
-            info: dict = {}
+            info: dict = {"verbose": bool(a.verbose)}
             ok, msg = run_stage(root, st, info)
             if ok and auto and st["id"] == "S2":
                 # N3:粗剪自动裁决 —— review 保守保留 + apply + remap;账面刷新留痕

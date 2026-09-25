@@ -12,5 +12,14 @@ bgm: {enabled: true, gainDb: -12, ducking: on_voice_only}   # [内部] 混剪.md
 transition: {default: hard_cut, allow: [slide, circleopen], snapToBeat: true}   # [经验] 混剪.md §2(硬切为主 + motion-info 模板 slide/circleopen 备选;转场落拍点;禁 0.3s 内连续双转场)
 subtitle: {style: subtitle-white, maxChars: 12, cpsMax: 9, lyricOnly: true}   # [内部] 混剪.md §3(只上歌词钩子/点睛短句,不逐句上歌词)+ registry 同名条目 style
 cards: {density: 多, template: scene}  # [内部] registry.entries.mixcut-douyin.cards
-capabilities: [qc.black-frame, audio.beat, audio.downbeat, audio.stem]   # [内部] registry.videoTypes.混剪.capabilities(M8 补登:rs_beat.py 三描述符已落地)
+capabilities: [qc.black-frame, audio.beat, audio.downbeat, audio.stem, fx.transition, fx.transition.t2, fx.entry, fx.combo, fx.text, fx.prescription, fx.usage-gate, fx.safety-flash, fx.transition.audio]   # [内部] registry.videoTypes 同源(M13 增 fx.* 家族)
 artboard: {styles: [ecommerce-promo], templates: ["opener:1", "title:2", "endcard:1"]}   # [经验] 借 ecommerce-promo 大字报高饱和气质做高燃钩子卡;artboard references/styles/ecommerce-promo.md
+
+# v2 M13/ADR-0059:效果处方(分册06 §7.5 混剪卡点照抄)。花哨类 ≤3 处/全片且不连续(§5.1 硬上限)。
+effects_prescription:
+  transition: {min: 2, max_per_8s: 1, prefer: [tr.hold.frame, tr.whip.pan, tr.punch.zoom, tr.flash.zoom, tr.glitch.slice, fx.split.screen], forbid: []}   # [内部] §7.5 常用(甩镜/冲击/闪白变焦/故障切片);静态镜头之间禁甩镜(§7.5 禁用,落 L1 与 reason 评审)
+  in: {min: 1, max: 12, prefer: [zoompan.in.slight, push.in, fx.shake.emphasis]}   # [内部] §7.5 必备 beat.snap 由 rs_edit 落点承担;卡点缩放=zoompan 家族
+  out: {min: 0, max: 12, prefer: [out.slide.off, out.scale.shrink]}
+  sfx: {min: 2, max: 20, per15s: 2, noRepeatWithinMs: 10000}   # [内部] 卡点型音效是节奏件(分册01 §4.1:优先保 BGM;与 BGM 抢拍 = 红线)
+  flashy_max: 3                                                # [内部] §7.5 慎用档:花哨 ≤3/全片且不连续(§5.1)
+  require_reason: true

@@ -1,0 +1,27 @@
+{
+ "id": "fx.usage-plan",
+ "label": "效果计划草案(effects_plan)",
+ "appliesTo": [
+  "talking-head",
+  "talking-head+animation",
+  "pure-animation",
+  "vlog",
+  "混剪",
+  "drama",
+  "screen-recording"
+ ],
+ "stage": "S8",
+ "detector": "rs_intent.py",
+ "depends": [],
+ "degrade": {
+  "to": "no-prescription",
+  "trace": "NO_PRESCRIPTION",
+  "message": "无处方/无结构则不产 effects_plan(防御性缺省)"
+ },
+ "params": {
+  "decisionSource": "prescription"
+ },
+ "artifact": "timeline/fx_report.json",
+ "verify": "tests/test_intent_effects.py",
+ "notes": "M13/ADR-0059(分册06 §9.2):rs_intent compile 按处方+纸面结构产出 effects_plan(transitions atChapters/in/out/sfx 草案)并进 decision_log(source=prescription)。查询层能力:由 intent 编译路径消费,不挂载执行。"
+}

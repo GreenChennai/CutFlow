@@ -203,6 +203,7 @@
     "--out",
     "--profile=final",
     "--plan",
+    "--jobs=0",
     "--logo-src=03_创作素材/branding/logos/{id}.png"
    ],
    "commands": [
@@ -484,6 +485,58 @@
      "sub": "--probe",
      "probe": [
       "--probe"
+     ]
+    }
+   ]
+  },
+  {
+   "script": "rs_effects.py",
+   "purpose": "效果目录 CLI(M13/ADR-0054,分册02 §7):效果目录的查询/校验/规范化/覆盖率。",
+   "stage": [],
+   "outputs": [],
+   "gate": "",
+   "args": [],
+   "commands": [
+    {
+     "name": "rs_effects.py list",
+     "sub": "list",
+     "probe": [
+      "list"
+     ]
+    },
+    {
+     "name": "rs_effects.py show",
+     "sub": "show",
+     "probe": [
+      "show"
+     ]
+    },
+    {
+     "name": "rs_effects.py search",
+     "sub": "search",
+     "probe": [
+      "search"
+     ]
+    },
+    {
+     "name": "rs_effects.py normalize",
+     "sub": "normalize",
+     "probe": [
+      "normalize"
+     ]
+    },
+    {
+     "name": "rs_effects.py check",
+     "sub": "check",
+     "probe": [
+      "check"
+     ]
+    },
+    {
+     "name": "rs_effects.py coverage",
+     "sub": "coverage",
+     "probe": [
+      "coverage"
      ]
     }
    ]
@@ -973,6 +1026,8 @@
     "--profile=final|preview|draft",
     "--ass",
     "--out",
+    "--jobs=0",
+    "--verbose",
     "--explain",
     "--clear-cache",
     "--no-cache"
@@ -1002,6 +1057,7 @@
     "--explain",
     "--mark",
     "--plan",
+    "--verbose",
     "--force",
     "--init",
     "--rollback",
@@ -1083,6 +1139,7 @@
     "--apply",
     "--write",
     "--wordline",
+    "--keywords",
     "--out=05_时间线工程/sfx_draft.json"
    ],
    "commands": [
@@ -1178,6 +1235,8 @@
     "--karaoke",
     "--dual-style",
     "--allow-degraded",
+    "--huazi",
+    "--huazi-keywords",
     "--override",
     "--fps=30.0",
     "--no-snap"

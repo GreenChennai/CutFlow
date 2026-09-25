@@ -1,0 +1,31 @@
+{
+ "id": "fx.transition.t2",
+ "label": "GLSL 转场(T2·B3 预渲重叠区)",
+ "appliesTo": [
+  "talking-head",
+  "talking-head+animation",
+  "pure-animation",
+  "vlog",
+  "混剪",
+  "drama",
+  "screen-recording"
+ ],
+ "stage": "S8",
+ "detector": "rs_render.py",
+ "depends": [
+  "fx.glsl"
+ ],
+ "degrade": {
+  "to": "T1-xfade-fallback",
+  "trace": "fxDegraded",
+  "message": "moderngl/GL 不可用或 effects.glsl=false;降级注册表声明的最接近 T1 xfade 并留痕"
+ },
+ "params": {
+  "glslCount": 22,
+  "license": "MIT",
+  "overlapOnly": true
+ },
+ "artifact": "timeline/fx_report.json",
+ "verify": "tests/test_fx_glsl.py",
+ "notes": "M13/ADR-0054(分册02 §1.2 定案 B3):rs_fx/t2_glsl.py + moderngl 预渲转场重叠区中间 MP4(恰 ntd 帧,零漂移),gl-transitions 收录 22 条(MIT,逐条真渲验证)。懒加载三态(ADR-0049):组件缺失/编译失败 → fallback xfade + fxDegraded。effect.glsl.enable=false 一键回全 T1。"
+}

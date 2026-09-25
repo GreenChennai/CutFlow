@@ -438,7 +438,8 @@ def test_j4_sfx_pseudo_protocol_resolved(tmp_path):
     plan = rs_jy_draft.compile_draft_plan(doc, ir, None, [])
     seg = plan["tracks"][1]["segments"][0]
     assert seg["src"] == str(rs_jy_draft.resolve_src("assets_sfx:whoosh", root))
-    assert seg["src"].endswith("whoosh.mp3") and Path(seg["src"]).is_file()
+    # M12:音效库迁至 skills/cutflow/assets/sfx/(命名 <组>_<序号>),旧组名仍可解析
+    assert seg["src"].endswith("whoosh_01.mp3") and Path(seg["src"]).is_file()
     assert abs(seg["volume"] - 10 ** (-6 / 20)) < 1e-9
 
 

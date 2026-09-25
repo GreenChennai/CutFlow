@@ -1,0 +1,28 @@
+{
+ "id": "fx.prescription",
+ "label": "效果处方(风格包 effects_prescription)",
+ "appliesTo": [
+  "talking-head",
+  "talking-head+animation",
+  "pure-animation",
+  "vlog",
+  "混剪",
+  "drama",
+  "screen-recording"
+ ],
+ "stage": "S8",
+ "detector": "rs_render.py",
+ "depends": [],
+ "degrade": {
+  "to": "no-prescription",
+  "trace": "NO_PRESCRIPTION",
+  "message": "风格包未声明处方;效果使用率门禁不生效(旧工程行为不变)"
+ },
+ "params": {
+  "packs": 6,
+  "templateDefault": true
+ },
+ "artifact": "timeline/fx_report.json",
+ "verify": "tests/test_stylepack.py",
+ "notes": "M13/ADR-0059(分册06 §7/§9.1):7 份 params.yaml 声明 transition/in/out/sfx 的 min/max/prefer/forbid/flashy_max/require_reason;rs_intent compile 落进 resolved.effectsPrescription(source=prescription),是门禁与 context 建议的数据源。"
+}

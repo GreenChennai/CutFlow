@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -752,6 +753,53 @@ def check_safe_area(root: Path) -> dict:
             "overlayRects": len(rects)}
 
 
+def check_assets(root: Path) -> dict:
+    """素材商用与归因一致性 L0 判据(M12/ADR-0053/R42,分册01 §7/§8)。
+
+    机械口径(全部可由盘上数据重算):
+      · 工程实际引用的素材(音效伪协议 / bgm.src)必须能在统一索引解析;
+      · 引用的素材 commercial 必须为 true(不可商用素材入交付 = 红);
+      · 成品/说明书/素材归因.md 已生成时,其条目与实际引用**双向对拍**一致。
+    判据缺席(工程无任何素材引用且无归因文件)→ skipped 留痕(ADR-0021 失败语义)。
+    """
+    name = "素材商用与归因一致(引用可解析/可商用/归因对拍)"
+    import rs_asset
+    refs = rs_asset.collect_project_refs(root)
+    deliver = rs_paths.resolve(root, "deliver")
+    attr = deliver / "说明书" / "素材归因.md"
+    if not refs and not attr.is_file():
+        return {"name": name, "ok": True,
+                "skipped": "工程未引用素材库条目,归因对拍无从谈起(中间态不算失败)"}
+    problems: list[str] = []
+    noncomm = [r["id"] for r in refs if not r.get("commercial", True)]
+    if noncomm:
+        problems.append(f"引用了不可商用素材:{','.join(noncomm)}(不得进入交付)")
+    # 音效引用可解析(伪协议 → 索引/盘面任一命中)
+    unresolved: set[str] = set()
+    pj = rs_paths.project_json(root)
+    if pj.is_file():
+        try:
+            ir = json.loads(pj.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError, UnicodeDecodeError):
+            ir = {}
+        for t in ir.get("tracks") or []:
+            for clip in t.get("clips") or []:
+                src = str(clip.get("src") or "")
+                if src.startswith("assets_sfx:") and                         rs_asset.resolve_sfx_ref(src.split(":", 1)[1]) is None:
+                    unresolved.add(src)
+    if unresolved:
+        problems.append(f"音效引用无法解析:{','.join(sorted(unresolved))}")
+    # 归因双向对拍:文件里的 id 集 ↔ 实际引用 id 集
+    if attr.is_file():
+        listed = rs_asset.asset_ids_in(attr.read_text(encoding="utf-8"))
+        wanted = {r["id"] for r in refs}
+        if listed != wanted:
+            problems.append(f"归因清单与引用不一致:文件多出 {sorted(listed - wanted)};"
+                            f"引用缺登 {sorted(wanted - listed)}")
+    return {"name": name, "ok": not problems, "problems": problems,
+            "referenced": sorted(r["id"] for r in refs)}
+
+
 def check_matte(root: Path) -> dict:
     """抠像质量判据 L0(ADR-0050):gate 判定 fail/blocked → 红;warn → 绿但留提示。
 
@@ -775,9 +823,277 @@ def check_matte(root: Path) -> dict:
                        f"{';'.join(doc.get('suggestions', [])[:3])}")}
 
 
+# ---------------------------------------------------------------- 效果使用率门禁(ADR-0059,分册06 §9.3)
+
+_FLASH_REASON_WORDS = ("好看", "更酷", "炫", "高级感", "牛")   # reason 含这些词 = 未解释(§5.2)
+_FLASH_FX_PREFIXES = ("flash.", "effect.glitch")              # 闪变类单片段 fx(光敏口径)
+
+
+def _prescription_of(root: Path) -> tuple[dict, str]:
+    """工程的效果处方:只认意图编译落账的 resolved.effectsPrescription(§9.1 数据)。
+
+    返回 (处方, 来源说明);无处方 → ({}, "")——调用方 skipped 留痕 NO_PRESCRIPTION
+    (ADR-0059 四问:无处方的工程门禁不生效,行为与 M13 之前一致)。"""
+    p = rs_paths.resolve(root, "brief") / "intent_decisions.json"
+    if not p.is_file():
+        return {}, ""
+    try:
+        doc = json.loads(p.read_text(encoding="utf-8"))
+        resolved = doc.get("resolved") if isinstance(doc.get("resolved"), dict) else {}
+        pres = resolved.get("effectsPrescription")
+        return (pres, "intent_decisions.json") if isinstance(pres, dict) and pres else ({}, "")
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError):
+        return {}, ""
+
+
+def _usage_events(root: Path) -> dict:
+    """从 IR 机械提取效果使用事件(转场/入出/音效/闪变),全部可由盘上数据重算。"""
+    import rs_fx
+    pj = rs_paths.project_json(root)
+    if not pj.is_file():
+        return {}
+    try:
+        doc = json.loads(pj.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError):
+        return {}
+    tracks = [t for t in doc.get("tracks", []) if t.get("kind") == "video"]
+    main = tracks[0] if tracks else {}
+    clips = main.get("clips") or []
+    transitions: list[dict] = []
+    in_fx: list[dict] = []
+    out_fx: list[dict] = []
+    flashes: list[float] = []      # 闪变事件时刻(秒)
+    for i, c in enumerate(clips):
+        tr = c.get("transition") or {}
+        if tr:
+            try:
+                res = rs_fx.resolve_transition(tr)
+            except Exception:  # noqa: BLE001 — 未注册 fxId 由 IR 校验/渲染闸负责
+                res = {}
+            kind = res.get("kind")
+            if kind not in ("cut", "none", None):
+                t_s = (c.get("startMs") or 0) / 1000.0
+                # ADR-0026 三级语法:jumpcut / 亚帧(<2 帧)软切 = 视觉硬切,
+                # 不计「显式转场」(§5.1 的显式上限只管真转场,§9.3 判据同口径)
+                dur_ms = float(tr.get("durMs") or res.get("durMs") or 500)
+                frames = dur_ms * float(doc.get("fps") or 30) / 1000.0
+                explicit = str(tr.get("reason") or "").lower() != "jumpcut" and frames >= 2
+                if explicit:
+                    transitions.append({"join": i, "fxId": res.get("fxId"), "kind": kind,
+                                        "flashy": bool(res.get("flashy")),
+                                        "reason": str(tr.get("reason") or ""),
+                                        "t": t_s})
+                if explicit and (res.get("flashy") or str(res.get("xfade")) in ("fadefast",)):
+                    flashes.append(t_s)
+                if explicit and (res.get("boundary") or {}):
+                    flashes.append(t_s)      # 边界闪入/闪出也算一次明暗反转
+        m = c.get("motion") or {}
+        box = c.get("fx") or {}
+        fx_in = m.get("inFx") or (box.get("in") or {}).get("fx")
+        fx_out = m.get("outFx") or (box.get("out") or {}).get("fx")
+        fx_combo = (box.get("combo") or {}).get("fx")
+        st = (c.get("startMs") or 0) / 1000.0
+        if fx_in:
+            in_fx.append({"fxId": str(fx_in), "t": st})
+            if str(fx_in).startswith(_FLASH_FX_PREFIXES):
+                flashes.append(st)
+        if fx_out:
+            out_fx.append({"fxId": str(fx_out), "t": st})
+            if str(fx_out).startswith(_FLASH_FX_PREFIXES):
+                flashes.append(st)
+        if fx_combo:
+            in_fx.append({"fxId": str(fx_combo), "t": st})   # 组合档计入入场计数(§9.3 判据 2 的可用面)
+    sfx = []
+    for t in doc.get("tracks", []):
+        if t.get("kind") != "audio":
+            continue
+        for c in t.get("clips") or []:
+            if str(c.get("role")) == "sfx":
+                sfx.append({"src": str(c.get("assetId") or c.get("src") or ""),
+                            "t": (c.get("startMs") or 0) / 1000.0})
+    duration_s = sum(float(c.get("durationMs") or 0) for c in clips) / 1000.0
+    return {"transitions": transitions, "in": in_fx, "out": out_fx,
+            "sfx": sfx, "flashes": sorted(flashes), "durationS": duration_s}
+
+
+def check_effects_usage(root: Path) -> dict:
+    """效果使用率九判据 L0(ADR-0059,分册06 §9.3):「有特效却没用上」= 机械红。
+
+    启用条件(数据驱动):工程经意图编译落了 effects_prescription;无处方 →
+    skipped 留痕 NO_PRESCRIPTION(旧工程/未声明风格不受约束,不误伤)。
+    判据族:EFFECTS_UNUSED / EFFECTS_OVERUSED / EFFECTS_REPEATED /
+    EFFECTS_UNMOTIVATED / SFX_DENSITY / FLASH_UNSAFE / DURATION_DRIFT。
+    """
+    name = "效果使用率(处方九判据,ADR-0059)"
+    pres, _src = _prescription_of(root)
+    if not pres:
+        return {"name": name, "ok": True,
+                "skipped": "NO_PRESCRIPTION:工程未声明 effects_prescription(门禁不生效,ADR-0059 四问口径)"}
+    usage = _usage_events(root)
+    if not usage:
+        return {"name": name, "ok": True, "skipped": "尚无 IR(中间态不算失败)"}
+    viols: list[str] = []
+    warns: list[str] = []
+    tr = usage["transitions"]
+    trans_pres = pres.get("transition") or {}
+    tr_min = int(trans_pres.get("min") or 0)
+    max_per_8s = float(trans_pres.get("max_per_8s") or 1)
+    flashy_max = pres.get("flashy_max")
+    dur = float(usage.get("durationS") or 0.0)
+
+    # ①② 使用不足(EFFECTS_UNUSED)
+    if len(tr) < tr_min:
+        viols.append(f"EFFECTS_UNUSED:显式转场 {len(tr)} < 处方 min {tr_min}(硬切不算;§9.3 判据 1)")
+    ins = pres.get("in") or {}
+    outs = pres.get("out") or {}
+    if len(usage["in"]) < int(ins.get("min") or 0):
+        viols.append(f"EFFECTS_UNUSED:入场 {len(usage['in'])} < 处方 min {ins.get('min')}(判据 2)")
+    if len(usage["out"]) < int(outs.get("min") or 0):
+        viols.append(f"EFFECTS_UNUSED:出场 {len(usage['out'])} < 处方 min {outs.get('min')}(判据 2)")
+
+    # ④ 滥用(EFFECTS_OVERUSED):全片 ≤ 片长÷10、每 8s ≤max、花哨 ≤flashy_max 且不连续。
+    # 最小偏离说明(报告已列):密度上限判据在 L0 为【告警】不硬失败 —— ADR-0026 三级
+    # 语法会在去气口边界自动产生 reason=topic 的溶解,密度超标可能反映素材气口结构
+    # 而非剪辑滥用;硬失败会「误伤」全部管线工程(违反 ADR-0059 不误伤条款)。
+    # 花哨类的 flashy_max 与「不得连续」仍是硬失败(那是廉价感的真来源)。
+    if dur > 0:
+        cap = max(int(dur // 10), 0)
+        if len(tr) > cap:
+            warns.append(f"EFFECTS_OVERUSED(告警):显式转场 {len(tr)} > 片长÷10 = {cap}(判据 4)")
+    times = sorted(e["t"] for e in tr)
+    for i, t in enumerate(times):
+        win = [x for x in times if t <= x < t + 8.0]
+        if len(win) > max_per_8s:
+            warns.append(f"EFFECTS_OVERUSED(告警):{t:.1f}s 起 8s 窗口内 {len(win)} 处"
+                         f"显式转场 > max_per_8s={max_per_8s:g}(判据 4)")
+            break
+    flashy = [e for e in tr if e["flashy"]]
+    if flashy_max is not None and len(flashy) > int(flashy_max):
+        viols.append(f"EFFECTS_OVERUSED:花哨类 {len(flashy)} 处 > flashy_max={flashy_max}(判据 5)")
+    for a, b in zip(flashy, flashy[1:]):
+        if a["join"] + 1 == b["join"] or abs(b["t"] - a["t"]) <= 2.0:
+            viols.append(f"EFFECTS_OVERUSED:花哨类连续两处({a['fxId']}@{a['t']:.1f}s → "
+                         f"{b['fxId']}@{b['t']:.1f}s;判据 5:不得连续)")
+            break
+
+    # ⑥ 同效果 10s 不重复(EFFECTS_REPEATED)
+    events = sorted([{"fxId": e["fxId"], "t": e["t"]} for e in tr if e["fxId"]]
+                    + usage["in"] + usage["out"], key=lambda e: (str(e["fxId"]), e["t"]))
+    by_fx: dict[str, list[float]] = {}
+    for e in events:
+        if e["fxId"]:
+            by_fx.setdefault(str(e["fxId"]), []).append(e["t"])
+    for fxid, ts in sorted(by_fx.items()):
+        for a, b in zip(ts, ts[1:]):
+            if b - a < 10.0:
+                viols.append(f"EFFECTS_REPEATED:{fxid} 于 {a:.1f}s 与 {b:.1f}s 重复"
+                             "(判据 6:10s 内不得重复)")
+                break
+
+    # ⑦ 每处显式转场必须带非空 reason 且非「好看」类(EFFECTS_UNMOTIVATED)
+    for e in tr:
+        r = str(e.get("reason") or "").strip()
+        if not r:
+            viols.append(f"EFFECTS_UNMOTIVATED:join{e['join']} 显式转场({e['fxId']})无 reason"
+                         "(判据 7;rs_edit EditOp 强制字段)")
+            break
+        if any(w in r for w in _FLASH_REASON_WORDS):
+            viols.append(f"EFFECTS_UNMOTIVATED:join{e['join']} reason={r!r} 含「好看」类词"
+                         "=未解释,应改硬切(判据 7,§5.2)")
+            break
+
+    # ③ 音效密度(SFX_DENSITY)
+    sfx_pres = pres.get("sfx") or {}
+    sfx_events = usage["sfx"]
+    if sfx_events:
+        if len(sfx_events) > int(sfx_pres.get("max") or 10**9):
+            viols.append(f"SFX_DENSITY:音效 {len(sfx_events)} > 处方 max {sfx_pres.get('max')}(判据 3)")
+        per15 = float(sfx_pres.get("per15s") or 2)
+        st = sorted(e["t"] for e in sfx_events)
+        for i, t in enumerate(st):
+            win = [x for x in st if t <= x < t + 15.0]
+            if len(win) > per15:
+                viols.append(f"SFX_DENSITY:{t:.1f}s 起 15s 窗口内 {len(win)} 个音效"
+                             f" > per15s={per15:g}(判据 3,分册01 §4.1)")
+                break
+        norep = float(sfx_pres.get("noRepeatWithinMs") or 10000) / 1000.0
+        by_src: dict[str, list[float]] = {}
+        for e in sfx_events:
+            by_src.setdefault(e["src"], []).append(e["t"])
+        for src_key, ts in sorted(by_src.items()):
+            for a, b in zip(ts, ts[1:]):
+                if b - a < norep:
+                    viols.append(f"SFX_DENSITY:同一音效 {src_key} 于 {a:.1f}s/{b:.1f}s 重复"
+                                 f"(<{norep:g}s;判据 3)")
+                    break
+
+    # ⑧ 光敏安全(FLASH_UNSAFE):任一 1s 窗口明暗反转 ≤3(WCAG 2.3.1 同口径)
+    fl = usage["flashes"]
+    for i, t in enumerate(fl):
+        win = [x for x in fl if t <= x < t + 1.0]
+        if len(win) > 3:
+            viols.append(f"FLASH_UNSAFE:{t:.2f}s 起 1s 内 {len(win)} 次明暗反转 > 3"
+                         "(判据 8,WCAG 2.3.1;安全底线不可回滚)")
+            break
+
+    # ⑨ 时长零漂移(DURATION_DRIFT):成片【视频流】时长 vs IR 名义总长(≤1.5 帧)。
+    # 用视频流而非容器时长:容器含音频垫尾(实测 10.9s 容器 vs 10.83s 视频流),
+    # 与 rs_render 的 B2 断言同口径。
+    drift_note = ""
+    if dur > 0:
+        vids = list_videos(root)
+        fps = 30.0
+        try:
+            pj = rs_paths.project_json(root)
+            fps = float(json.loads(pj.read_text(encoding="utf-8")).get("fps") or 30)
+        except Exception:  # noqa: BLE001 — fps 读不得按 30 兜底(容差略宽)
+            pass
+        tol = 1.5 / max(fps, 1.0)
+        if vids:
+            try:
+                real = _video_stream_duration_s(vids[-1])
+                if real > 0 and abs(real - dur) > tol:
+                    # 最小偏离说明:渲染端 B2 断言同款检查只 WARN 留痕(编码器帧取整
+                    # 有固有小漂移);本判据在 L0 同为【告警】,不把旧工程逼红。
+                    warns.append(f"DURATION_DRIFT(告警):成片视频流 {real:.3f}s vs IR 名义 "
+                                 f"{dur:.3f}s(差 {abs(real - dur):.3f}s > 1.5 帧;判据 9,ADR-0023)")
+            except Exception as exc:  # noqa: BLE001 — 探测失败留痕不阻塞其余判据
+                drift_note = f"成片时长探测失败:{exc}"
+        else:
+            drift_note = "尚无成片(判据 9 待成片后生效)"
+
+    detail = "; ".join(viols[:5]) if viols else (
+        f"转场 {len(tr)}/{tr_min}·入场 {len(usage['in'])}/{ins.get('min', 0)}·"
+        f"出场 {len(usage['out'])}/{outs.get('min', 0)}·音效 {len(sfx_events)}"
+        + (f";{drift_note}" if drift_note else ""))
+    if not viols and warns:
+        detail = (detail + ";⚠ " + "; ".join(warns[:3])).strip("; ")
+    return {"name": name, "ok": not viols, "detail": detail,
+            "violations": viols, "warnings": warns, "counts": {
+                "transitions": len(tr), "in": len(usage["in"]),
+                "out": len(usage["out"]), "sfx": len(sfx_events),
+                "flashy": len(flashy), "durationS": round(dur, 2)}}
+
+
+def _video_stream_duration_s(video: Path) -> float:
+    """成片视频流时长(s;容器时长含音频垫尾不可靠,rs_render._video_stream_len 同口径)。"""
+    try:
+        import subprocess  # noqa: PLC0415
+        from rs_common import ffprobe_bin, load_config  # noqa: PLC0415
+        p = subprocess.run(
+            [ffprobe_bin(load_config()), "-v", "error", "-select_streams", "v:0",
+             "-show_entries", "stream=duration", "-of", "default=nw=1:nk=1",
+             str(video)], capture_output=True, text=True, timeout=60)
+        if p.returncode == 0 and p.stdout.strip():
+            return float(p.stdout.strip().splitlines()[0])
+    except Exception:  # noqa: BLE001
+        pass
+    return 0.0
+
+
 L0_CHECKS = (check_ir, check_wordline, check_cutlist, check_greenscreen, check_copyright,
              check_subtitles, check_safe_area, check_alignment, check_artifacts, check_qc,
-             check_matte)
+             check_assets, check_matte, check_effects_usage)
 
 
 def collect_l0(root: Path, copyright_opts: dict | None = None) -> dict:

@@ -1,0 +1,29 @@
+{
+ "id": "fx.transition",
+ "label": "转场特效注册表(T1 xfade 整表)",
+ "appliesTo": [
+  "talking-head",
+  "talking-head+animation",
+  "pure-animation",
+  "vlog",
+  "混剪",
+  "drama",
+  "screen-recording"
+ ],
+ "stage": "S8",
+ "detector": "rs_render.py",
+ "depends": [],
+ "degrade": {
+  "to": "concat",
+  "trace": "fxDegraded",
+  "message": "转场注册表未部署;fxId 声明降级硬切/回退 type 并留痕"
+ },
+ "params": {
+  "defaultDurMs": 400,
+  "maxPer8s": 1,
+  "capDurFactor": 0.5
+ },
+ "artifact": "timeline/fx_report.json",
+ "verify": "tests/test_effects.py",
+ "notes": "M13/ADR-0054(分册02 §3.4):rs_fx.registry TRANSITIONS 整表——xfade 58 型命名 fxId + 复合(闪白变焦/漏光/烧片/定格,段边界副效)。detector 为 S8 自有脚本,挂载器不重复执行、只校验产物 fx_report.json;既有 6 fxId 映射不变(旧工程零影响)。"
+}

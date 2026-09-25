@@ -12,5 +12,14 @@ bgm: {enabled: false, gainDb: -20, ducking: none}   # [经验] 录屏讲解降�
 transition: {default: hard_cut, allow: [fade], snapToBeat: false}   # [经验] 步骤间硬切,章节切换 fade;观众注意力在操作区,忌转场特技
 subtitle: {style: tutorial-clean, maxChars: 22, cpsMax: 9, lyricOnly: false}   # [内部] platforms.bilibili.maxChars=22 + registry tutorial 系 style=tutorial-clean + CPS≤9
 cards: {density: 少, template: chapter}   # [经验] 步骤章节卡(第 N 步)+ 要点强调卡;录屏本体即内容,卡片只做导航
-capabilities: [screen.cursor, screen.zoom, screen.keys, screen.redact]   # [内部] registry.videoTypes.screen-recording.capabilities(M8 补登:rs_screen.py 四描述符已落地)
+capabilities: [screen.cursor, screen.zoom, screen.keys, screen.redact, fx.transition, fx.transition.t2, fx.entry, fx.combo, fx.text, fx.prescription, fx.usage-gate, fx.safety-flash]   # [内部] registry.videoTypes 同源(M13 增 fx.* 家族)
 artboard: {styles: [data-longform], templates: ["opener:1", "section:3", "endcard:1"]}   # [内部] 借 data-longform 报告型步骤感;artboard references/styles/data-longform.md
+
+# v2 M13/ADR-0059:效果处方(分册06 §7.7 录屏教程照抄)。全屏转场慎用(打断连续操作沉浸感)。
+effects_prescription:
+  transition: {min: 0, max_per_8s: 1, prefer: [tr.wipe.linear, tr.fade.black], forbid: [tr.fade.fast, tr.flash.zoom, tr.punch.zoom, rotate.in, rotate.out, effect.tv.old]}   # [内部] §7.7 常用(信息类擦除,方向与阅读动线一致)+ 章节切换;禁 flash/旋转(破坏"这就是你的屏幕"的真实感)
+  in: {min: 1, max: 12, prefer: [in.lower.third, in.fade.up, fx.split.screen, fx.compare.slider]}   # [内部] §7.7 必备中的元素类(cursor.click/keystroke/progress.bar)登记待实现(目录可查);可执行档:步骤条/字幕条/并排对比
+  out: {min: 0, max: 12, prefer: [out.fade.up]}
+  sfx: {min: 0, max: 20, per15s: 2, noRepeatWithinMs: 10000}
+  flashy_max: 0                                                # [内部] 录屏零花哨
+  require_reason: true

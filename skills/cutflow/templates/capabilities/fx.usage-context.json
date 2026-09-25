@@ -1,0 +1,27 @@
+{
+ "id": "fx.usage-context",
+ "label": "context「本工程该用的特效」段",
+ "appliesTo": [
+  "talking-head",
+  "talking-head+animation",
+  "pure-animation",
+  "vlog",
+  "混剪",
+  "drama",
+  "screen-recording"
+ ],
+ "stage": "S8",
+ "detector": "rs_edit.py",
+ "depends": [],
+ "degrade": {
+  "to": "no-prescription",
+  "trace": "NO_PRESCRIPTION",
+  "message": "无处方时显示防御性提示(门禁不生效)"
+ },
+ "params": {
+  "budgetPriority": 2
+ },
+ "artifact": "timeline/fx_report.json",
+ "verify": "tests/test_effects_usage.py",
+ "notes": "M13/ADR-0059(分册06 §9.4):rs_edit context 新节——必备/已用进度/缺口/禁用 四行,把『用上特效』变成 Agent 每轮可见待办。查询层能力:由 context 投影消费,不挂载执行。"
+}

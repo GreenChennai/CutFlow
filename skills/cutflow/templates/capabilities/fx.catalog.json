@@ -1,0 +1,28 @@
+{
+ "id": "fx.catalog",
+ "label": "效果目录 CLI(rs_effects.py)",
+ "appliesTo": [
+  "talking-head",
+  "talking-head+animation",
+  "pure-animation",
+  "vlog",
+  "混剪",
+  "drama",
+  "screen-recording"
+ ],
+ "stage": "S8",
+ "detector": "rs_effects.py",
+ "depends": [],
+ "degrade": {
+  "to": "catalog-missing",
+  "trace": "CATALOG_MISSING",
+  "message": "catalog.json 缺失/坏档;normalize 重建,list/show/search/coverage 不可用"
+ },
+ "params": {
+  "subcommands": 6,
+  "idempotent": true
+ },
+ "artifact": "timeline/fx_report.json",
+ "verify": "tests/test_effects.py",
+ "notes": "M13/ADR-0054(分册02 §7):list/show/search/normalize/check/coverage;normalize 幂等(同输入字节级同 catalog),check 是门禁入口(分级↔状态↔fxId 三向+别名唯一+删除项 EFFECT_REMOVED+T2 license)。查询层能力:目录维护工具,不挂载执行。"
+}

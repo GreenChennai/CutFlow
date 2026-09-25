@@ -256,7 +256,7 @@ ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
 _CARD_CSS = """
   * { margin:0; padding:0; box-sizing:border-box; }
   body { width:%(w)dpx; height:%(h)dpx; overflow:hidden; background:#0E1116; color:#F5F7FA;
-         font-family:"MiSans","Source Han Sans SC","Noto Sans SC","Microsoft YaHei",sans-serif; }
+         font-family:"MiSans","Source Han Sans SC","%(font)s",sans-serif; }
   .card { width:100%%; height:100%%; display:flex; flex-direction:column; justify-content:center;
           padding:%(pad_t)dpx %(pad_x)dpx %(pad_b)dpx; }
   .kicker { font-size:34px; font-weight:500; letter-spacing:6px; color:%(accent)s; margin-bottom:36px; }
@@ -280,7 +280,7 @@ def render_card_html(card: dict, size: tuple[int, int]) -> str:
     title = html.escape(str(card.get("title", "")))
     kicker = html.escape(str(card.get("kicker", "")))
     lines = "".join(f"<div>{html.escape(str(x))}</div>" for x in (card.get("lines") or []))
-    css = _CARD_CSS % {"w": w, "h": h, "accent": accent,
+    css = _CARD_CSS % {"w": w, "h": h, "accent": accent, "font": _css_font(),
                        "pad_t": int(h * 0.13), "pad_b": int(h * 0.31), "pad_x": int(w * 0.09)}
     kick = f'<div class="kicker">{kicker}</div>' if kicker else ""
     line_html = f'<div class="lines">{lines}</div>' if lines else ""
@@ -697,7 +697,7 @@ _FRAME_BASE_CSS = """
   * { margin:0; padding:0; box-sizing:border-box; }
   html, body { margin:0; background:%(bg)s; }
   body { width:%(w)dpx; height:%(h)dpx; overflow:hidden;
-         font-family:"MiSans","Source Han Sans SC","Noto Sans SC","Microsoft YaHei",sans-serif; }
+         font-family:"MiSans","Source Han Sans SC","%(font)s",sans-serif; }
   :root {
     /* 五段式(animation.md §八):前置静置→入场→持住→出场→收尾静置;全部有限时长,无无限循环 */
     --t0: %(t0)gs; --in: %(in)gs; --hold: %(hold)gs; --out: %(out)gs; --p1: %(p1)gs;
@@ -863,7 +863,7 @@ def render_frame_html(card: dict, size: tuple[int, int], seg: dict,
     top, bottom, side = SAFE_PX[ratio]
     kind = card.get("kind") or "title"
     kind_css, content = _FRAME_BUILDERS[kind](card)
-    colors = dict(_FRAME_COLORS, accent=card["accent"], w=w, h=h,
+    colors = dict(_FRAME_COLORS, accent=card["accent"], w=w, h=h, font=_css_font(),
                   top=top, bottom=bottom, side=side, **{k: seg[k] for k in ("t0", "in", "hold", "out", "p1")})
     css = _FRAME_BASE_CSS % colors + "\n" + kind_css + (pack_css or "")
     five = "/".join(str(seg[k]) for k in ("t0", "in", "hold", "out", "p1"))
@@ -966,8 +966,38 @@ def run_safe_check(src_dir: Path, ratio: str, artboard_dir: Path,
     return False, brief or "机检 ok:false", report
 
 
+def _css_font() -> str:
+    """卡片 CSS 字体栈第三顺位(分册01 §5):fonts.json 查表家族名,缺失回退
+    思源黑体系;不再写死任何系统私有字体。"""
+    fj = Path(__file__).resolve().parents[1] / "templates" / "fonts.json"
+    try:
+        doc = json.loads(fj.read_text(encoding="utf-8"))
+        dkey = (doc.get("default") or {}).get("subtitle")
+        for f in doc.get("fonts") or []:
+            if f.get("dir") == dkey and f.get("family"):
+                return str(f["family"])
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        pass
+    return "Source Han Sans SC"
+
+
+def default_fonts() -> str:
+    """默认字体目录名(分册01 §5):templates/fonts.json 的 default.subtitle。
+
+    fonts.json 缺失 → artboard scaffold 自身默认(source-han-sans)兜底,不传空值
+    ——空 --fonts 意味着「用系统字体」,跨机器必然不一致(缺陷 D 的根因)。
+    """
+    fj = Path(__file__).resolve().parents[1] / "templates" / "fonts.json"
+    try:
+        d = json.loads(fj.read_text(encoding="utf-8"))
+        return str((d.get("default") or {}).get("subtitle") or "source-han-sans")
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        return "source-han-sans"
+
+
 def scaffold_project(card_id: str, artboard_root: Path, ratio: str,
-                     artboard_dir: Path, timeout: int = 120) -> tuple[str, str]:
+                     artboard_dir: Path, timeout: int = 120,
+                     fonts: str | None = None) -> tuple[str, str]:
     """调 artboard scaffold.py 建单卡工程(ARTBOARD_STUDIO 指向工程内 artboard 目录)。
     返回 (模式, 说明):mode = scaffold | direct。scaffold 不可用/失败时回退
     gen-cards 同款直写(补一份最小 project.json 供机检读画布),行为仍可复现。"""
@@ -977,7 +1007,7 @@ def scaffold_project(card_id: str, artboard_root: Path, ratio: str,
         env = os.environ.copy()
         env["ARTBOARD_STUDIO"] = str(artboard_root)
         cmd = [sys.executable, str(script), card_id, "--size", SCAFFOLD_SIZE[ratio],
-               "--fonts", "", "--force"]
+               "--fonts", fonts if fonts else default_fonts(), "--force"]
         try:
             p = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8",
                                errors="replace", timeout=timeout, env=env)

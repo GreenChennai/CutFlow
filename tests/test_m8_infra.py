@@ -587,20 +587,23 @@ def test_mount_undeployable_reports_degraded(tmp_path, monkeypatch):
 def test_bgm_library_manifest_complete():
     """曲库完备性:4 条、15–45s、文件在盘、pacingFit 覆盖四档、自产声明。"""
     man = _read(BGM_DIR / "manifest.json")
-    assert man["version"] == 1 and "无版权" in man["license"]
+    assert man["version"] >= 1 and "无版权" in man["license"]
     tracks = man["tracks"]
-    assert 3 <= len(tracks) <= 5
+    assert 12 <= len(tracks) <= 32, len(tracks)      # M12 验收线:bgm ≥16(量级放宽到 12–32)
     fits: set[str] = set()
     for t in tracks:
         assert 15 <= t["durationSec"] <= 45, t["file"]
         assert (BGM_DIR / t["file"]).is_file(), t["file"]
         assert 60 <= t["bpm"] <= 200 and t["name"] and t["mood"]
+        assert t.get("id"), "M12:兼容件条目必须带统一索引 id"
+        assert t.get("commercial") is True, "R42:曲库必须全可商用"
         fits |= set(t["pacingFit"])
     assert {"music", "fast", "normal", "slow"} <= fits, "四档必须全有曲可选"
 
 
 def test_bgm_auto_compile_picks_from_library(tmp_path):
-    """bgm=auto:music 档选中 pulse_rhythm;decision source=library;两次编译字节级一致。"""
+    """bgm=auto:混剪 music 档经 pacing×mood 规则选中鼓动系(M12/R42);decision
+    source=library;两次编译字节级一致。"""
     brief = tmp_path / "b.json"
     plan = tmp_path / "p.json"
     brief.write_text(json.dumps({"videoType": "混剪", "pacing": "music", "bgm": "auto",
@@ -620,13 +623,20 @@ def test_bgm_auto_compile_picks_from_library(tmp_path):
     doc = json.loads(outs[0])
     bgm = doc["resolved"]["bgm"]
     assert bgm["mode"] == "auto" and bgm["enabled"] is True
-    assert bgm["src"] == "skills/cutflow/assets/bgm/pulse_rhythm_140bpm.mp3"
+    # M12/R42:混剪 registry.bgmLibrary 声明 mood=鼓动 → 选曲规则命中鼓动系,
+    # assetId 同步落账(交付归因 / rs_verify 商用对拍同源)。
+    assert bgm["src"] == "skills/cutflow/assets/bgm/drive_fast_140bpm.mp3"
+    assert bgm["assetId"] == "bgm.drive_fast.01"
     pick_dec = [x for x in doc["decisions"] if x["id"] == "intent:bgm.pick"]
     assert pick_dec and pick_dec[0]["source"] == "library", "选曲必须 source=library 留痕"
-    # 非循环档 → 曲库首条兜底(确定性)
+    # 纯 pacing 检索 → 索引 id 排序的首条(确定性;M12 起 ids 排序即曲库顺序)
     pick = rs_intent.bgm_library_pick("music")
-    assert pick and pick["file"] == "pulse_rhythm_140bpm.mp3"
+    assert pick and pick["file"] == "bright_fast_128bpm.mp3"
     assert rs_intent.bgm_library_pick("slow")["file"] == "ambient_calm_90bpm.mp3"
+    # mood 语义参与:闲适(slow)命中闲适慢摇;同一输入必得同一输出
+    assert rs_intent.bgm_library_pick("slow", mood="闲适")["id"] == "bgm.chill_slow.01"
+    assert (rs_intent.bgm_library_pick("slow", mood="闲适")
+            == rs_intent.bgm_library_pick("slow", mood="闲适"))
 
 
 def test_bgm_auto_wires_into_ir(tmp_path):
@@ -679,12 +689,16 @@ def test_registry_and_pack_capabilities_consistent():
     for vt, meta in reg["videoTypes"].items():
         for cid in meta.get("capabilities") or []:
             assert cid in descs, f"{vt} 声明了未登记能力 {cid}"
+    # M13/ADR-0059:fx.* 家族入册(转场/入场/组合/字幕域/处方/门禁/闪安 + 音频域按型)
+    fx_base = {"fx.transition", "fx.transition.t2", "fx.entry", "fx.combo", "fx.text",
+               "fx.prescription", "fx.usage-gate", "fx.safety-flash"}
     assert set(reg["videoTypes"]["混剪"]["capabilities"]) == {
-        "qc.black-frame", "audio.beat", "audio.downbeat", "audio.stem"}
+        "qc.black-frame", "audio.beat", "audio.downbeat", "audio.stem",
+        *fx_base, "fx.transition.audio"}
     assert {"vision.shot", "vision.track", "vision.reframe"} <= set(
         reg["videoTypes"]["vlog"]["capabilities"])
     assert set(reg["videoTypes"]["screen-recording"]["capabilities"]) == {
-        "screen.cursor", "screen.zoom", "screen.keys", "screen.redact"}
+        "screen.cursor", "screen.zoom", "screen.keys", "screen.redact", *fx_base}
     assert {"text.broll", "sub.pair", "drama.hook"} <= set(
         reg["videoTypes"]["drama"]["capabilities"]), "drama 第二波已登记(sub.pair/drama.hook/text.broll)"
     for slug_dir in sorted(rs_stylepack.PACKS_DIR.iterdir()):

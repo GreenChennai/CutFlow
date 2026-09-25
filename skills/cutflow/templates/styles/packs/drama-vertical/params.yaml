@@ -12,5 +12,14 @@ bgm: {enabled: true, gainDb: -18, ducking: on_voice_only}   # [经验] 配乐铺
 transition: {default: hard_cut, allow: [fade, slide], snapToBeat: false}   # [经验] 硬切为剧情主语法;fade 用于时空转换,slide 用于爽点翻转;禁节拍特技
 subtitle: {style: subtitle-white, maxChars: 14, cpsMax: 9, lyricOnly: false}   # [经验] 台词比口播金句略长,14 字内保竖屏可读;CPS≤9 同全库红线
 cards: {density: 少, template: scene}  # [经验] 短剧只做集数钩子/前情回顾/下集预告卡;scene 场景卡与剧情同语言
-capabilities: [text.broll, sub.pair, drama.hook]   # [内部] registry.videoTypes.drama.capabilities 同源(M8 方案 §5.5.3:B-roll 检索/双 Style 字幕/钩子密度;描述符见 templates/capabilities/)
+capabilities: [text.broll, sub.pair, drama.hook, fx.transition, fx.transition.t2, fx.entry, fx.combo, fx.text, fx.prescription, fx.usage-gate, fx.safety-flash, fx.transition.audio]   # [内部] registry.videoTypes 同源(M13 增 fx.* 家族)
 artboard: {styles: [ecommerce-promo], templates: ["opener:1", "title:2", "endcard:1"]}   # [经验] 借 ecommerce-promo 大字报强对比做"钩子标题卡";artboard references/styles/ecommerce-promo.md
+
+# v2 M13/ADR-0059:效果处方(分册06 §7.6 短剧/影视解说照抄)。punch.zoom 情绪爆发点全片 ≤2 处(§7.6)。
+effects_prescription:
+  transition: {min: 1, max_per_8s: 1, prefer: [tr.match.cut, tr.invisible.cut, tr.jcut, tr.lcut, tr.fade.black], forbid: [tr.fade.fast, tr.flash.zoom, tr.glitch.slice, effect.glitch.rgb]}   # [内部] §7.6 必备(关键动作匹配/声画衔接)+ fade.black 时空转换;解说用花哨转场 = 禁(抢解说词注意力)
+  in: {min: 1, max: 12, prefer: [in.fade.up, in.lower.third, fx.compare.slider, tr.punch.zoom]}   # [内部] §7.6 必备 in.fade.up(对白字幕)+ 常用(人物条/解说对比/情绪爆发 punch ≤2)
+  out: {min: 0, max: 12, prefer: [out.fade.up]}
+  sfx: {min: 0, max: 20, per15s: 2, noRepeatWithinMs: 10000}
+  flashy_max: 3                                                # [内部] §7.6:flash 高频 = 廉价感第一来源;punch.zoom ≤2 由 L1/require_reason 评审把守
+  require_reason: true

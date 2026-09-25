@@ -175,6 +175,28 @@ def _check_forge_path_contract() -> tuple[bool, str]:
     return True, f"目录常量与 rs_paths.STAGE_DIRS 同源口径({forge.name})"
 
 
+def _artboard_locked_check(wpi) -> dict:
+    """M12(ADR-0053):artboard 路径锁定检出——工作区级路径是唯一准绳(用户级
+    codebuddy 副本与它内容不一致,不作准)。锁定路径在本机真实存在而配置指到
+    他处 → fatal;锁定路径缺席的机器(如 CI)跳过此判据,不造零环境误报。"""
+    from rs_common import ARTBOARD_LOCKED_DIR
+    if not wpi or not ARTBOARD_LOCKED_DIR.is_dir():
+        return _check("artboard_dir 指向工作区级锁定路径", True,
+                      str(wpi or "(未配置)"),
+                      fatal=False, group="趣味素材",
+                      hint="本机无锁定路径或未配置,跳过比对")
+    try:
+        same = os.path.normcase(str(Path(wpi).resolve())) == \
+            os.path.normcase(str(ARTBOARD_LOCKED_DIR.resolve()))
+    except OSError:
+        same = False
+    return _check(
+        "artboard_dir 指向工作区级锁定路径", same, str(wpi), fatal=not same,
+        group="趣味素材",
+        hint=f"用户已锁定 {ARTBOARD_LOCKED_DIR} 为准(2026-09-26);"
+             "请把 config.artboard_dir 改到该路径")
+
+
 def _bridge_probe_checks() -> list[dict]:
     """桥探针五连(rs_editor/rs_notes/rs_oplog/rs_gate/rs_artboard --probe,fatal)。
 
@@ -277,6 +299,7 @@ def main() -> int:
     checks.append(_check("artboard_dir 已配置", bool(wpi and wpi.is_dir()),
                          str(wpi or "(未配置 artboard_dir)"), fatal=False, group="趣味素材",
                          hint="config.json 的 artboard_dir 指向 artboard 技能目录"))
+    checks.append(_artboard_locked_check(wpi))
 
     # CutForge/artboard 桥脚本(v0.15 计划书 M4;P21-1 起 --probe 自检**提为 fatal**):
     # 桥断链曾只显示「可后补」,DOCTOR_OK 照发 —— 四桥是编排链路,断了必须先修。

@@ -12,5 +12,14 @@ bgm: {enabled: false, gainDb: -18, ducking: none}   # [内部] registry.pacingTi
 transition: {default: hard_cut, allow: [fade], snapToBeat: false}   # [经验] 口播重信息传达,花哨转场分散注意力;插入动画切换才用 fade
 subtitle: {style: talkshow-bold, maxChars: 12, cpsMax: 9, lyricOnly: false}   # [内部] registry 同名条目 style + platforms.douyin.maxChars=12 + 全库 CPS≤9 红线
 cards: {density: 少, template: info}   # [内部] registry.entries.knowledge-talkshow-douyin.cards
-capabilities: [vision.greenscreen, cut.dead-air, qc.black-frame]   # [内部] registry.videoTypes.talking-head.capabilities(描述符均已登记)
+capabilities: [vision.greenscreen, cut.dead-air, qc.black-frame, fx.transition, fx.transition.t2, fx.entry, fx.combo, fx.text, fx.prescription, fx.usage-gate, fx.safety-flash]   # [内部] registry.videoTypes 同源(M13 增 fx.* 家族)
 artboard: {styles: [tech-kv], templates: ["opener:1", "title:3", "endcard:1"]}   # [内部] ADR-0051 示例;artboard references/styles/tech-kv.md
+
+# v2 M13/ADR-0059:效果处方(分册06 §7.1 纯口播照抄)。口播可以零特效:「少用且用得准」合格(分册06 §5.3)。
+effects_prescription:
+  transition: {min: 0, max_per_8s: 1, prefer: [tr.dissolve.cross, tr.fade.black], forbid: [tr.fade.fast, tr.whip.pan, tr.punch.zoom, tr.flash.zoom, tr.glitch.slice, tr.fade.grays, rotate.in, rotate.out, effect.glitch.rgb]}   # [内部] §7.1 禁用 flash/glitch/whip/punch/旋转类
+  in: {min: 0, max: 12, prefer: [zoompan.in.slight, in.fade.up, in.text.line, fx.kenburns, in.progress.bar]}   # [内部] §7.1 常用(punch-in 掩饰跳切 15s/≤3;字幕条/标题/插图/要点进度)
+  out: {min: 0, max: 12, prefer: [out.fade.up]}
+  sfx: {min: 0, max: 20, per15s: 2, noRepeatWithinMs: 10000}   # [内部] 分册01 §4.1
+  flashy_max: 0                                                # [内部] §7.1 纯口播 flashy_max=0(少用也合格的合法出口)
+  require_reason: true

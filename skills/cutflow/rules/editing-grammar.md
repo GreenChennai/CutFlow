@@ -348,3 +348,92 @@
 | 23 冻结补长 | rs_ir --from-cards / freeze.set | ✅ 既有(ADR-0027) |
 | 24 Ken Burns | artboard 借格 | ✅ artboard 分册(有限次数) |
 | 25 waiting | rs_cut --detect waiting | ⏳ rs_cut 检测器待第二波;**M8 已落 rs_screen --waiting**(screen.json.waiting) |
+
+---
+
+## B. 用法层:什么时候该用特效、用哪个(v2 M13/ADR-0059,分册06 §2–§4)
+
+> **本节回答「该不该用」**:A 节的手法讲「怎么做」,这里的框架讲「什么时候做、做了怎么解释」。
+> **第一原则(必须内化为默认行为)**:效果服务于叙事,不是装饰 —— 硬切是默认值,
+> 特效是例外;**每一处显式效果都必须能被一句话解释**,解释不出来就是滥用(Murch 权重:
+> 情感 51% + 故事 23% 永远压过「好看的转场」)。
+
+### 26. 转场决策树(做任何转场决策前按序自问,分册06 §2.3)
+
+```
+要切了 → 问四个问题,按顺序:
+① 前后镜头能"接上"吗?(主体/形状/动作/景别/逻辑)
+   ├─ 能 → 用【无技巧转场】硬切;不用特效   ← 大多数情况走这里
+   └─ 不能 → 下一问
+② 是"时空跳跃"还是"段落切换"?
+   ├─ 时空跳跃 → tr.fade.black / tr.dissolve.cross(durMs 300–600)
+   └─ 段落切换 → tr.fade.black / tr.blur.dissolve(durMs 400–800)
+③ 有"运动/节奏"可利用吗?
+   ├─ 有 → tr.whip.pan / tr.punch.zoom(混剪/短剧可;静态镜头间禁甩镜)
+   └─ 没有 → 回到 ②
+④ 这一步的效果能一句话解释吗?
+   ├─ 能 → 用,并把这句话写进 EditOp 的 reason
+   └─ 不能 → 别用
+```
+
+### 27. 无技巧转场 13 类 × CutFlow 落地(分册06 §2.1;**13 类里 9 类根本不用特效**)
+
+| # | 无技巧转场 | CutFlow 落点 | 需要特效吗 |
+|---|---|---|---|
+| 1 | 相同主体转场 | clip.split + clip.move 编排(Agent 语义) | 无需特效 |
+| 2 | 相似体转场 | Agent 语义选素材 + vision.shot 标注 | 无需特效(可选极短 dissolve) |
+| 3 | 承接因素转场 | clip.move 编排 | 无需特效 |
+| 4 | 两级镜头转场 | Agent 语义选 clip(大景别接特写) | 无需特效 |
+| 5 | 特写转场 | clip.split + clip.reframe 裁特写起手 | 无需特效 |
+| 6 | 挡黑镜头转场 | effect.wipe.scan(遮罩版)或实拍遮挡素材 | 可选 fxId:effect.wipe.scan |
+| 7 | 声音转场 | tr.jcut / tr.lcut / tr.audio.crossfade | fxId:tr.jcut / tr.lcut |
+| 8 | 空镜头转场 | Agent 语义插 B-roll(vision.shot) | 无需特效 |
+| 9 | 主观镜头转场 | Agent 语义编排 | 无需特效 |
+| 10 | 运动镜头/动势转场 | tr.whip.pan + clip.reframe | fxId:tr.whip.pan |
+| 11 | 逻辑转场 | Agent 语义编排(最该优先的一类) | 无需特效 |
+| 12 | 隐喻式转场 | Agent 创意 + B-roll | 无需特效 |
+| 13 | 反差因素转场 | Agent 语义;可选 fx.flash.zoom 强化 | 可选 fxId:tr.flash.zoom |
+
+**Agent 的第一反应应该是「这里能不能用无技巧转场」,而不是「这里加个什么转场」。**
+
+### 28. 转场选择决策表(人话 → fxId → 参数 → 禁忌,分册06 §3 摘要)
+
+| 你想表达 | fxId | 参数 | 禁忌 |
+|---|---|---|---|
+| 故事往下走,同一场景 | tr.cut(硬切) | — | 加任何特效都属滥用 |
+| 时间过了 | tr.fade.black | durMs 300–600 | 闪白=冲击不是时间,别用 |
+| 话题换了,节奏不变 | tr.dissolve.cross | durMs 300–500 | >800ms 显拖 |
+| 话题换了,要柔化 | tr.blur.dissolve | durMs 400–600 | 模糊量过大=廉价 |
+| 情绪爆发,要冲击 | tr.punch.zoom / tr.flash.zoom | 150–250ms | 全片 ≤2 处;连续用即废 |
+| 动感接动感,要"甩" | tr.whip.pan | 200–400ms + sfx.whip | 静态镜头之间不可用 |
+| 音乐卡点 | tr.hold.frame 或硬切踩拍 | 对齐 beat | 踩拍必须准 |
+| 声音先到画面后切 | tr.jcut | leadMs 300–800(待 IR 升版) | 对白类慎用 |
+| 无缝,观众不该察觉 | tr.invisible.cut | 运动匹配 + 极短交叉 | 需素材配合,强行做会露馅 |
+| 圈入/圈出 | tr.iris.circle | 400–600ms | 风格不符会出戏 |
+| 擦除(教程/信息类) | tr.wipe.linear | 300–500ms | 方向要与阅读动线一致 |
+
+### 29. 入场/出场的语法:不是"好看",是告知(分册06 §4)
+
+- 入场 = 告诉观众「这是什么、从哪来」;出场 = 告诉观众「结束了、去哪」。
+- 四条硬规矩:**进慢出快**(入场 0.5–0.8s/出场 0.4–0.6s)、**方向延续**(从左入→向右出)、
+  **stagger 反序**(后进先出)、入场与出场分属两层嵌套。
+- 方向语义(经验值,须按风格包声明):从下入=浮现(文字/卡片默认);从上入=落下/权威;
+  从左入=前进;从右入=回溯;放大进入=聚焦;缩小进入=收束。
+- 出处与分级:【内部】artboard references/animation.md §九;【经验】方向语义(无权威规范)。
+- 验收判据:rs_verify EFFECTS_UNMOTIVATED 不出现;L1 目测「入场/出场方向不折返」。
+
+### 30. 密度与节制纪律(硬数字,进 rs_verify,分册06 §5)
+
+| 项 | 上限 | 落点 |
+|---|---|---|
+| 显式转场 | ≤1 处/8s,且全片 ≤ 片长(秒)÷10 | EFFECTS_OVERUSED(告警档,§5.1) |
+| 花哨类(flash/whip/punch/glitch) | 全片 ≤3 处且不连续 | EFFECTS_OVERUSED(硬失败)+ flashy_max |
+| 同一效果重复 | 10s 内不得重复 | EFFECTS_REPEATED |
+| 每处显式效果 | 必须带能一句话解释的 reason | EFFECTS_UNMOTIVATED |
+| 音效 | ≤2 个/15s + 同音效 10s 不重复 | SFX_DENSITY |
+| 闪白/频闪 | 任一秒整幅明暗反转 ≤3 次 | FLASH_UNSAFE(安全底线) |
+| 转场吃时长 | 不改总时长(零漂移) | DURATION_DRIFT(告警档) |
+
+> 少用也是处方(分册06 §5.3):纯口播/纯动画的处方 min 可为 0 ——「少用且用得准」合格,
+> 「声明了处方却零使用」不合格(EFFECTS_UNUSED)。处方数据在各风格包 params.yaml
+> `effects_prescription`(分册06 §7 每型表格),目录可查:`rs_effects.py list --status 可执行`。

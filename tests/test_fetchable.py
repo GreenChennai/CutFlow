@@ -59,6 +59,8 @@ ADR_TABLE = {
     "vision.track":   ("bytetrack", 20, "py", "import bytetrack", "static-center"),
     "vision.cv":      ("opencv", 60, "py", "import cv2", "none"),
     "text.clip":      ("clip", 600, "venv-torch", "import clip", "keyword-match"),
+    # M13/ADR-0054(分册02 §1.2 B3):moderngl 预渲 gl-transitions 重叠区
+    "fx.glsl":        ("moderngl", 5, "py", "import moderngl", "T1-xfade-fallback"),
 }
 
 
@@ -75,7 +77,7 @@ def isolated_env(tmp_path, monkeypatch):
 # ================================================================ ① 映射表门禁
 
 def test_gate_capability_deps_matches_adr():
-    """八条映射与 ADR-0049 决策 1 逐字对齐(能力 id / 模块 / 大小 / 后端 / probe / 降级档)。"""
+    """能力映射与 ADR-0049 决策 1 逐字对齐(M13 增 fx.glsl/moderngl;id/模块/大小/后端/probe/降级档)。"""
     assert set(rs_fetchable.CAPABILITY_DEPS) == set(ADR_TABLE)
     for cid, (module, size, backend, probe, degrade) in ADR_TABLE.items():
         d = rs_fetchable.CAPABILITY_DEPS[cid]
@@ -311,9 +313,9 @@ def test_doctor_inventory_entries_are_non_fatal(isolated_env, monkeypatch):
     checks, lines, data = rs_doctor._capability_inventory()
     assert checks and all(c["fatal"] is False for c in checks)
     assert any("基础档可用" in ln for ln in lines)
-    assert data["components"] and len(data["components"]) == 8
+    assert data["components"] and len(data["components"]) == 9
     fresh = data["manifest"]
-    assert fresh["present"] and fresh["pending"] == 8        # D4 机械覆盖:8 条待核实
+    assert fresh["present"] and fresh["pending"] == 9        # D4 机械覆盖:M13 起 9 条待核实
 
 
 # ================================================================ ⑦ 兼容门禁(fetch_deps 委托 / rollback)
@@ -383,5 +385,5 @@ def test_update_check_lists_diff_and_never_downloads(monkeypatch, isolated_env, 
     monkeypatch.setattr(rs_fetchable, "_pip_install", lambda *a, **k: calls.append("pip"))
     assert rs_fetchable.main(["update", "--check"]) == 0
     out = capsys.readouterr().out
-    assert out.count("missing") == 8
+    assert out.count("missing") == 9
     assert "--apply 才更新" in out and calls == []

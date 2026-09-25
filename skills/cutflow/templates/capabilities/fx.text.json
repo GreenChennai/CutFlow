@@ -1,0 +1,27 @@
+{
+ "id": "fx.text",
+ "label": "字幕域文本入场(逐字/打字机/人名条)",
+ "appliesTo": [
+  "talking-head",
+  "talking-head+animation",
+  "pure-animation",
+  "vlog",
+  "混剪",
+  "drama",
+  "screen-recording"
+ ],
+ "stage": "S8",
+ "detector": "rs_render.py",
+ "depends": [],
+ "degrade": {
+  "to": "plain-subtitle",
+  "trace": "fxDeferred",
+  "message": "S7 字幕链不可用;文本入场退化为普通字幕并留痕"
+ },
+ "params": {
+  "defaultDurMs": 400
+ },
+ "artifact": "timeline/fx_report.json",
+ "verify": "tests/test_effects.py",
+ "notes": "M13(分册02 §6.2):in.text.char/word/line、in.typewriter、in.count.up、in.lower.third——消费域 = S7 字幕链(卡拉OK \\kf 逐字 / huazi \t 逐字动画 / huazi.data.count,分册01 花字基础档),渲染端不重复消费(fx_report 标 deferred);effects_plan 把 in.text.char 映射为 subtitle.karaoke。"
+}

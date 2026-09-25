@@ -1,0 +1,27 @@
+{
+ "id": "fx.usage-gate",
+ "label": "效果使用率九判据门禁(EFFECTS_*)",
+ "appliesTo": [
+  "talking-head",
+  "talking-head+animation",
+  "pure-animation",
+  "vlog",
+  "混剪",
+  "drama",
+  "screen-recording"
+ ],
+ "stage": "S8",
+ "detector": "rs_sync.py",
+ "depends": [],
+ "degrade": {
+  "to": "no-prescription",
+  "trace": "NO_PRESCRIPTION",
+  "message": "无处方则门禁跳过留痕;有成片判据全量生效"
+ },
+ "params": {
+  "criteria": 9
+ },
+ "artifact": "timeline/fx_report.json",
+ "verify": "tests/test_effects_usage.py",
+ "notes": "M13/ADR-0059(分册06 §9.3):rs_verify L0 check_effects_usage——EFFECTS_UNUSED/OVERUSED(花哨硬卡,密度告警)/REPEATED/UNMOTIVATED/SFX_DENSITY/FLASH_UNSAFE(任一秒明暗反转≤3,WCAG 2.3.1)/DURATION_DRIFT(视频流口径)。detector 为 S9 自有脚本(rs_sync 家族),挂载器不重复执行。"
+}

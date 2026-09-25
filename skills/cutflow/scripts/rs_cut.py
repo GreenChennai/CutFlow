@@ -431,29 +431,51 @@ def detect_retake(wl: dict, max_gap_ms: int = 30000, min_ratio: float = 0.80,
     2–3 句、间隔更久 → 大量漏检;且每次只删紧邻前一次,同一段录三次会残留中间那次。
     现在:窗口 = 句数 ≤max_sents 或时间间隔 ≤max_gap_ms;命中后**一刀删掉全部旧尝试**。
     出点取「最后一次尝试起点 − TAIL_KEEP_MS」,留出自然起音,同时满足 tailKeep 硬项。
+
+    v2 M14(R18/ADR-0056 第 5 条):O(n²) 相似度加**剪枝 + 早停** —— 先用
+    SequenceMatcher 的 real_quick_ratio/quick_ratio 上界(比例上界 < 阈值即早停,
+    绝不会进全量 ratio)筛掉够不到阈值的配对;上界过滤是纯剪枝,只省计算不改判定,
+    输出与旧实现逐条一致。
     """
     spans = _sentence_spans(wl)
     out: list[dict] = []
     for i, a in enumerate(spans):
         if not a["text"]:
             continue
+        matcher_a = None
         best = -1
+        best_ratio = 0.0
         for j in range(i + 1, min(len(spans), i + 1 + max_sents)):
             b = spans[j]
             if not b["text"]:
                 continue
             if b["startMs"] - a["endMs"] > max_gap_ms:
-                break
+                break                        # 早停:窗口按时间间隔截断(既有判据)
             if not _more_complete(b["text"], a["text"]):
                 continue
-            if SequenceMatcher(None, a["text"], b["text"]).ratio() < min_ratio:
+            if matcher_a is None:
+                matcher_a = SequenceMatcher(None, a["text"], b["text"])
+            else:
+                matcher_a.set_seq2(b["text"])
+            # 剪枝:real_quick_ratio ≥ quick_ratio ≥ ratio 是数学上界,上界低于阈值
+            # 的配对不可能命中,直接跳过(不付全量对齐的代价)
+            if matcher_a.real_quick_ratio() < min_ratio:
                 continue
-            best = j                       # 取窗口内**最后一次**相似尝试
+            if matcher_a.quick_ratio() < min_ratio:
+                continue
+            ratio = matcher_a.ratio()
+            if ratio < min_ratio:
+                continue
+            ratio = matcher_a.ratio()
+            if ratio < min_ratio:
+                continue
+            best = j                        # 取窗口内**最后一次**相似尝试(语义与旧实现一致)
+            best_ratio = ratio
         if best < 0:
             continue
         in_ms = a["startMs"]
         out_ms = max(in_ms + 200, spans[best]["startMs"] - TAIL_KEEP_MS)
-        ratio = SequenceMatcher(None, a["text"], spans[best]["text"]).ratio()
+        ratio = best_ratio
         out.append({"inMs": in_ms, "outMs": out_ms, "reason": "retake",
                     "conf": round(min(0.97, 0.72 + ratio * 0.3), 3),
                     "note": f"第 {i + 1}→{best + 1} 句重录(相似度 {ratio:.2f}),保留最后一次"})

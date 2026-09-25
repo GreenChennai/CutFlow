@@ -52,7 +52,7 @@ ops.json 是**包装对象**(推荐,带 baseRev)或裸数组(仅 ops-validate �
 
 | 键 | 必填 | 说明 |
 |---|---|---|
-| `op` | ✅ | 24 个 op 名之一(§4 全表) |
+| `op` | ✅ | 34 个 op 名之一(§4 全表:v1 24 + v2 新增 10) |
 | `target` | ✅ | 稳定引用:clipId / `bgm` / `output` / `protect` / `clipA\|clipB` / `t<毫秒>` 锚点 |
 | `after` | 视 op | 目标态;**只允许 §4 表内字段**,越界 `BAD_FIELD`(退出码 2) |
 | `reason` | ✅ | 人话意图摘要,原样进 OpLog `summary`,`rs_oplog.py report` 直接可读 |
@@ -99,11 +99,14 @@ after==before)允许短路通过——重放无副作用。
 
 ---
 
-## 4. EditOp 全表(24 op)
+## 4. EditOp 全表(34 op)
 
 `after` 白名单列 = OP_AFTER 表(脚本与手册同源,漂移即门禁红)。
 「写到的 schema 字段」= 映射落点,**全部在 project.schema.json 的 clip/bgm/outputs
-白名单内**;ms 类时间写入前吸附帧网格(fps 来自 IR,±0.5ms)。
+白名单内**(v2 M14 起含双仓同步新增的 `fx` / `huazi` / `font` / `assetId` / `motion.inFx`
+等字段);ms 类时间写入前吸附帧网格(fps 来自 IR,±0.5ms)。
+
+### 4.1 既有 op(24 支;★ = v2 扩展字段)
 
 | op | target 文法 | after 白名单(值域) | 写到的 schema 字段 | 脏传播 |
 |---|---|---|---|---|
@@ -113,16 +116,16 @@ after==before)允许短路通过——重放无副作用。
 | `clip.delete` | clipId | —(禁 after) | 删除片段 | S3→S8 |
 | `clip.speed` | clipId | `rate` ∈ [0.25, 4] | `speed` | S3→S8 |
 | `clip.reframe` | clipId | `anchorY` ∈ [0,1] / `scale` ∈ [0.05,4] | `reframe.anchorY` / `scale` | S3→S8 |
-| `clip.motion` | clipId | `in` / `inMs`(≥0) / `out` / `outMs`(≥0),枚举见 schema | `motion.*` | S3→S8 |
-| `transition.set` | `clipA\|clipB`(须相邻) | `kind`(§7 别名表) / `durMs` (>0) | 后段的 `transition.type` / `transition.durMs` | S3→S8 |
-| `overlay.add` | 任意(卡片挂覆盖轨) | `card` / `startMs`(≥0) / `durationMs` (>0) / `motion`(对象) | 覆盖轨 video 轨新 clip(src 由 artboard manifest 解析) | S4→S8 |
+| `clip.motion` | clipId | `in` / `inMs`(≥0) / `out` / `outMs`(≥0),枚举见 schema;★ `inFx` / `outFx`(fxId,v2 §4.1 扩展,声明时优先于枚举) | `motion.*`(含 `motion.inFx` / `motion.outFx`) | S3→S8 |
+| `transition.set` | `clipA\|clipB`(须相邻) | `kind`(§7 别名表) / `durMs` (>0);★ `fx`(fxId;与 kind 并存时渲染以 fx 为准并 WARN) | 后段的 `transition.type` / `transition.durMs` / `transition.fx` | S3→S8 |
+| `overlay.add` | 任意(挂覆盖轨) | `card` ⊕ `element`(v2:素材库元素,与卡互斥) / `startMs`(≥0) / `durationMs` (>0) / `motion`(对象;元素路径只承载 `{fx}`) | 覆盖轨新 clip:卡经 artboard manifest;元素经素材库 manifest(src+assetId) | S4→S8 |
 | `overlay.remove` | clipId(覆盖轨卡) | —(禁 after) | 删除片段 | S3/S4→S8 |
-| `sfx.add` | `t<毫秒>` 锚点 | `name`(内置名或工程内路径) / `gainDb` ∈ [-60,0] | 音频轨新 clip(role=sfx;gainDb→`volume` 线性换算) | S6→S8 |
+| `sfx.add` | `t<毫秒>` 锚点 | `assetId`(v2 口径,素材库 id) ⊕ `name`(兼容别名;两者并存以 assetId 为准并 WARN) / `gainDb` ∈ [-60,0] | 音频轨新 clip(role=sfx;assetId → `src`+`assetId`,时长取 manifest 实测) | S6→S8 |
 | `sfx.remove` | clipId(role=sfx) | —(禁 after) | 删除片段 | S3/S6→S8 |
-| `bgm.set` | `bgm` | `src`(工程内须存在) / `gainDb` ∈ [-60,0] / `ducking`(bool) | 顶层 `bgm.*` | S6→S8 |
+| `bgm.set` | `bgm` | `src`(工程内须存在) ⊕ `assetId`(v2;并存以 assetId 为准并 WARN) / `gainDb` ∈ [-60,0] / `ducking`(bool) | 顶层 `bgm.src/assetId/gainDb/ducking` | S6→S8 |
 | `audio.gain` | clipId | `gainDb` ∈ [-60,0] | `volume`(线性,10^(dB/20),6 位截断) | S6→S8 |
 | `freeze.set` | clipId | `freezeMs`(≥1) | `freezeMs` | S3→S8 |
-| `subtitle.set` | clipId(字幕轨) | `text`(非空) | `text`(**只改文本**;时间从 wordline 重建,Hard Rule 8) | S7→S8 |
+| `subtitle.set` | clipId(字幕轨) | `text`(非空) / `huazi`(v2:`{template, params?}`,挂花字) | `text` / `huazi` | S7→S8 |
 | `subtitle.retime` | clipId(字幕轨) | `startMs`(≥0) / `endMs`(→durationMs=end−start) | `startMs` / `durationMs` | S7→S8 |
 | `subtitle.highlight` | — | **整支不承诺**(U7,见 §6) | — | — |
 | `segment.protect` | `protect` | `startMs` / `endMs`(start<end) / `note` | **cutlist.json** 的 `protect[]`(文件级,不进 project.json) | S2 |
@@ -132,9 +135,35 @@ after==before)允许短路通过——重放无副作用。
 | `style.pacing` | — | **整支不承诺**(U7,见 §6) | — | — |
 | `beat.snap` | clipId | `windowMs` ∈ [1,500](缺省 60) | `startMs`(吸附到最近节拍) | S3→S8 |
 
+### 4.2 v2 新增 op(10 支,分册04 §4.2;M14 落地)
+
+| op | target 文法 | after 白名单(值域) | 写到的 schema 字段 | 脏传播 |
+|---|---|---|---|---|
+| `fx.apply` | clipId | `slot` ∈ in\|out\|combo(必填) / `fx`(fxId,必填) / `params`(对象) | `clip.fx[slot] = {fx, params?}` | S3→S8 |
+| `fx.clear` | clipId | `slot`(必填);原无 → 幂等短路 | 删 `clip.fx[slot]`(容器清空即摘除) | S3→S8 |
+| `element.add` | 覆盖轨 trackId 或 `overlay`(自动建;禁主轨) | `element`(素材 id,必填) / `startMs`(≥0) / `durationMs` (>0) / `x`,`y` ∈ [0,1](归一化中心点) / `w`,`h`(像素,>0) / `opacity` ∈ [0,1] / `motion{fx}` | 覆盖轨新 clip:`src`+`assetId`(manifest 解析)+`position`/`overlay`/`scale`(几何,见下)+`opacity`+`motion.inFx` | S4→S8 |
+| `element.remove` | clipId(元素段,须有 assetId) | —(禁 after) | 删除片段 | S4→S8 |
+| `element.retime` | clipId(元素段) | `startMs`(≥0) / `durationMs` (>0) 至少一个 | `startMs` / `durationMs` | S4→S8 |
+| `huazi.set` | clipId(字幕轨) | `template`(huazi.* 必填) / `params`(对象) | `clip.huazi = {template, params?}` | S7→S8 |
+| `huazi.clear` | clipId | —(禁 after);原无 → 幂等短路 | 删 `clip.huazi` | S7→S8 |
+| `font.set` | `project` 或 clipId | `family`(必填) / `scope` ∈ project\|clip\|style(与 target 一致;`style` → OP_UNSUPPORTED,见 §6) | `font.family`(顶层)/ `clip.font.family` | clip→S7;project→全链(OUT) |
+| `asset.swap` | clipId(role=sfx 的音频段)或 `bgm` | `assetId`(必填;kind 按被换对象判定并校验一致) | 该 clip 的 `src`+`assetId` / `bgm.src`+`bgm.assetId`(**时间与参数原样保留**) | S6→S8 |
+| `effect.glsl.enable` | `project` | `on`(bool,必填) | 顶层 `effects.glsl`(false = T2 全部降级最接近的 T1 近似,渲染端留痕) | S8 |
+
+**element.add 几何语义**(人话「加个箭头指向那里 --x 0.6 --y 0.3」):`x`/`y` 是
+**归一化中心点** → `clip.position`;`w`/`h` 给出时 → `clip.overlay` 绝对落点
+(以 x/y 为中心折算);都不给 → `scale=0.2` 兜底(元素是贴图,绝不整幅铺满)。
+
+**素材 id 的解析与校验**(element/sfx/bgm/swap 共用):apply 时对
+`skills/cutflow/assets/manifest.json`(M12 产物)按 id 查条目 —— manifest 缺失 →
+`DEP_MISSING`(退出码 3,先跑素材库入库 `rs_asset.py`);id 不存在 / kind 不符 /
+`commercial: false` / 文件缺失 → `BAD_VALUE`(不可商用素材不得入轨,绝不静默)。
+id 检索用素材库 `rs_asset.py`(M12 提供的检索入口;此处不以子命令形态书写,免对拍门禁空跑)。
+
 **值域速查**:`rate` 0.25–4 · `gainDb` −60–0 · `scale` 0.05–4 · `anchorY` 0–1 ·
-`windowMs` 1–500 · 所有 `*Ms` ≥ 0(时长类 > 0)。枚举(`motion.in/out`、转场 kind、
-ratios)与 schema 逐字一致。
+`windowMs` 1–500 · `x`/`y` 0–1(归一化中心点)· `opacity` 0–1 · `w`/`h` > 0(像素)·
+所有 `*Ms` ≥ 0(时长类 > 0)。枚举(`motion.in/out`、转场 kind、`slot`、ratios)
+与 schema 逐字一致。
 
 **beat.snap 语义**:读 04_粗剪决策/beats.json(M8 混剪能力产物);缺文件报
 `BEATS_MISSING`(退出码 3)——**绝不伪造吸附**。最近节拍超出吸附窗 → 不动 + WARN
@@ -155,11 +184,18 @@ circleopen / cut / none` 直写;别名 `dissolve`→`fade`、`slide`→`slidelef
 | 挪到前面 | `clip.move` |
 | 快点 / 慢放 | `clip.speed` |
 | 这里加个转场 | `transition.set` |
+| 这里来个甩镜转场 | `transition.set --fx tr.whip.pan`(v2) |
 | 画面偏了 / 把人放中间 | `clip.reframe` |
 | 这里加个卡片 | `overlay.add` |
+| 加个箭头指向那里 | `element.add --element element.arrow.right --x 0.6 --y 0.3`(v2) |
+| 这块加个放大入场 | `fx.apply --slot in --fx fx.in.zoom.slight`(v2) |
+| 这句话做成花字 | `huazi.set --template huazi.keyword.box`(v2) |
+| 换个字体 | `font.set --family smiley-sans --scope project`(v2) |
+| 背景音乐换成紧张的 | `bgm.set --assetId bgm.tension.120`(v2) |
+| 这个音效换掉 | `asset.swap --assetId sfx.impact.02`(v2) |
+| 别用 GLSL,怕慢 | `effect.glsl.enable --on false`(v2) |
 | 配乐换掉 / 音乐小一点 | `bgm.set` / `audio.gain` |
 | 这句字幕再留久点 | `subtitle.retime` |
-| 这句要重音 | `subtitle.highlight`(**当前不承诺**,见 §6) |
 | 这个词不能切 | `segment.protect` |
 | 卡在鼓点上 | `beat.snap` |
 | 出个竖版 | `output.set` |
@@ -174,11 +210,26 @@ circleopen / cut / none` 直写;别名 `dissolve`→`fade`、`slide`→`slidelef
 核查依据:CutFlow `skills/cutflow/templates/project.schema.json` 全文 × cutforge
 `schemas/project.schema.json` v2 的 `$defs/clip`(两者交集即 rs_edit 可写字段;
 cutforge 侧 `additionalProperties: false`,写交集之外的字段会让编辑器拒开工程)。
+**v2 M14 起两份 schema 双仓同步新增**:`clip.fx` / `clip.huazi` / `clip.font` /
+`clip.assetId` / `motion.inFx` / `motion.outFx` / `transition.fx` / `bgm.assetId` /
+顶层 `font` / 顶层 `effects`(cutforge 侧已 `tools/schema_gen.py` 再生成校验器)。
 
-**全量支持(21 op)**:§4 表全部除下列「显式不承诺」者。其中带**映射**的:
+**全量支持(31 op)**:§4 表全部除下列「显式不承诺」者。其中带**映射**的:
 `clip.speed.rate`→`speed`、`audio.gain/sfx.add.gainDb`→`volume`(线性换算)、
 `transition.set.kind`→`transition.type`(别名表)、`subtitle.retime.endMs`→`durationMs`、
-`output.set.ratios`→`outputs`、`overlay.add.card`→覆盖轨 clip 的 `src`(经 manifest)。
+`output.set.ratios`→`outputs`、`overlay.add.card`→覆盖轨 clip 的 `src`(经 manifest)、
+`overlay.add.element`/`element.add.element`→覆盖轨 clip 的 `src`+`assetId`(经素材库 manifest)、
+`sfx.add/bgm.set/asset.swap 的 assetId`→`src`+`assetId`、`effect.glsl.enable.on`→`effects.glsl`。
+
+**v2 新增字段的下游消费(诚实声明,ADR-0055「警告不算实现」的边界)**:
+
+| 字段 | 消费方 | 状态 |
+|---|---|---|
+| `transition.fx` | rs_render `_resolve_transitions`:既有 5 种转场 + `tr.cut` 有 `tr.*` 别名**直通生效**;未注册 fxId 回退 `type`(缺省 fade)+ WARN + `fxDegraded` 留痕 | M14 部分生效,M13 注册表全量 |
+| `motion.inFx` / `outFx`、`clip.fx` | rs_render:未注册 fxId → 该段按无特效渲染 + WARN + `fxDegraded` 留痕(绝不静默) | 契约 M14 落,渲染 M13 注册表消费 |
+| `clip.huazi` / `clip.font` / 顶层 `font` | S7 `rs_subtitle`(字幕/字体真相源;`--huazi` 链) | 契约 M14 落,S7 消费随素材库里程碑接线 |
+| `assetId` / `bgm.assetId` | rs_edit(换素材锚/溯源);渲染仍由 `src` 驱动 | M14 生效 |
+| 顶层 `effects.glsl` | T2 GLSL 渲染开关(渲染器本体 M13/B3) | 契约 M14 落,M13 消费 |
 
 **显式不承诺——整支 op(3 支,报 `OP_UNSUPPORTED`,退出码 2)**:
 
@@ -192,11 +243,12 @@ cutforge 侧 `additionalProperties: false`,写交集之外的字段会让编辑�
 `clip.speed.keepPitch`、`clip.reframe.anchorX`(schema reframe 只有 anchorY)、
 `bgm.set.fadeInMs / fadeOutMs`(schema bgm 对象无此二字段)、
 `audio.gain.leadMs / lagMs`(J/L-cut 无承载字段)、
-`output.set.logos`(logo 归 S5 品牌矩阵)、`output.set.profiles`。
+`output.set.logos`(logo 归 S5 品牌矩阵)、`output.set.profiles`;
+**v2 追加**:`font.set.scope=style`(project.json 无字幕样式容器,样式归 S7 rs_subtitle 契约)。
 
 **纪律**:schema 未覆盖 = 显式拒绝,**绝不静默写 schema 外字段**(五份 schema
 `additionalProperties:false` 的端会直接拒载)。扩承诺的路径是先升 schema 契约
-(ADR-0034),再改 rs_edit 的 OP_AFTER/UNSUPPORTED 表并更新本表。
+(ADR-0034;v2 起两仓同步),再改 rs_edit 的 OP_AFTER/UNSUPPORTED 表并更新本表。
 
 **已知边界(如实声明,非缺陷)**:
 - `subtitle.retime` 的 release-margin(起点≤首字、终点≥末字、延长≤+0.30s)由
@@ -300,8 +352,12 @@ cutforge 侧 `additionalProperties: false`,写交集之外的字段会让编辑�
 ## 12. context 视图(投影层)
 
 - 内容:头部(rev / fps / baseRev)→ 主轨 → 覆盖轨 → 音频轨 → 字幕摘要 → 保护区 →
-  可执行手法清单 → 当前降级项。每行:clipId(可寻址)+ 时间窗 + 源/文本 + 当前参数 +
+  可执行手法清单 → **可用特效 → 可用素材**(v2 分册04 §4.4)→ 当前降级项。
+  每行:clipId(可寻址)+ 时间窗 + 源/文本 + 当前参数 +
   **可改字段白名单**。**绝不含视频帧路径**(性能守门,`tests/test_perf_budget.py` 把守)。
+  「可用特效」读效果目录 `templates/effects/catalog.json`(M13 产物,缺失时显示占位提示)
+  的 status=可执行 条目;「可用素材」读 `skills/cutflow/assets/manifest.json`(M12 产物,
+  缺失时显示占位提示)按 kind+usage 分组各列前 5 条 —— 两段均防御性读取,库未部署绝不崩 context。
 - `--budget 12KB` 硬上限:超预算按「手法清单 → 降级项 → 字幕摘要 → 保护区 → 覆盖轨 →
   主轨行」顺序裁剪,并在「预算裁剪声明」节**列明被裁内容**(不静默截断)。
 - `--scope clip|audio|subtitle|project` 只看一类;`--json` 出协议 JSON(markdown 全文
@@ -310,3 +366,17 @@ cutforge 侧 `additionalProperties: false`,写交集之外的字段会让编辑�
   的 `state(component)` 查询(MISSING/FAILED 成行,READY 不列);取用系统不管的
   阶段内置型能力(仓内 detector 在)不制造噪声;rs_fetchable 不可用时如实标
   「已声明(部署态未知)」——rs_edit 不自己实现组件探测。
+
+---
+
+## 附:reason 的写法(v2 M13/ADR-0059,分册06 §5.2)
+
+`rs_edit` 的 EditOp 强制 `reason` 字段;在 ADR-0059 下它**有评审效力**:
+
+1. **每一处显式转场/效果必须带能一句话解释的 reason**("时间跳了三天" / "观众需要喘口气" / "章节切换")——
+   rs_verify EFFECTS_UNMOTIVATED 对无 reason 的显式转场硬红;
+2. `reason` 为**空或"好看"类词**(好看/更酷/炫/高级感/牛)视为未解释 → L1 打回、L0 红;
+   解释不出来就**改硬切**;
+3. 硬切(`transition.set kind=none/cut`)不需要理由 —— 无技巧转场是默认值,不是需要辩护的例外;
+4. 风格包 `forbid` 的效果一律不得出现,无论 reason 多好(处方是门禁,不是建议)。
+

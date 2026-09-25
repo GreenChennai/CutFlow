@@ -85,6 +85,10 @@
         "src": {
           "type": "string"
         },
+        "assetId": {
+          "type": "string",
+          "description": "BGM 素材库 manifest.json 的稳定 id(bgm.set --assetId / asset.swap;ADR-0053)"
+        },
         "gainDb": {
           "type": "number",
           "default": -18
@@ -149,9 +153,51 @@
       "minimum": 0,
       "default": 120,
       "description": "0<durMs<1帧 的转场提升为该时长的交叉溶解(ADR-0023);0=禁用提升(回退硬切)"
+    },
+    "font": {
+      "type": "object",
+      "description": "工程级字体(font.set --scope project;字体唯一真相源在 artboard fonts/,S7 全链标脏消费)",
+      "additionalProperties": false,
+      "required": [
+        "family"
+      ],
+      "properties": {
+        "family": {
+          "type": "string"
+        }
+      }
+    },
+    "effects": {
+      "type": "object",
+      "description": "渲染效果开关(effect.glsl.enable 的承载,分册04 §4.2):glsl=false 时 T2 GLSL 效果全部降级为最接近的 T1 近似并留痕(ADR-0054 三级分级)",
+      "additionalProperties": false,
+      "properties": {
+        "glsl": {
+          "type": "boolean",
+          "default": true
+        }
+      }
     }
   },
   "$defs": {
+    "fxEntry": {
+      "type": "object",
+      "description": "单条特效声明(fx.apply / clip.fx.slot):fxId + 透传参数",
+      "additionalProperties": false,
+      "required": [
+        "fx"
+      ],
+      "properties": {
+        "fx": {
+          "type": "string",
+          "description": "fxId(分册02 效果目录 / 分册04 §3 注册表;M13 起全量消费)"
+        },
+        "params": {
+          "type": "object",
+          "description": "特效参数(透传注册表;未声明的键由注册表按默认值裁决)"
+        }
+      }
+    },
     "clip": {
       "type": "object",
       "required": [
@@ -238,6 +284,10 @@
                 "zoomIn"
               ]
             },
+            "inFx": {
+              "type": "string",
+              "description": "入场特效 fxId(分册04 §4.1,clip.motion 扩展);与 in 枚举并存,声明时优先于枚举。M13 fxId 注册表消费;未注册渲染端降级并 WARN + fxDegraded 留痕"
+            },
             "inMs": {
               "type": "number",
               "default": 400
@@ -249,6 +299,10 @@
                 "slideOutLeft",
                 "slideOutRight"
               ]
+            },
+            "outFx": {
+              "type": "string",
+              "description": "出场特效 fxId(分册04 §4.1,clip.motion 扩展);与 out 枚举并存,声明时优先于枚举。M13 fxId 注册表消费;未注册渲染端降级并 WARN + fxDegraded 留痕"
             },
             "outMs": {
               "type": "number",
@@ -274,6 +328,10 @@
             "durMs": {
               "type": "number",
               "default": 500
+            },
+            "fx": {
+              "type": "string",
+              "description": "转场 fxId(分册04 §3.3,transition.set 扩展);与 type 并存,两者同时给出以 fx 为准并 WARN。既有 5 种转场有 tr.* 别名直通;未注册 fxId 回退 type(缺省 fade)并留痕 fxDegraded,M13 注册表消费全量表"
             },
             "reason": {
               "enum": [
@@ -359,6 +417,57 @@
           "type": "number",
           "minimum": 1,
           "description": "v0.12(ADR-0027)冻结帧补长:源正常播放到该毫秒,其后 tpad 克隆尾帧补足到 durationMs(-t 在输入侧);纯动画卡片比旁白短时由 rs_ir build --from-cards 写入,冻结须在出场动画开始前(组装器预留 950ms)"
+        },
+        "assetId": {
+          "type": "string",
+          "description": "素材库 manifest.json 的稳定 id(分册01/ADR-0053,命名法 <kind>.<组>.<序号>);sfx.add --assetId / element.add / asset.swap 的引用锚,rs_edit 借它换素材;渲染仍由 src 驱动,本字段是溯源与换素材键"
+        },
+        "fx": {
+          "type": "object",
+          "description": "fx.apply 挂载的单片段特效(分册04 §4.2):slot(in|out|combo)→ {fx, params}。M13 fxId 注册表消费;未注册渲染端降级并 WARN + fxDegraded 留痕",
+          "additionalProperties": false,
+          "properties": {
+            "in": {
+              "$ref": "#/$defs/fxEntry"
+            },
+            "out": {
+              "$ref": "#/$defs/fxEntry"
+            },
+            "combo": {
+              "$ref": "#/$defs/fxEntry"
+            }
+          }
+        },
+        "font": {
+          "type": "object",
+          "description": "片段级字体覆盖(font.set --scope clip;字体唯一真相源在 artboard fonts/,S7 字幕链消费)",
+          "additionalProperties": false,
+          "required": [
+            "family"
+          ],
+          "properties": {
+            "family": {
+              "type": "string"
+            }
+          }
+        },
+        "huazi": {
+          "type": "object",
+          "description": "花字模板挂载(huazi.set / subtitle.set 扩展,分册04 §4.2/ADR-0057):S7 rs_subtitle --huazi 消费,经 ASS 富文本(底衬/逐字动画)重建,渲染端零新增通道",
+          "additionalProperties": false,
+          "required": [
+            "template"
+          ],
+          "properties": {
+            "template": {
+              "type": "string",
+              "description": "花字模板 id(huazi.*,素材库 manifest.json kind=huazi)"
+            },
+            "params": {
+              "type": "object",
+              "description": "模板参数(花字模板自定义,透传 S7)"
+            }
+          }
         },
         "matte": {
           "type": "object",
