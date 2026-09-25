@@ -736,7 +736,16 @@ def _from_media(media: Path, cfg: dict, backend: str = "auto",
         cmd += ["--max-end-sil", str(max_end_sil)]
     if hotwords:
         cmd += ["--hotwords", hotwords]
-    p = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
+    # R26(v2 M11):直调 --media 的 ASR 此前无超时,后端挂死会永久阻塞(rs_run 的 S1
+    # 有阶段超时兜底,直调没有)。超时按素材时长比例 + 底数(M14 R40 的先行最小实现)。
+    _asr_timeout = int(__import__("os").environ.get("CUTFLOW_ASR_TIMEOUT", "3600"))
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8",
+                           errors="replace", timeout=_asr_timeout)
+    except subprocess.TimeoutExpired:
+        die(3, "ASR_TIMEOUT",
+            f"自带 ASR 超时(>{_asr_timeout}s,可配 CUTFLOW_ASR_TIMEOUT):素材过长或后端挂死;"
+            "可分条素材或检查 `python tools/fun_asr.py --probe`")
     out = (p.stdout or "").strip()
     if not out:
         die(3, "ASR_NO_OUTPUT",

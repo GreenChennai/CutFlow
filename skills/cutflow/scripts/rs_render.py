@@ -95,8 +95,14 @@ def matte_precompose(clip: dict, src: Path, pr: dict, build: Path, base_dir: Pat
     if not src_w or not src_h:
         warnings.append("segment:matte 源尺寸探测失败 → 该段按未抠像渲染")
         return None
-    vf = (f"[1:v]scale={src_w}:{src_h}:force_original_aspect_ratio=increase,"
-          f"crop={src_w}:{src_h}[bg];"
+    # ADR-0055:matte.bg.mode 两值都真实现(cover 铺满裁切;contain 完整 contained + 黑边)
+    if (m.get("bg") or {}).get("mode") == "contain":
+        bg_chain = (f"[1:v]scale={src_w}:{src_h}:force_original_aspect_ratio=decrease,"
+                    f"pad={src_w}:{src_h}:(ow-iw)/2:(oh-ih)/2:black")
+    else:
+        bg_chain = (f"[1:v]scale={src_w}:{src_h}:force_original_aspect_ratio=increase,"
+                    f"crop={src_w}:{src_h}")
+    vf = (f"{bg_chain}[bg];"
           f"[0:v][2:v]alphamerge[fg];[bg][fg]overlay=0:0:shortest=1")
     cmd = [ffmpeg_bin(cfg), "-y", "-v", "error",
            "-i", str(src),
@@ -394,7 +400,7 @@ def step_segment(doc: dict, ratio: str, build: Path, base_dir: Path, cfg: dict,
                  ) -> tuple[list[Path], list[dict], list[str]]:
     cw, ch = RATIO[ratio]
     fps = doc["fps"]
-    base_clips = [t for t in doc["tracks"] if t["kind"] == "video"][0]["clips"]
+    base_clips = _main_video_clips(doc)
     # v0.10(ADR-0023):转场计划在 segment 步就要用 —— 段 i 渲染时多取 tails[i] 尾帧,
     # 供 step_concat 的 xfade/acrossfade 重叠消费,时间模型才零漂移。
     eff_tr, forced_off, tr_reasons = _resolve_transitions(base_clips, fps, doc, cfg)
@@ -478,16 +484,28 @@ def step_segment(doc: dict, ratio: str, build: Path, base_dir: Path, cfg: dict,
         vf_tail = [f"fps={fps}", "setsar=1"]
 
         motion = clip.get("motion", {})
-        if motion.get("in", "none") != "none":
-            if motion["in"] in ("scaleIn", "zoomIn"):
-                warnings.append(f"seg[{i}]:motion.{motion['in']} v1 退化为 fadeIn")
-            vf_tail.append(f"fade=t=in:st=0:d={motion.get('inMs', 400)/1000:.3f}")
-        if motion.get("in") in ("slideInLeft", "slideInRight"):
-            warnings.append(f"seg[{i}]:slideIn 属 overlay 动效,基轨段退化为 fadeIn")
-            vf_tail.append(f"fade=t=in:st=0:d={motion.get('inMs', 400)/1000:.3f}")
-        if motion.get("out", "none") != "none":
-            d = motion.get("outMs", 400) / 1000
-            vf_tail.append(f"fade=t=out:st={max(0.0, out_ms/1000 - d):.3f}:d={d:.3f}")
+        # R10/R11/R12(v2 M11,ADR-0055 零静默吞能力):schema 全部 motion 枚举都有真实现。
+        # fadeIn/fadeOut 走 fade;scaleIn/zoomIn 走 zoompan 首段缩放;slideIn*/slideOut*
+        # 走段级 filter_complex 滑入滑出(自身黑底副本上滑动,见下方 slides 组装)。
+        motion_in = motion.get("in", "none")
+        in_d_s = float(motion.get("inMs", 400)) / 1000
+        out_d_s = float(motion.get("outMs", 400)) / 1000
+        if motion_in == "fadeIn":
+            vf_tail.append(f"fade=t=in:st=0:d={in_d_s:.3f}")
+        elif motion_in in ("scaleIn", "zoomIn"):
+            n_in = max(int(in_d_s * fps), 1)
+            z = (f"max(1.06-0.06*min(in/{n_in},1),1.0)" if motion_in == "scaleIn"
+                 else f"min(1+0.10*min(in/{n_in},1),1.10)")
+            vf_tail.append(f"zoompan=z='{z}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
+                           f"d=1:s={cw}x{ch}:fps={fps}")
+            vf_tail.append("setsar=1")
+        if motion.get("out", "none") == "fadeOut":
+            vf_tail.append(f"fade=t=out:st={max(0.0, out_ms/1000 - out_d_s):.3f}:d={out_d_s:.3f}")
+        slides = []
+        if motion_in in ("slideInLeft", "slideInRight"):
+            slides.append(("in", motion_in, max(in_d_s, 0.001)))
+        if motion.get("out") in ("slideOutLeft", "slideOutRight"):
+            slides.append(("out", motion["out"], max(out_d_s, 0.001)))
         # v0.11 R3 punch-in(ITERATION-GUIDE §5.3):切点处 1.25~1.5x 变焦交替构图,
         # 是 jump cut 的通行掩饰(Hitchcock 规则:更紧构图只给重点)。anchorY 决定
         # 纵向裁切偏置(0=贴顶,保护人物头部)。插在最前,fade 作用在变焦后的画面上。
@@ -498,7 +516,30 @@ def step_segment(doc: dict, ratio: str, build: Path, base_dir: Path, cfg: dict,
                               f"crop={cw}:{ch}:(iw-ow)/2:(ih-oh)*{anchor:.3f}")
         vf_tail.append("format=yuv420p")
 
-        cmd += ["-vf", ",".join(vf + vf_tail)]
+        if slides:
+            # 滑入/滑出:画面在自身黑底副本上滑动(入场从画外滑到 0,出场滑出到画外);
+            # 时间基准 = 段内 t(段是独立文件,0 起)。走 -filter_complex 需显式 -map。
+            fc = [f"[0:v]{','.join(vf + vf_tail)}[v0]"]
+            last_lbl = "v0"
+            for si, (kind, name, dur) in enumerate(slides):
+                nxt = f"sl{si}"
+                if name == "slideInLeft":
+                    x = f"clip(-{cw}+{cw}*t/{dur:.3f},-{cw},0)"
+                elif name == "slideInRight":
+                    x = f"clip({cw}-{cw}*t/{dur:.3f},0,{cw})"
+                else:
+                    st_s = max(0.0, take_s - dur)
+                    sign = "-" if name == "slideOutLeft" else "+"
+                    x = f"if(lt(t,{st_s:.3f}),0,{sign}{cw}*(t-{st_s:.3f})/{dur:.3f})"
+                fc.append(f"[{last_lbl}]split[bg{si}][fg{si}];"
+                          f"[bg{si}]drawbox=c=black:t=fill[bgd{si}];"
+                          f"[bgd{si}][fg{si}]overlay=x='{x}':y=0[{nxt}]")
+                last_lbl = nxt
+            cmd += ["-filter_complex", ";".join(fc), "-map", f"[{last_lbl}]"]
+            if has_audio:
+                cmd += ["-map", "0:a?"]
+        else:
+            cmd += ["-vf", ",".join(vf + vf_tail)]
 
         if has_audio:
             af = (f"atrim=0:{take_s:.3f},asetpts=PTS-STARTPTS,"
@@ -584,7 +625,7 @@ def _resolve_transitions(base_clips: list[dict], fps: float, doc: dict,
 
 def step_concat(doc: dict, seg_files: list[Path], build: Path, cfg: dict,
                 warnings: list[str]) -> Path:
-    base_clips = [t for t in doc["tracks"] if t["kind"] == "video"][0]["clips"]
+    base_clips = _main_video_clips(doc)
     fps = doc.get("fps", 30)
     eff_tr, forced_off, tr_reasons = _resolve_transitions(base_clips, fps, doc, cfg)
     tails = [eff_tr[i + 1] if i + 1 < len(base_clips) else 0.0
@@ -685,9 +726,11 @@ def _video_stream_len(seg: Path, cfg: dict) -> float:
 
 # ---------------- 步骤 4:overlay 合成 ----------------
 
-def _overlay_exprs(clip: dict, cw: int, ch: int, start_s: float) -> tuple[str, str, str]:
+def _overlay_exprs(clip: dict, cw: int, ch: int, start_s: float,
+                   dur_s: float = 0.0) -> tuple[str, str, str]:
     """返回 (target_w, x_expr, y_expr)。position=overlay 中心点(归一化),用 W/H/w/h
-    表达式定位,任意 overlay 尺寸都正确居中;slide 为线性滑入。"""
+    表达式定位,任意 overlay 尺寸都正确居中;slide 为线性滑入/滑出(R11/v2 M11:
+    slideOut* 真实现,不再是空壳);scale/zoom 类入场经 scale_expr 的 eval=frame 表达式。"""
     scale = clip.get("scale", 1.0)
     px = clip.get("position", {}).get("x", 0.5)
     py = clip.get("position", {}).get("y", 0.5)
@@ -696,6 +739,7 @@ def _overlay_exprs(clip: dict, cw: int, ch: int, start_s: float) -> tuple[str, s
     y_c = f"{py:.4f}*H-h/2"
     motion = clip.get("motion", {})
     in_d = motion.get("inMs", 400) / 1000
+    out_d = motion.get("outMs", 400) / 1000
     x, y = x_c, y_c
     if motion.get("in") == "slideInLeft":
         x = (f"if(lt(t,{start_s + in_d:.3f}),"
@@ -703,6 +747,12 @@ def _overlay_exprs(clip: dict, cw: int, ch: int, start_s: float) -> tuple[str, s
     elif motion.get("in") == "slideInRight":
         x = (f"if(lt(t,{start_s + in_d:.3f}),"
              f"W+({x_c}-{cw})*(t-{start_s:.3f})/{in_d:.3f},{x_c})")
+    if dur_s > 0 and motion.get("out") == "slideOutLeft":
+        st_s = max(start_s, start_s + dur_s - out_d)
+        x = f"if(lt(t,{st_s:.3f}),{x_c},-w+(t-{st_s:.3f})*w/{out_d:.3f})"
+    elif dur_s > 0 and motion.get("out") == "slideOutRight":
+        st_s = max(start_s, start_s + dur_s - out_d)
+        x = f"if(lt(t,{st_s:.3f}),{x_c},W-(t-{st_s:.3f})*w/{out_d:.3f})"
     return str(w), x, y
 
 
@@ -736,8 +786,20 @@ def step_compose(doc: dict, ratio: str, base: Path, build: Path, base_dir: Path,
                 scale_expr = (f"scale={w}:{int(ov['h'])}" if ov.get("h")
                               else f"scale={w}:-2")
             else:
-                w, x, y = _overlay_exprs(clip, cw, ch, start_s)
-                scale_expr = f"scale={w}:-2"
+                w, x, y = _overlay_exprs(clip, cw, ch, start_s, dur_s)
+                # R10(overlay 档):scaleIn/zoomIn 真实现 —— scale eval=frame 时间表达式
+                #(scaleIn:0.4→1 带轻微过冲的弹入;zoomIn:0.85→1 推近)。
+                om_in = (clip.get("motion") or {}).get("in")
+                om_d = float((clip.get("motion") or {}).get("inMs", 400)) / 1000
+                if om_in == "scaleIn":
+                    scale_expr = ("scale=w='if(lt(t," + f"{om_d:.3f}),"
+                                  f"max({w}*(0.4+0.6*(t/{om_d:.3f}))"
+                                  f"*(1+0.06*sin(3.14159*t/{om_d:.3f})),{w})':h=-2:eval=frame")
+                elif om_in == "zoomIn":
+                    scale_expr = ("scale=w='if(lt(t," + f"{om_d:.3f}),"
+                                  f"max({w}*(0.85+0.15*t/{om_d:.3f}),{w})':h=-2:eval=frame")
+                else:
+                    scale_expr = f"scale={w}:-2"
             motion = clip.get("motion", {})
             if motion.get("in") == "fadeIn":
                 chain.append(f"fade=t=in:st=0:d={motion.get('inMs', 400)/1000:.3f}:alpha=1")
@@ -814,7 +876,12 @@ def step_mix(doc: dict, src: Path, build: Path, base_dir: Path, cfg: dict) -> Pa
     if bgm.get("src"):
         sp = Path(bgm["src"])
         sp = sp if sp.is_absolute() else base_dir / sp
-        cmd += ["-stream_loop", "-1", "-i", str(sp)]
+        # R04/R13(v2 M11,ADR-0055):bgm.loop 契约生效 —— loop:false 不再无条件循环
+        #(行为变更:此前该字段被忽略,CHANGELOG 已喊)。
+        if bgm.get("loop", True):
+            cmd += ["-stream_loop", "-1", "-i", str(sp)]
+        else:
+            cmd += ["-i", str(sp)]
         bgm_chain = (f"atrim=0:{total_s:.3f},volume={bgm.get('gainDb', -18)}dB,"
                      f"aresample=48000,aformat=channel_layouts=stereo")
         ducking = bgm.get("ducking", True) and mixes
@@ -926,6 +993,15 @@ def step_encode(src: Path, out: Path, profile: str, cfg: dict, fps: int,
 
 # ---------------- 主流程 ----------------
 
+def _main_video_clips(doc: dict) -> list[dict]:
+    """主轨 clips(R28/v2 M11):无 video 轨时报结构化错误,不再 IndexError 裸栈。"""
+    tracks = [t for t in doc.get("tracks", []) if t.get("kind") == "video"]
+    if not tracks or not (tracks[0].get("clips") or []):
+        die(2, "NO_VIDEO_TRACK",
+            "IR 缺主视频轨(或主轨无 clip):至少需要一条 kind=video 且含 clips 的轨道")
+    return tracks[0]["clips"]
+
+
 def render(doc: dict, project_path: Path, ratio: str, profile: str, *,
            use_cache: bool = True, dry_run: bool = False, clear_cache: bool = False,
            out_override: str = "") -> dict:
@@ -955,7 +1031,7 @@ def render(doc: dict, project_path: Path, ratio: str, profile: str, *,
     # v0.10(ADR-0023):尾帧扩展法下转场**不再吞时长**(offset=后段名义起点),
     # 音频/字幕时间轴零漂移,旧"预扣转场消耗"警告作废。仅当提升被禁用且存在
     # 亚帧转场时提示回退硬切。
-    base_clips = [t for t in doc["tracks"] if t["kind"] == "video"][0]["clips"]
+    base_clips = _main_video_clips(doc)
     eff_warn, off_warn, reasons_warn = _resolve_transitions(base_clips, doc.get("fps", 30), doc, cfg)
     if off_warn:
         warnings.append("时间轴提示:部分衔接点源间隙放不下转场尾帧,已回退无损 concat(硬切):"

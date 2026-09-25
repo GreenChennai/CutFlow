@@ -32,7 +32,8 @@ _CANVAS_PAIRS = tuple(RATIOS.values())
 
 MOTION_IN = {"none", "fadeIn", "slideInLeft", "slideInRight", "scaleIn", "zoomIn"}
 MOTION_OUT = {"none", "fadeOut", "slideOutLeft", "slideOutRight"}
-TRANSITIONS = {"fade", "wipeleft", "wipeup", "slideleft", "circleopen"}
+# cut/none = 显式硬切(ADR-0026;R02/v2 M11:schema enum 合法值,渲染端 rs_render 有消费分支)
+TRANSITIONS = {"fade", "wipeleft", "wipeup", "slideleft", "circleopen", "cut", "none"}
 KINDS = {"video", "audio", "text"}
 PUNCH_MIN_GAP_MS = 15000               # R3 punch-in 最小间隔(经验值,ITERATION-GUIDE §5.3)
 REMOVED_CLIP_FIELDS = ("chroma", "background")   # v0.14(ADR-0031):抠像/背景合成已移除

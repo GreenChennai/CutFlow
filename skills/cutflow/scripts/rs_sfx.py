@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from rs_common import REPO_ROOT, emit  # noqa: E402
+from rs_common import REPO_ROOT, emit, normalize_markers  # noqa: E402
 import rs_paths  # noqa: E402  — 阶段路径唯一真相源(ADR-0046),本文件禁止目录字面量
 
 DENSITY_WINDOW_MS = 15000
@@ -43,11 +43,13 @@ def from_transitions(ir: dict) -> list[dict]:
 
 
 def from_markers(ir: dict) -> list[dict]:
+    # R01(v2 M11):schema 契约是 {ms,label};经 rs_common.normalize_markers 统一口,
+    # 旧 atMs 兼容归一 —— 禁止直读字段(schema 口径 markers 曾被静默取 0)。
     out = []
-    for m in ir.get("markers", []) or []:
-        out.append({"atMs": int(m.get("atMs", 0)), "src": "assets_sfx:riser",
+    for m in normalize_markers(ir.get("markers")):
+        out.append({"atMs": m["ms"], "src": "assets_sfx:riser",
                     "trigger": "chapter", "conf": 0.85, "gainDb": DEFAULT_GAIN_DB,
-                    "note": f"章节:{m.get('label') or m.get('title') or ''}"})
+                    "note": f"章节:{m['label']}"})
     return out
 
 

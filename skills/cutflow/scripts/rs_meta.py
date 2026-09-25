@@ -17,7 +17,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from rs_common import emit  # noqa: E402
+from rs_common import emit, normalize_markers  # noqa: E402
 
 PLATFORM_SPECS = {
     "douyin": {"label": "抖音", "titleMax": 30, "descMax": 55, "tags": (5, 5), "chapters": False,
@@ -88,9 +88,11 @@ def build_platform(key: str, spec: dict, wl: dict, *, title: str, desc: str,
     out = {"title": title, "desc": desc,
            "tags": [f"#{t}" for t in tags] if key == "douyin" else tags}
     if spec["chapters"]:
-        chs = ir_markers if ir_markers else auto_chapters(wl)
-        out["chapters"] = [{"atMs": int(c["atMs"]), "title": c.get("title") or c.get("label", ""),
-                            "ts": fmt_ts(int(c["atMs"]))} for c in chs]
+        # 两条来源都归一到 {ms,label}(R01):IR markers 已归一;auto_chapters 产内部
+        # atMs 口径,同样过 normalize_markers,下游单口径。
+        chs = ir_markers if ir_markers else normalize_markers(auto_chapters(wl))
+        out["chapters"] = [{"atMs": int(c["ms"]), "title": c.get("label") or c.get("title", ""),
+                            "ts": fmt_ts(int(c["ms"]))} for c in chs]
         if not ir_markers:
             warns.append("章节为自动切分(无 markers),建议人工核")
     if warns:
@@ -144,7 +146,9 @@ def main() -> int:
     markers = None
     if a.markers:
         m = json.loads(Path(a.markers).read_text(encoding="utf-8"))
-        markers = m.get("markers") if isinstance(m, dict) else m
+        # R01(v2 M11):schema 口径 {ms,label} 归一(旧 atMs 兼容)——曾因直读 atMs 对
+        # schema 合规 markers 抛 KeyError。
+        markers = normalize_markers(m.get("markers") if isinstance(m, dict) else m)
 
     keys = [k.strip() for k in a.platform.split(",") if k.strip()]
     unknown = [k for k in keys if k not in PLATFORM_SPECS]

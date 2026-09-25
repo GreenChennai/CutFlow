@@ -224,6 +224,26 @@ def http_json(url: str, timeout: float = 10, method: str = "GET",
         return json.loads(resp.read().decode("utf-8"))
 
 
+def normalize_markers(markers) -> list[dict]:
+    """IR markers → [{ms:int, label:str}]（R01 统一口,ADR-0058/v2 M11）。
+
+    schema 契约是 `{ms, label}`;历史工程/内部产物曾写 `atMs` —— 此处统一归一:
+    `ms` 优先,缺则回退 `atMs`,再缺视为 0 并保留 label。label 缺省回退 `title`。
+    消费方(rs_sfx / rs_meta)一律经本函数取 markers,禁止各自直读字段。
+    """
+    out: list[dict] = []
+    for m in markers or []:
+        if not isinstance(m, dict):
+            continue
+        ms = m.get("ms", m.get("atMs", 0))
+        try:
+            ms = int(ms)
+        except (TypeError, ValueError):
+            ms = 0
+        out.append({"ms": ms, "label": str(m.get("label") or m.get("title") or "")})
+    return out
+
+
 def resolve_voice(voice: str, cfg: dict | None = None) -> Path:
     """音色名 → card.json 路径。支持:目录名 / card.name / 权重文件名关键词(koubo-test→口播声线)。"""
     cfg = cfg or load_config()

@@ -113,13 +113,16 @@ def expand_matrix(logos: list[str], ratios: list[str], durations: list[str] | No
     return out
 
 
-def logo_rect(logo: dict, canvas: dict, ratio: str, margin_pct: float = 0.04) -> dict:
-    """Logo 落点矩形(rules/branding.md §3,v0.10 真实尺寸版)。
+def logo_rect(logo: dict, canvas: dict, ratio: str, margin_pct: float = 0.04,
+              platform: str = "") -> dict:
+    """Logo 落点矩形(rules/branding.md §3,v0.10 真实尺寸版;v2 M11 R03 安全区单一化)。
 
     · `scale` 占**画宽**比例 → 目标宽;高按**真实内容宽高比**求出(不再假定方形);
     · 高度上限 8% 画高(超限则按高等比缩宽)——过大的角标会压人物/标题;
     · margin = 4% 画宽;
-    · bottom 系锚点自动抬到字幕带(9:16 底部 25%,ADR-0009)上缘再留 margin,
+    · 安全区查 `platforms.json` 的 safeArea(与 rs_verify 同源;`platform` 缺省或
+      未登记 → 退回旧保守带 顶部12%/底部25% 并在 `safeAreaSource` 留痕);
+    · bottom 系锚点自动抬到字幕带上缘再留 margin,
       并在返回值 `lifted=true` 留痕(交付说明需标注「Logo 已避开字幕带」)。
     """
     probe = logo.get("_probe") or {}
@@ -134,10 +137,23 @@ def logo_rect(logo: dict, canvas: dict, ratio: str, margin_pct: float = 0.04) ->
         h = max_h
         w = int(round(h * aspect))
     anchor = logo.get("anchor", "topRight")
-    top_safe = int(canvas["height"] * 0.12)           # 顶部 12% 安全区
-    band_top = int(canvas["height"] * 0.75)           # 底部 25% 为字幕带
-    xs = {"topLeft": m, "bottomLeft": m,
-          "topRight": canvas["width"] - w - m, "bottomRight": canvas["width"] - w - m,
+    # R03+R35(v2 M11,ADR-0058):安全区判据与 rs_verify 单一化 —— 改查
+    # templates/platforms.json 的 safeArea(与 rs_verify._platform_safe_areas 同源),
+    # 不再硬编码抖音口径(此前小红书/B站变体会越过自家禁区且自家校验器判不出)。
+    sa = _platform_safe_area(platform)
+    if sa:
+        top_safe = int(canvas["height"] * float(sa.get("top", 0.12)))
+        band_top = canvas["height"] - int(canvas["height"] * float(sa.get("bottom", 0.25)))
+        side_l = int(canvas["width"] * float(sa.get("left", 0.0)))
+        side_r = canvas["width"] - int(canvas["width"] * float(sa.get("right", 0.0)))
+    else:
+        # 平台未声明 → 保留旧保守带(顶部 12% / 底部 25%)并留痕,不猜平台
+        top_safe = int(canvas["height"] * 0.12)
+        band_top = int(canvas["height"] * 0.75)
+        side_l, side_r = 0, canvas["width"]
+    xs = {"topLeft": max(m, side_l + m), "bottomLeft": max(m, side_l + m),
+          "topRight": min(canvas["width"] - w - m, side_r - w - m),
+          "bottomRight": min(canvas["width"] - w - m, side_r - w - m),
           "topCenter": (canvas["width"] - w) // 2,
           "bottomCenter": (canvas["width"] - w) // 2,
           "watermark": (canvas["width"] - w) // 2}
@@ -149,25 +165,51 @@ def logo_rect(logo: dict, canvas: dict, ratio: str, margin_pct: float = 0.04) ->
         raise ValueError(f"未知 anchor:{anchor}(可选 {'/'.join(ANCHORS)})")
     return {"x": int(xs[anchor]), "y": int(ys[anchor]), "w": int(w), "h": int(h),
             "anchor": anchor, "ratio": ratio, "lifted": anchor.startswith("bottom"),
-            "aspect": round(aspect, 4)}
+            "aspect": round(aspect, 4),
+            "safeAreaSource": (f"platforms.json:{platform}" if sa
+                               else "legacy-bands(平台未声明)")}
+
+def _platform_safe_area(platform: str) -> dict | None:
+    """平台 safeArea(与 rs_verify 同源:templates/platforms.json 单一事实源)。
+
+    平台未声明/未登记/读不得 → None(调用方退回旧保守带并留痕,不猜平台)。
+    """
+    if not platform:
+        return None
+    try:
+        from rs_subtitle import load_platforms  # noqa: PLC0415 — 懒加载防环
+        entry = (load_platforms() or {}).get(platform) or {}
+    except Exception:  # noqa: BLE001 — 预设读不得 → 保守带(闸的缺席必须显式)
+        return None
+    sa = entry.get("safeArea")
+    return dict(sa) if isinstance(sa, dict) else None
 
 
-def check_safe_area(rect: dict, canvas: dict) -> list[str]:
-    """Logo 不得进入字幕带 / 不得越界(v0.10 补 x 方向与四边检查)。"""
+def check_safe_area(rect: dict, canvas: dict, platform: str = "") -> list[str]:
+    """Logo 不得进入字幕带 / 不得越界(v0.10 补 x 方向与四边检查;v2 M11 R03 同源化)。
+
+    字幕带 = 平台 safeArea.bottom(platforms.json,与 logo_rect/rs_verify 同源);
+    platform 未声明 → 与 logo_rect 同款旧保守带(25%),两处口径恒一致。
+    """
     errs = []
-    if rect["y"] + rect["h"] > int(canvas["height"] * 0.75):
-        errs.append(f"Logo 进入字幕带(y+h={rect['y'] + rect['h']} > {int(canvas['height'] * 0.75)})")
+    sa = _platform_safe_area(platform)
+    bottom_band = (canvas["height"] - int(canvas["height"] * float(sa.get("bottom", 0.25)))
+                   if sa else int(canvas["height"] * 0.75))
+    if rect["y"] + rect["h"] > bottom_band:
+        errs.append(f"Logo 进入字幕带(y+h={rect['y'] + rect['h']} > {bottom_band})")
     if rect["x"] < 0 or rect["y"] < 0 or \
        rect["x"] + rect["w"] > canvas["width"] or rect["y"] + rect["h"] > canvas["height"]:
         errs.append("Logo 越界")
     return errs
 
 
-def variant_ir(ir: dict, variant: dict, logo: dict, ratio: str) -> dict:
+def variant_ir(ir: dict, variant: dict, logo: dict, ratio: str,
+               platform: str = "") -> dict:
     """在 IR 末尾追加一条 logo overlay 轨(纯声明,不改动其它轨道)。
 
     v0.10:clip 产 `overlay={x,y,w,h,opacity}` 绝对像素落点(真实尺寸、真实宽高比),
     由 rs_render step_compose 消费 —— v0.9 该字段无人认领,Logo 会贴满画布。
+    v2 M11(R03):platform 透传给 logo_rect → 安全区查 platforms.json(单一事实源)。
     """
     doc = json.loads(json.dumps(ir))
     w, h = canvas_for(ratio)                       # 画幅查表(rs_common 唯一真相源)
@@ -175,7 +217,7 @@ def variant_ir(ir: dict, variant: dict, logo: dict, ratio: str) -> dict:
     lg = dict(logo)
     if "_probe" not in lg:                             # 已带探测结果(批量/测试)则不重复读盘
         lg["_probe"] = probe_logo(logo["src"])
-    rect = logo_rect(lg, doc["canvas"], ratio)
+    rect = logo_rect(lg, doc["canvas"], ratio, platform=platform)
     # v0.10 P1(ADR-0025 补):整图含透明 padding 时把素材裁到内容包围盒再上轨 ——
     # 否则 overlay 缩的是整张图,可见 Logo 远小于 scale 承诺(e2e 实测 12%→3.7%)。
     logo_src = logo["src"]
@@ -282,6 +324,16 @@ def main() -> int:
     if not a.ir or not a.variants or not a.out:
         return emit(False, "NO_INPUT", "需要 <ir> --variants <variants.json> --out <dir>", exit_code=2)
     ir = json.loads(Path(a.ir).read_text(encoding="utf-8"))
+    # R03:平台声明取 pipeline.json params.platform(与 rs_verify._platform_safe_areas 同一口径
+    # ——只认意图编译落账的声明,不猜画幅);IR 旁找不到 pipeline.json 就留空(保守带)。
+    platform = ""
+    try:
+        _pp = rs_paths.pipeline_json(Path(a.ir).resolve().parent.parent)
+        if _pp.is_file():
+            platform = str((json.loads(_pp.read_text(encoding="utf-8"))
+                            or {}).get("params", {}).get("platform") or "")
+    except (OSError, json.JSONDecodeError):
+        platform = ""
     vdoc = load_variants(Path(a.variants))
     logos = {l["id"]: l for l in vdoc.get("logos", [])}
     outdir = Path(a.out)
@@ -295,11 +347,11 @@ def main() -> int:
             all_errs.append(f"变体 {v['id']} 引用了不存在的 logo:{v['logo']}")
             continue
         try:
-            doc = variant_ir(ir, v, lg, v["ratio"])
+            doc = variant_ir(ir, v, lg, v["ratio"], platform=platform)
         except (FileNotFoundError, ValueError) as exc:
             all_errs.append(f"{v['id']}: {exc}")
             continue
-        errs = check_safe_area(doc["_variant"]["logoRect"], doc["canvas"])
+        errs = check_safe_area(doc["_variant"]["logoRect"], doc["canvas"], platform=platform)
         if errs:
             all_errs.extend(f"{v['id']}: {e}" for e in errs)
         if doc["_variant"]["logoRect"].get("lifted"):

@@ -1006,7 +1006,15 @@ def run_verify(root: Path, level: str) -> tuple[bool, str, dict]:
     cmd = [sys.executable, str(SCRIPTS_DIR / "rs_verify.py"), str(root)]
     if level == "L1":
         cmd += ["--level", "L1"]
-    p = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
+    # R25(v2 M11):子进程此前无超时 —— --auto 可能永久挂起(其余阶段都走
+    # _run_subprocess + stage_timeout)。L1 抽帧留证耗时更长,给 2× 阶段超时。
+    _v_timeout = int(__import__("os").environ.get("CUTFLOW_VERIFY_TIMEOUT",
+                                                  "3600" if level == "L1" else "1800"))
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8",
+                           errors="replace", timeout=_v_timeout)
+    except subprocess.TimeoutExpired:
+        return False, f"自检超时(>{_v_timeout}s,可配 CUTFLOW_VERIFY_TIMEOUT)", {}
     try:
         doc = json.loads((p.stdout or "").strip().splitlines()[-1])
     except (json.JSONDecodeError, IndexError):
