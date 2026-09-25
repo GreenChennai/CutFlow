@@ -218,16 +218,20 @@ def _read_json(path: Path) -> dict:
 
 def artboard_dir() -> Path | None:
     """artboard 技能目录定位(镜像 rs_artboard._load_artboard_config 的查找序,
-    只读不改):CUTFLOW_ARTBOARD_DIR 环境变量 > 仓库根 config.json > skills/config.json。"""
+    只读不改):CUTFLOW_ARTBOARD_DIR 环境变量 > 仓库根 config.json > skills/config.json。
+
+    配置了但**目录不存在** → 返回 None(等价未配置):校验面走 SKIP 显式留痕,
+    不因占位路径(config.example.json 的 <path-to>)刷红——门禁只拦「引用存在但文件缺失」。
+    """
     env = __import__("os").environ.get("CUTFLOW_ARTBOARD_DIR", "").strip()
     if env:
-        return Path(env)
+        return Path(env) if Path(env).is_dir() else None
     repo_cfg = _read_json(Path(__file__).resolve().parents[3] / "config.json")
     local_cfg = _read_json(Path(__file__).resolve().parents[2] / "config.json")
     merged = dict(local_cfg)
     merged.update({k: v for k, v in repo_cfg.items() if v})
     d = str(merged.get("artboard_dir", "")).strip()
-    return Path(d) if d else None
+    return Path(d) if d and Path(d).is_dir() else None
 
 
 def load_registry() -> dict:

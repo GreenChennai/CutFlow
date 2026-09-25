@@ -517,13 +517,22 @@ def test_screen_degraded_when_cv_missing(tmp_path, monkeypatch):
 
 
 def test_screen_ready_cursor_and_clicks(tmp_path, monkeypatch):
-    """READY 档(轨迹 mock,点击数学真跑):滞留 ≥400ms 后快移 → 点击点 + zoomPlan。"""
+    """READY 档(轨迹 mock,点击数学真跑):滞留 ≥400ms 后快移 → 点击点 + zoomPlan。
+
+    组件探测一并 mock:READY 判定 = rs_fetchable.state("vision.cv"),CI/裸机无 opencv
+    时探测走 MISSING → 降级分支,与本测试无关(降级路径由上一个用例覆盖)。
+    """
     proj = _mk_project(tmp_path, "scr")
     media = proj / rs_paths.p("materials") / "a.mp4"
     trace = [{"tMs": 0, "xPct": 50.0, "yPct": 50.0},
              {"tMs": 500, "xPct": 50.2, "yPct": 50.1},
              {"tMs": 520, "xPct": 60.0, "yPct": 30.0}]
     monkeypatch.setattr(rs_screen, "ready_cursor_trace", lambda m, c: trace)
+    monkeypatch.setattr(
+        rs_screen.rs_fetchable, "state",
+        lambda cid: {"state": "READY", "component": cid, "degrade": "none",
+                     "message": "", "size_mb": 60, "backend": "py",
+                     "modules": ["opencv"], "installDir": ""})
     code, _ = _capture(rs_screen.main, ["analyze", str(media), "--out", str(proj),
                                         "--cursor", "--zoom"])
     doc = _read(rs_screen.screen_path(proj))

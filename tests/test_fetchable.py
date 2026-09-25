@@ -270,12 +270,18 @@ def test_auto_allow_fetch_explicitly_downloads(monkeypatch, isolated_env):
 
 @pytest.mark.skipif(not CONFIG.is_file(), reason="需要本机 config.json(桥探针/ffmpeg 走真实配置)")
 def test_doctor_zero_env_reports_basic_tier(tmp_path, monkeypatch, isolated_env, capsys):
-    """可选件落点为空目录(零环境):--report 退出码 0 且含「基础档可用」。"""
+    """可选件落点为空目录(零环境):--report 退出码 0 且含「基础档可用」。
+
+    桥探针轴在此隔离:ADR-0049 零环境承诺只管**能力组件**;cutforge 仓/artboard
+    技能目录缺席属机器装配问题(CI tests job 天生没有),真机桥断链的 fatal 由
+    rs_doctor._bridge_probe_checks 的正常路径把守(test_doctor_* 其他用例覆盖)。
+    """
     deps, _ = isolated_env                                   # 空的临时 deps 目录
     real = json.loads(CONFIG.read_text(encoding="utf-8"))
     real["vqa_exe"] = str(tmp_path / "vqa-stub.exe")         # 唯一致命缺口补齐(本机无 VQA 直连)
     Path(real["vqa_exe"]).write_bytes(b"stub")
     monkeypatch.setattr(rs_doctor, "load_config", lambda: real)
+    monkeypatch.setattr(rs_doctor, "_bridge_probe_checks", lambda: [])
     monkeypatch.setattr(sys, "argv", ["rs_doctor.py", "--report"])
     rc = rs_doctor.main()
     out = capsys.readouterr().out

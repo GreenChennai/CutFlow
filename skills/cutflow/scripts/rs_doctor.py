@@ -175,6 +175,36 @@ def _check_forge_path_contract() -> tuple[bool, str]:
     return True, f"目录常量与 rs_paths.STAGE_DIRS 同源口径({forge.name})"
 
 
+def _bridge_probe_checks() -> list[dict]:
+    """桥探针五连(rs_editor/rs_notes/rs_oplog/rs_gate/rs_artboard --probe,fatal)。
+
+    独立成函数供零环境测试隔离「安装完整性」轴(ADR-0049 零环境承诺只管能力组件;
+    桥/artboard 缺席是机器装配问题,真机上仍然 fatal)。
+    """
+    checks: list[dict] = []
+    forge_scripts = Path(__file__).parent
+    for name in ("rs_editor.py", "rs_notes.py", "rs_oplog.py", "rs_gate.py", "rs_artboard.py"):
+        script = forge_scripts / name
+        ok, detail = False, f"{script}"
+        if script.is_file():
+            try:
+                p = subprocess.run([sys.executable, str(script), "--probe"],
+                                   capture_output=True, text=True, encoding="utf-8",
+                                   errors="replace", timeout=30)
+                ok = p.returncode == 0
+                lines = (p.stdout or "").strip().splitlines()
+                detail = lines[-1] if lines else f"exit={p.returncode}"
+            except Exception as exc:  # noqa: BLE001 — 自检本身绝不致命
+                detail = f"探测失败({type(exc).__name__})"
+        else:
+            detail = "脚本缺失"
+        checks.append(_check(f"桥探针:{name}", ok, detail, fatal=True,
+                             group="桥探针",
+                             hint="缺失则重拉 CutFlow 仓库 skills/cutflow/scripts/;"
+                                  "artboard 桥还需 config.artboard_dir 指向技能目录"))
+    return checks
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--report", action="store_true", help="打印人读环境自检报告")
@@ -250,26 +280,7 @@ def main() -> int:
 
     # CutForge/artboard 桥脚本(v0.15 计划书 M4;P21-1 起 --probe 自检**提为 fatal**):
     # 桥断链曾只显示「可后补」,DOCTOR_OK 照发 —— 四桥是编排链路,断了必须先修。
-    forge_scripts = Path(__file__).parent
-    for name in ("rs_editor.py", "rs_notes.py", "rs_oplog.py", "rs_gate.py", "rs_artboard.py"):
-        script = forge_scripts / name
-        ok, detail = False, f"{script}"
-        if script.is_file():
-            try:
-                p = subprocess.run([sys.executable, str(script), "--probe"],
-                                   capture_output=True, text=True, encoding="utf-8",
-                                   errors="replace", timeout=30)
-                ok = p.returncode == 0
-                lines = (p.stdout or "").strip().splitlines()
-                detail = lines[-1] if lines else f"exit={p.returncode}"
-            except Exception as exc:  # noqa: BLE001 — 自检本身绝不致命
-                detail = f"探测失败({type(exc).__name__})"
-        else:
-            detail = "脚本缺失"
-        checks.append(_check(f"桥探针:{name}", ok, detail, fatal=True,
-                             group="桥探针",
-                             hint="缺失则重拉 CutFlow 仓库 skills/cutflow/scripts/;"
-                                  "artboard 桥还需 config.artboard_dir 指向技能目录"))
+    checks.extend(_bridge_probe_checks())
 
     # ---- 路径契约(ADR-0045/0046):中文路径编码自检 + 两仓目录契约一致性
     ok, msg = _check_path_encoding()
