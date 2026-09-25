@@ -861,6 +861,26 @@ def _glsl_state(doc: dict) -> dict:
 _GLSL_STATE: dict = {"on": True, "ready": False, "probed": False}
 
 
+def _source_tail_ms(clip: dict, cfg: dict | None, base_dir: Path | None = None) -> float | None:
+    """clip 源出点之后的剩余素材时长 ms(跨源转场尾帧余量;探测失败 None=不设限)。"""
+    src = Path(clip.get("src") or "")
+    if not src.is_file() and base_dir is not None:
+        src = base_dir / src
+    if src.suffix.lower() in (".png", ".jpg", ".jpeg", ".webp"):
+        return None            # 静图:尾帧可无限延展(tpad/freeze),不设余量限制
+    try:
+        info = probe_media(src, cfg)
+        dur = float((info.get("format") or {}).get("duration") or 0)
+    except Exception:  # noqa: BLE001 — 探测不得阻断渲染(宁回退不崩)
+        return None
+    except SystemExit:  # noqa: BLE001 — ffprobe_json 对缺文件 die;回退不设限
+        return None
+    if dur <= 0:
+        return None
+    dur_ms = dur * 1000.0                      # ffprobe 秒 → ms(sourceIn/duration 是 ms)
+    return max(0.0, dur_ms - (clip.get("sourceInMs", 0) + clip["durationMs"]))
+
+
 def resolve_joins(base_clips: list[dict], fps: float, doc: dict,
                   cfg: dict | None) -> tuple[list[float], bool, list[str], dict[int, dict]]:
     """M13 注册表版转场解析:各衔接点 (有效转场时长s, 是否整体弃用, 原因, join 解析表)。
@@ -920,13 +940,28 @@ def resolve_joins(base_clips: list[dict], fps: float, doc: dict,
         if tdur <= 0:
             joins.pop(i, None)
             continue
-        # 尾帧扩展余量:本段源出点与下一段源入点之间的被剪间隙
+        # 尾帧扩展余量(实剪修复,v2 实剪①发现):尾帧取自 **prev 自身源**出点之后。
+        # · 同源 join:被剪间隙 = nxt.sourceIn − prev 源出点,间隙必须 ≥ 转场时长
+        #   (尾帧区不得与 nxt 将展示的内容重叠);
+        # · 跨源 join:旧代码误用同源算术 → 恒负 → 全部退化硬切。正确判据是
+        #   prev 源尾余量 ≥ 转场时长;不足则把转场夹短到可用量(≥1 帧才保留)。
         prev, nxt = base_clips[i - 1], base_clips[i]
-        gap_ms = nxt.get("sourceInMs", 0) - (prev.get("sourceInMs", 0) + prev["durationMs"])
-        if gap_ms < tdur * 1000.0:
-            reasons.append(f"join{i}:源间隙 {gap_ms:.0f}ms 放不下转场 {tdur * 1000:.0f}ms")
-            forced_off = True
-            continue
+        if str(nxt.get("src")) == str(prev.get("src")):
+            gap_ms = nxt.get("sourceInMs", 0) - (prev.get("sourceInMs", 0) + prev["durationMs"])
+            if gap_ms < tdur * 1000.0:
+                reasons.append(f"join{i}:源间隙 {gap_ms:.0f}ms 放不下转场 {tdur * 1000:.0f}ms")
+                forced_off = True
+                continue
+        else:
+            avail_ms = _source_tail_ms(prev, cfg, Path(doc.get("_base_dir")) if doc.get("_base_dir") else None)
+            if avail_ms is not None and avail_ms < tdur * 1000.0:
+                tdur = avail_ms / 1000.0
+                if tdur < frame_s:
+                    reasons.append(f"join{i}:跨源转场 prev 源尾余量不足({avail_ms:.0f}ms),弃用")
+                    forced_off = True
+                    continue
+                joins[i]["durMs"] = round(tdur * 1000.0)
+                reasons.append(f"join{i}:跨源转场夹短到 {tdur * 1000:.0f}ms(prev 源尾余量)")
         eff[i] = tdur
     if forced_off and any(eff):
         eff = [0.0] * len(base_clips)   # xfade 链必须整链一致:一处放不下 → 全部走 concat
@@ -1086,8 +1121,13 @@ def _concat_splice(doc: dict, seg_files: list[Path], build: Path, cfg: dict,
     ahead_f = {i: (ntd.get(i, 0) if i < n and eff_tr[i] > 0 else 0) for i in range(n)}
 
     all_have_audio = all(_seg_has_audio(f, cfg) for f in seg_files)
+    # 实剪修复(v2 实剪①):照片等无音轨段此前导致整链 -an(静音片不可交付)。
+    # 现为无音轨段注入 anullsrc 静音源(按帧窗裁齐),音频链统一走三段 acrossfade;
+    # 静音段由后续 step_mix 的 BGM/sfx 铺底,不再静音交付。
     if not all_have_audio:
-        warnings.append("concat:部分段无音轨,拼接图仅作用于画面,输出将无音频")
+        warnings.append("concat:部分段无音轨(照片/静图),已注入静音轨参与拼接"
+                        "(BGM 由 step_mix 铺底)")
+    all_have_audio = True          # 注入后恒真:下方音频视图/映射无条件走音频链
 
     # ---- T2 重叠区预渲(带缓存;失败逐 join 降级 fallback xfade) ----
     glsl_files: dict[int, Path] = {}
@@ -1138,6 +1178,20 @@ def _concat_splice(doc: dict, seg_files: list[Path], build: Path, cfg: dict,
                         continue
                 glsl_files[i] = out
 
+    seg_has_audio = [_seg_has_audio(f, cfg) for f in seg_files]
+    # 每段音频源:真音轨 = 输入序号 i;无音轨段 = 追加的 anullsrc 静音输入。
+    # 序号必须按 **实际追加** 的 glsl 预渲输入数(len(glsl_files),在 T2 降级定局之后)
+    # 计算——降级会让 glsl 输入数与 join 声明数不一致,预测序号会错绑到别人头上。
+    n_glsl_real = len(glsl_files)
+    asrc: dict[int, str] = {}
+    _silent_ordinal = 0
+    for i in range(n):
+        if seg_has_audio[i]:
+            asrc[i] = f"{i}:a"
+        else:
+            asrc[i] = f"{n + n_glsl_real + _silent_ordinal}:a"
+            _silent_ordinal += 1
+
     # ---- 滤镜图 ----
     parts: list[str] = []
     video_inputs: list[str] = []
@@ -1170,11 +1224,11 @@ def _concat_splice(doc: dict, seg_files: list[Path], build: Path, cfg: dict,
             need_ahead, need_atail = ahead_f[i] > 0, atail_f[i] > 0
             a_views = 1 + (1 if need_ahead else 0) + (1 if need_atail else 0)
             if a_views > 1:
-                parts.append(f"[{i}:a]asplit={a_views}[as{i}0]"
+                parts.append(f"[{asrc[i]}]asplit={a_views}[as{i}0]"
                              + "".join(f"[as{i}_{k}]" for k in range(1, a_views)))
                 av = [f"as{i}0"] + [f"as{i}_{k}" for k in range(1, a_views)]
             else:
-                av = [f"{i}:a"]
+                av = [asrc[i]]
             ai = 0
             if need_ahead:
                 parts.append(f"[{av[ai]}]atrim=start=0:end={ahead_f[i] / fps:.6f},"
@@ -1219,6 +1273,9 @@ def _concat_splice(doc: dict, seg_files: list[Path], build: Path, cfg: dict,
         cmd += ["-i", str(f)]
     for p in glsl_files.values():
         cmd += ["-i", str(p)]
+    for i in range(n):
+        if not seg_has_audio[i]:
+            cmd += ["-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo"]
     cmd += ["-filter_complex", graph, "-map", "[vout]"]
     if all_have_audio:
         cmd += ["-map", "[aout]", "-c:a", "aac", "-b:a", "192k"]
@@ -1420,6 +1477,9 @@ def step_mix(doc: dict, src: Path, build: Path, base_dir: Path, cfg: dict) -> Pa
             cmd += ["-i", str(sp)]
         bgm_chain = (f"atrim=0:{total_s:.3f},volume={bgm.get('gainDb', -18)}dB,"
                      f"aresample=48000,aformat=channel_layouts=stereo")
+        # 实剪修复(v2 实剪①):amix 用 longest —— bgm 已 atrim 钳到 total_s,
+        # longest 恒 ≤ total;duration=first 会在「人声/音效总线早于片尾结束」的
+        # 工程(混剪/纯配乐段)把底轨截短(实测音频 50.7s vs 视频 53.3s)。
         ducking = bgm.get("ducking", True) and mixes
         if ducking:
             # B3(v0.12):filtergraph 标签**只能被消费一次**——旧写法把 [a1] 同时喂给
@@ -1430,15 +1490,19 @@ def step_mix(doc: dict, src: Path, build: Path, base_dir: Path, cfg: dict) -> Pa
             parts.append("".join(mixes)
                          + f"amix=inputs={len(mixes)}:duration=longest:normalize=0[voice]")
             parts.append("[voice]asplit=2[voice_m][voice_d]")
-            parts.append("[bgraw][voice_d]"
+            # 实剪修复(v2 实剪①):sidechaincompress 在侧链输入结束时终止 —— 侧链
+            # (人声/音效总线)早于片尾结束时会把已 atrim 到全长的 BGM 一并掐短
+            # (实测 53.3s 片音频止于 50.7s)。apad 补齐侧链到全长再压缩。
+            parts.append(f"[voice_d]apad=whole_dur={total_s:.3f}[voice_dp]")
+            parts.append("[bgraw][voice_dp]"
                          "sidechaincompress=threshold=0.02:ratio=6:attack=60:release=500[bgm]")
             graph = (";".join(parts)
-                     + ";[voice_m][bgm]amix=inputs=2:duration=first:normalize=0[mix]")
+                     + ";[voice_m][bgm]amix=inputs=2:duration=longest:normalize=0[mix]")
         else:
             parts.append(f"[{idx}:a]{bgm_chain}[bgm]")
             n_in = len(mixes) + 1
             graph = ";".join(parts) + ";" + "".join(mixes) + "[bgm]" + \
-                f"amix=inputs={n_in}:duration=first:normalize=0[mix]"
+                f"amix=inputs={n_in}:duration=longest:normalize=0[mix]"
     else:
         graph = ";".join(parts) + ";" + "".join(mixes) + \
             f"amix=inputs={len(mixes)}:duration=longest:normalize=0[mix]"

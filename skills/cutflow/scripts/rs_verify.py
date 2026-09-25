@@ -151,11 +151,29 @@ def check_ir(root: Path) -> dict:
             "detail": "" if not errs else "; ".join(errs[:5]), "errors": errs}
 
 
+def _ir_tracks(root: Path) -> list[dict]:
+    try:
+        doc = json.loads(rs_paths.project_json(root).read_text(encoding="utf-8"))
+        return doc.get("tracks") or []
+    except (OSError, json.JSONDecodeError):
+        return []
+
+
 def check_wordline(root: Path) -> dict:
     p = rs_paths.wordline_json(root)
     if not p.is_file():
+        # 实剪修复(v2 实剪①):无口播工程(混剪/纯动画/照片墙)合法地没有 wordline
+        # ——判据只在「工程带字幕产物或 IR 声明字幕需求」时强制。静默缺口显式留痕。
+        has_sub = ((rs_paths.resolve(root, "output") / "subtitles.ass").is_file()
+                   or (rs_paths.project_json(root).is_file()
+                       and any(c.get("text") or c.get("subtitle")
+                               for tr in _ir_tracks(root)
+                               for c in (tr.get("clips") or []))))
+        if not has_sub:
+            return {"name": "Wordline 存在且单调", "ok": True,
+                    "skipped": "无 wordline 且无字幕产物(无口播工程,判据不适用)"}
         return {"name": "Wordline 存在且单调", "ok": False,
-                "detail": f"缺 {rs_paths.p('timeline')}/wordline.json"}
+                "detail": f"缺 {rs_paths.p('timeline')}/wordline.json(有字幕产物必须有时轴真相源)"}
     try:
         wl = json.loads(p.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
