@@ -50,3 +50,10 @@ _tmp/
 !assets/sfx/*.mp3
 # 例外:内置 BGM 小曲库(M8 --bgm auto 消费,自产合成无版权约束)
 !skills/cutflow/assets/bgm/*.mp3
+# 例外:M12 素材库(sfx/elements/huazi;R38 体积预算由 rs_asset check 把守)
+!skills/cutflow/assets/sfx/*.mp3
+!skills/cutflow/assets/elements/**
+!skills/cutflow/assets/huazi/**
+
+# M13 T2 冒烟辅助:moderngl 装在仓外目标目录(PYTHONPATH 指入即可跑真渲冒烟)
+.fx_smoke_deps/

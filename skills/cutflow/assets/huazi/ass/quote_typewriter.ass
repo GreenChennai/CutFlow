@@ -1,0 +1,23 @@
+[Script Info]
+; hz-id: huazi.quote.typewriter
+; hz-label: 金句·打字机
+; hz-usage: punchline
+; hz-effect: typewriter
+; hz-params: {"stepMs": 70}
+; 说明:基础档花字模板(ADR-0057)。rs_subtitle --huazi 读取本文件元数据,
+; 按事件重排 Dialogue;文本匹配/计数前必须剥 {...} override(硬规则 18)。
+Title: CutFlow huazi template
+ScriptType: v4.00+
+WrapStyle: 0
+PlayResX: 1080
+PlayResY: 1920
+ScaledBorderAndShadow: yes
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: HuaziMain,Source Han Sans SC,92,&H00FFFFFF,&H000000FF,&H00101010,&H80000000,1,0,0,0,100,100,0,0,1,6,1,2,60,60,500,1
+Style: HuaziBack,Source Han Sans SC,92,&H00000000,&H000000FF,&H00000000,&H00000000,1,0,0,0,100,100,0,0,3,10,0,2,60,60,500,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 1,0:00:00.00,0:00:02.00,HuaziMain,,0,0,0,,{\alpha&HFF&}关{\alpha&H00&}键{\alpha&H00&}词

@@ -1,0 +1,11 @@
+{
+ "id": "huazi.card.ending.follow",
+ "label": "进阶卡·片尾关注",
+ "ratio": "9x16",
+ "effect": "follow",
+ "usage": [
+  "ending"
+ ],
+ "medium": "artboard-card",
+ "renderVia": "rs_artboard"
+}

@@ -1,48 +1,227 @@
 {
-  "version": 1,
-  "license": "自产合成(ffmpeg aevalsrc 正弦/三角波叠加 + loudnorm 归一),无版权约束,可商用",
-  "engine": "ffmpeg-synth",
-  "note": "M8 内置 BGM 小曲库(清欠账 #13):--bgm auto 按节奏档从本曲库选曲(rs_intent compile 消费,decision_log source=library 留痕)。选曲规则:取 pacingFit 含当前节奏档的首条;都不含则取第一条(确定性,同输入字节级同选)。",
-  "tracks": [
-    {
-      "name": "脉冲节奏 140",
-      "file": "pulse_rhythm_140bpm.mp3",
-      "durationSec": 28.8,
-      "bpm": 140,
-      "mood": "节奏驱动/高燃",
-      "pacingFit": ["music", "fast"],
-      "gainHintDb": -12,
-      "note": "锯齿脉冲 + 噪声 hat;混剪卡点(music 档 BGM 即时间轴骨架)与快节奏通用"
-    },
-    {
-      "name": "暖垫 120",
-      "file": "warm_pad_120bpm.mp3",
-      "durationSec": 32.0,
-      "bpm": 120,
-      "mood": "温暖铺底/正向",
-      "pacingFit": ["fast", "normal"],
-      "gainHintDb": -18,
-      "note": "A 大调和声垫 + 软鼓点;知识口播快节奏/常规档通用"
-    },
-    {
-      "name": "LoFi 慢摇 100",
-      "file": "lofi_groove_100bpm.mp3",
-      "durationSec": 36.0,
-      "bpm": 100,
-      "mood": "松弛/生活感",
-      "pacingFit": ["normal"],
-      "gainHintDb": -18,
-      "note": "软贝斯 + 噪底碎响;vlog 生活记录与常规口播"
-    },
-    {
-      "name": "氛围低吟 90",
-      "file": "ambient_calm_90bpm.mp3",
-      "durationSec": 40.0,
-      "bpm": 90,
-      "mood": "安静/深度",
-      "pacingFit": ["slow"],
-      "gainHintDb": -20,
-      "note": "低频 drone 慢动;教程演示/深度内容(slow 档)"
-    }
-  ]
+ "version": 2,
+ "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+ "engine": "ffmpeg-synth",
+ "note": "M12 兼容件:由统一索引 assets/manifest.json 派生(kind=bgm),真相源在统一索引;rs_intent 旧读口继续可用。禁手改。",
+ "tracks": [
+  {
+   "name": "脉冲节奏 140",
+   "id": "bgm.pulse.01",
+   "file": "pulse_rhythm_140bpm.mp3",
+   "durationSec": 28.8,
+   "bpm": 140,
+   "mood": "节奏驱动/高燃",
+   "pacingFit": [
+    "music",
+    "fast"
+   ],
+   "gainHintDb": -12,
+   "commercial": true
+  },
+  {
+   "name": "暖垫 120",
+   "id": "bgm.warm_pad.01",
+   "file": "warm_pad_120bpm.mp3",
+   "durationSec": 32.0,
+   "bpm": 120,
+   "mood": "温暖铺底/正向",
+   "pacingFit": [
+    "fast",
+    "normal"
+   ],
+   "gainHintDb": -18,
+   "commercial": true
+  },
+  {
+   "name": "LoFi 慢摇 100",
+   "id": "bgm.lofi.01",
+   "file": "lofi_groove_100bpm.mp3",
+   "durationSec": 36.0,
+   "bpm": 100,
+   "mood": "松弛/生活感",
+   "pacingFit": [
+    "normal"
+   ],
+   "gainHintDb": -18,
+   "commercial": true
+  },
+  {
+   "name": "氛围低吟 90",
+   "id": "bgm.ambient.01",
+   "file": "ambient_calm_90bpm.mp3",
+   "durationSec": 40.0,
+   "bpm": 90,
+   "mood": "安静/深度",
+   "pacingFit": [
+    "slow"
+   ],
+   "gainHintDb": -20,
+   "commercial": true
+  },
+  {
+   "name": "明亮快线 128",
+   "id": "bgm.bright_fast.01",
+   "file": "bright_fast_128bpm.mp3",
+   "durationSec": 18.7,
+   "bpm": 128,
+   "mood": "明亮/轻快",
+   "pacingFit": [
+    "fast",
+    "music"
+   ],
+   "gainHintDb": -12,
+   "commercial": true
+  },
+  {
+   "name": "科技脉冲 132",
+   "id": "bgm.tech_fast.01",
+   "file": "tech_fast_132bpm.mp3",
+   "durationSec": 18.2,
+   "bpm": 132,
+   "mood": "科技/紧凑",
+   "pacingFit": [
+    "fast",
+    "music"
+   ],
+   "gainHintDb": -12,
+   "commercial": true
+  },
+  {
+   "name": "鼓动驱动 140",
+   "id": "bgm.drive_fast.01",
+   "file": "drive_fast_140bpm.mp3",
+   "durationSec": 17.1,
+   "bpm": 140,
+   "mood": "鼓动/热血",
+   "pacingFit": [
+    "fast",
+    "music"
+   ],
+   "gainHintDb": -12,
+   "commercial": true
+  },
+  {
+   "name": "紧张脉冲 110",
+   "id": "bgm.tension.01",
+   "file": "tension_normal_110bpm.mp3",
+   "durationSec": 17.5,
+   "bpm": 110,
+   "mood": "紧张/压迫",
+   "pacingFit": [
+    "normal",
+    "fast",
+    "music"
+   ],
+   "gainHintDb": -18,
+   "commercial": true
+  },
+  {
+   "name": "悬疑铺陈 95",
+   "id": "bgm.suspense.01",
+   "file": "suspense_normal_95bpm.mp3",
+   "durationSec": 20.2,
+   "bpm": 95,
+   "mood": "悬疑/探究",
+   "pacingFit": [
+    "normal"
+   ],
+   "gainHintDb": -18,
+   "commercial": true
+  },
+  {
+   "name": "叙事伤感 80",
+   "id": "bgm.sad.01",
+   "file": "sad_normal_80bpm.mp3",
+   "durationSec": 24.0,
+   "bpm": 80,
+   "mood": "悲伤/叙事",
+   "pacingFit": [
+    "normal",
+    "slow"
+   ],
+   "gainHintDb": -18,
+   "commercial": true
+  },
+  {
+   "name": "明亮轻快 105",
+   "id": "bgm.bright.01",
+   "file": "bright_normal_105bpm.mp3",
+   "durationSec": 20.6,
+   "bpm": 105,
+   "mood": "明亮/日常",
+   "pacingFit": [
+    "normal"
+   ],
+   "gainHintDb": -18,
+   "commercial": true
+  },
+  {
+   "name": "科技中速 112",
+   "id": "bgm.tech.01",
+   "file": "tech_normal_112bpm.mp3",
+   "durationSec": 19.3,
+   "bpm": 112,
+   "mood": "科技/理性",
+   "pacingFit": [
+    "normal",
+    "music"
+   ],
+   "gainHintDb": -18,
+   "commercial": true
+  },
+  {
+   "name": "温暖慢板 75",
+   "id": "bgm.warm_slow.01",
+   "file": "warm_slow_75bpm.mp3",
+   "durationSec": 25.6,
+   "bpm": 75,
+   "mood": "温暖/治愈",
+   "pacingFit": [
+    "slow"
+   ],
+   "gainHintDb": -20,
+   "commercial": true
+  },
+  {
+   "name": "伤感慢板 70",
+   "id": "bgm.sad_slow.01",
+   "file": "sad_slow_70bpm.mp3",
+   "durationSec": 27.4,
+   "bpm": 70,
+   "mood": "悲伤/深度",
+   "pacingFit": [
+    "slow"
+   ],
+   "gainHintDb": -20,
+   "commercial": true
+  },
+  {
+   "name": "闲适慢摇 85",
+   "id": "bgm.chill_slow.01",
+   "file": "chill_slow_85bpm.mp3",
+   "durationSec": 22.6,
+   "bpm": 85,
+   "mood": "闲适/生活",
+   "pacingFit": [
+    "slow",
+    "normal"
+   ],
+   "gainHintDb": -20,
+   "commercial": true
+  },
+  {
+   "name": "明亮卡点 128",
+   "id": "bgm.bright_music.01",
+   "file": "bright_music_128bpm.mp3",
+   "durationSec": 18.7,
+   "bpm": 128,
+   "mood": "明亮/卡点",
+   "pacingFit": [
+    "music",
+    "fast"
+   ],
+   "gainHintDb": -12,
+   "commercial": true
+  }
+ ]
 }

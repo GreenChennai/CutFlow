@@ -1,0 +1,11 @@
+{
+ "id": "huazi.card.stat.rise",
+ "label": "进阶卡·数据跃升",
+ "ratio": "9x16",
+ "effect": "stat",
+ "usage": [
+  "punchline"
+ ],
+ "medium": "artboard-card",
+ "renderVia": "rs_artboard"
+}

@@ -1,0 +1,11 @@
+{
+ "id": "huazi.card.section.tab",
+ "label": "进阶卡·章节斜切",
+ "ratio": "9x16",
+ "effect": "tab",
+ "usage": [
+  "chapter"
+ ],
+ "medium": "artboard-card",
+ "renderVia": "rs_artboard"
+}

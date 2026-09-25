@@ -1,0 +1,3452 @@
+{
+ "assets": [
+  {
+   "aiGenerated": false,
+   "attribution": "Mixkit (mixkit.co/free-sound-effects/)",
+   "commercial": true,
+   "durationMs": 199,
+   "file": "sfx/whoosh_01.mp3",
+   "gainHintDb": -12,
+   "id": "sfx.whoosh.01",
+   "kind": "sfx",
+   "label": "转场呼啸",
+   "license": "Mixkit Sound Effects Free License",
+   "sha256": "1b41ec99c2791eb1d292e0f1b09355a3cf0c184db42458d34cd041e249951e4b",
+   "source": "Mixkit",
+   "tags": [
+    "转场",
+    "冲击",
+    "卡片"
+   ],
+   "usage": [
+    "transition"
+   ]
+  },
+  {
+   "aiGenerated": false,
+   "attribution": "Mixkit (mixkit.co/free-sound-effects/)",
+   "commercial": true,
+   "durationMs": 1390,
+   "file": "sfx/swipe_01.mp3",
+   "gainHintDb": -12,
+   "id": "sfx.swipe.01",
+   "kind": "sfx",
+   "label": "快速滑切",
+   "license": "Mixkit Sound Effects Free License",
+   "sha256": "e702dc99aac9ba1b9a12416068606e6c4c3fc4c7896555bed490745373df0d76",
+   "source": "Mixkit",
+   "tags": [
+    "转场",
+    "快速",
+    "滑动"
+   ],
+   "usage": [
+    "transition"
+   ]
+  },
+  {
+   "aiGenerated": false,
+   "attribution": "Mixkit (mixkit.co/free-sound-effects/)",
+   "commercial": true,
+   "durationMs": 1100,
+   "file": "sfx/pop_01.mp3",
+   "gainHintDb": -12,
+   "id": "sfx.pop.01",
+   "kind": "sfx",
+   "label": "弹出强调",
+   "license": "Mixkit Sound Effects Free License",
+   "sha256": "591d7273938a10f65e064a5a8577a655c72bbf7d13ef3ce625dfcffa860ec879",
+   "source": "Mixkit",
+   "tags": [
+    "强调",
+    "弹出",
+    "列举"
+   ],
+   "usage": [
+    "enumeration",
+    "punchline"
+   ]
+  },
+  {
+   "aiGenerated": false,
+   "attribution": "Mixkit (mixkit.co/free-sound-effects/)",
+   "commercial": true,
+   "durationMs": 231,
+   "file": "sfx/ding_01.mp3",
+   "gainHintDb": -12,
+   "id": "sfx.ding.01",
+   "kind": "sfx",
+   "label": "提示叮",
+   "license": "Mixkit Sound Effects Free License",
+   "sha256": "4a9cfb64097b15c9ecd3338012c4e213c99a5a22b62ed04c5c3dd248c4fd0faa",
+   "source": "Mixkit",
+   "tags": [
+    "强调",
+    "关键词",
+    "正确"
+   ],
+   "usage": [
+    "punchline"
+   ]
+  },
+  {
+   "aiGenerated": false,
+   "attribution": "Mixkit (mixkit.co/free-sound-effects/)",
+   "commercial": true,
+   "durationMs": 1108,
+   "file": "sfx/bell_01.mp3",
+   "gainHintDb": -14,
+   "id": "sfx.bell.01",
+   "kind": "sfx",
+   "label": "章节铃",
+   "license": "Mixkit Sound Effects Free License",
+   "sha256": "1500327ee39666f8be0dede91b3e76b6762d61dfcf52e1d05e81d56e1d09ec2a",
+   "source": "Mixkit",
+   "tags": [
+    "章节",
+    "提醒",
+    "收尾"
+   ],
+   "usage": [
+    "chapter",
+    "ending"
+   ]
+  },
+  {
+   "aiGenerated": false,
+   "attribution": "Mixkit (mixkit.co/free-sound-effects/)",
+   "commercial": true,
+   "durationMs": 2000,
+   "file": "sfx/click_01.mp3",
+   "gainHintDb": -14,
+   "id": "sfx.click.01",
+   "kind": "sfx",
+   "label": "点击",
+   "license": "Mixkit Sound Effects Free License",
+   "sha256": "564e8abef3c91aa3c25c44864df97c80be9da9446bd9f35d5baf861fdfa11cdb",
+   "source": "Mixkit",
+   "tags": [
+    "列举",
+    "点击",
+    "步骤"
+   ],
+   "usage": [
+    "enumeration"
+   ]
+  },
+  {
+   "aiGenerated": false,
+   "attribution": "Mixkit (mixkit.co/free-sound-effects/)",
+   "commercial": true,
+   "durationMs": 2739,
+   "file": "sfx/riser_01.mp3",
+   "gainHintDb": -14,
+   "id": "sfx.riser.01",
+   "kind": "sfx",
+   "label": "悬念上扫",
+   "license": "Mixkit Sound Effects Free License",
+   "sha256": "61affdb18671c7216eb6c6b6b52844bd15665654ce7fbb117a96f2a709de2e2b",
+   "source": "Mixkit",
+   "tags": [
+    "章节",
+    "悬念",
+    "铺垫"
+   ],
+   "usage": [
+    "chapter",
+    "transition"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 700,
+   "file": "sfx/whoosh_02.mp3",
+   "gainHintDb": -12,
+   "id": "sfx.whoosh.02",
+   "kind": "sfx",
+   "label": "呼啸上行",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "0cb2ca9126f622380549cd179a0672a1909492ce5d7f7e92465b3c6d8930fb94",
+   "source": "自产",
+   "tags": [
+    "转场",
+    "上行",
+    "快节奏"
+   ],
+   "usage": [
+    "transition"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 700,
+   "file": "sfx/whoosh_03.mp3",
+   "gainHintDb": -12,
+   "id": "sfx.whoosh.03",
+   "kind": "sfx",
+   "label": "呼啸下行",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "e6924e51bbd9864498b920ca763aebbc13ac726f205b91ebee3453477014285a",
+   "source": "自产",
+   "tags": [
+    "转场",
+    "下行",
+    "落版"
+   ],
+   "usage": [
+    "transition"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 800,
+   "file": "sfx/whoosh_04.mp3",
+   "gainHintDb": -12,
+   "id": "sfx.whoosh.04",
+   "kind": "sfx",
+   "label": "呼啸横扫",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "3a953e9ed9e9b6b4c3ca73c261e525c6b18027ea5a2619abbb287ffa30500d8d",
+   "source": "自产",
+   "tags": [
+    "转场",
+    "横移",
+    "滑动"
+   ],
+   "usage": [
+    "transition"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 900,
+   "file": "sfx/impact_01.mp3",
+   "gainHintDb": -12,
+   "id": "sfx.impact.01",
+   "kind": "sfx",
+   "label": "数据冲击",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "ea2c0a5524c406240aa3ddfab0b8a6b0a20cc6d2cfd7741813d61c189f7ea5b4",
+   "source": "自产",
+   "tags": [
+    "强调",
+    "数据",
+    "重击"
+   ],
+   "usage": [
+    "punchline",
+    "chapter"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 450,
+   "file": "sfx/glitch_01.mp3",
+   "gainHintDb": -14,
+   "id": "sfx.glitch.01",
+   "kind": "sfx",
+   "label": "数字毛刺",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "898e86bddb7dc8b61515f2428b15e083d8c948c1554e3c20c342490ab2ebbb82",
+   "source": "自产",
+   "tags": [
+    "转场",
+    "科技",
+    "故障"
+   ],
+   "usage": [
+    "transition"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 1100,
+   "file": "sfx/chime_01.mp3",
+   "gainHintDb": -14,
+   "id": "sfx.chime.01",
+   "kind": "sfx",
+   "label": "上行风铃",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "4aa15c51c9d323fe26037fa5eda3b26b6a29b531a6b40a992062c371da85e701",
+   "source": "自产",
+   "tags": [
+    "章节",
+    "轻快",
+    "提示"
+   ],
+   "usage": [
+    "chapter",
+    "punchline"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 1300,
+   "file": "sfx/tada_01.mp3",
+   "gainHintDb": -12,
+   "id": "sfx.tada.01",
+   "kind": "sfx",
+   "label": "亮相和弦",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "b30e327fae7984c7e1ad31e339dec956aeb2474c9627657a3cfc7eca3c0d9845",
+   "source": "自产",
+   "tags": [
+    "强调",
+    "亮相",
+    "喜庆"
+   ],
+   "usage": [
+    "punchline",
+    "chapter"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 900,
+   "file": "sfx/sparkle_01.mp3",
+   "gainHintDb": -14,
+   "id": "sfx.sparkle.01",
+   "kind": "sfx",
+   "label": "星芒闪烁",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "3d43421ce14e9c0ff5c0c8f3d42891bf4416a58c0bc11fed48d7cb10801ad09c",
+   "source": "自产",
+   "tags": [
+    "强调",
+    "闪亮",
+    "可爱"
+   ],
+   "usage": [
+    "punchline",
+    "decor"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 1000,
+   "file": "sfx/duang_01.mp3",
+   "gainHintDb": -12,
+   "id": "sfx.duang.01",
+   "kind": "sfx",
+   "label": "弹簧咚",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "6c09dc098bc39692bdf036283127c2489b0e9196b6668bb421f7da18989e5875",
+   "source": "自产",
+   "tags": [
+    "强调",
+    "数据",
+    "搞笑"
+   ],
+   "usage": [
+    "punchline"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 900,
+   "file": "sfx/magic_01.mp3",
+   "gainHintDb": -14,
+   "id": "sfx.magic.01",
+   "kind": "sfx",
+   "label": "魔法上行",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "5f2b4767b5f1e0587ad38b78387c4327857df190d31d9ba6ac9ccf5145d751de",
+   "source": "自产",
+   "tags": [
+    "强调",
+    "魔法",
+    "上行"
+   ],
+   "usage": [
+    "punchline",
+    "chapter"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 80,
+   "file": "sfx/tick_01.mp3",
+   "gainHintDb": -16,
+   "id": "sfx.tick.01",
+   "kind": "sfx",
+   "label": "秒针嗒",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "04e00193ce3d6165a9286f2d493492931e547322bff2cef0d1eb41a3b2a7e881",
+   "source": "自产",
+   "tags": [
+    "列举",
+    "计时",
+    "步骤"
+   ],
+   "usage": [
+    "enumeration"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 120,
+   "file": "sfx/tap_01.mp3",
+   "gainHintDb": -16,
+   "id": "sfx.tap.01",
+   "kind": "sfx",
+   "label": "软敲",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "e967859c94ec46c789b1cf52b76c4447259fe7c016906b5511fe26f08195eeb5",
+   "source": "自产",
+   "tags": [
+    "列举",
+    "轻点",
+    "UI"
+   ],
+   "usage": [
+    "enumeration",
+    "ui"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 220,
+   "file": "sfx/toggle_01.mp3",
+   "gainHintDb": -16,
+   "id": "sfx.toggle.01",
+   "kind": "sfx",
+   "label": "开关切换",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "f6c751ea990cb39475cb37d4ffe906f60d8286ed690b832d9521bddd44deeb5c",
+   "source": "自产",
+   "tags": [
+    "列举",
+    "切换",
+    "对比"
+   ],
+   "usage": [
+    "enumeration"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 140,
+   "file": "sfx/typewriter_01.mp3",
+   "gainHintDb": -16,
+   "id": "sfx.typewriter.01",
+   "kind": "sfx",
+   "label": "打字机",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "028d5e8dfa7de1888a8136dac5ed4eb5f7c52f516ada2640e44c1695031d68e6",
+   "source": "自产",
+   "tags": [
+    "列举",
+    "打字",
+    "字幕"
+   ],
+   "usage": [
+    "enumeration"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 1600,
+   "file": "sfx/heartbeat_01.mp3",
+   "gainHintDb": -12,
+   "id": "sfx.heartbeat.01",
+   "kind": "sfx",
+   "label": "心跳",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "f859c372d9fce0e716a5f20be9ab055f1152f7a49e679abdc8b069c95ef54294",
+   "source": "自产",
+   "tags": [
+    "情绪",
+    "紧张",
+    "低谷"
+   ],
+   "usage": [
+    "emotion"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 2200,
+   "file": "sfx/tension_01.mp3",
+   "gainHintDb": -14,
+   "id": "sfx.tension.01",
+   "kind": "sfx",
+   "label": "紧张音簇",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "5c2fcb6e23643071bed19f7db6882666231e8d23ffe7663b7f7f9d3f1daa5670",
+   "source": "自产",
+   "tags": [
+    "情绪",
+    "紧张",
+    "悬念"
+   ],
+   "usage": [
+    "emotion"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 1400,
+   "file": "sfx/sad_hit_01.mp3",
+   "gainHintDb": -14,
+   "id": "sfx.sad_hit.01",
+   "kind": "sfx",
+   "label": "伤感下行",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "e604134a6c5f7a9b44d0e2e0dfe4b38aee9e081c5c2bdcbad3941212228e8d37",
+   "source": "自产",
+   "tags": [
+    "情绪",
+    "悲伤",
+    "落泪点"
+   ],
+   "usage": [
+    "emotion"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 1600,
+   "file": "sfx/warm_up_01.mp3",
+   "gainHintDb": -16,
+   "id": "sfx.warm_up.01",
+   "kind": "sfx",
+   "label": "暖意升起",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "c0e2ab8a5e8277c3f0ba941da0b4a729f6ddad035b02087ab257cfe64d2486a0",
+   "source": "自产",
+   "tags": [
+    "情绪",
+    "温暖",
+    "正向"
+   ],
+   "usage": [
+    "emotion"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 1300,
+   "file": "sfx/sigh_01.mp3",
+   "gainHintDb": -16,
+   "id": "sfx.sigh.01",
+   "kind": "sfx",
+   "label": "叹气",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "ca93d4cc7730d4fad9acac29cc5c0c9bba25385709b1c4e0447816d5b1bb475e",
+   "source": "自产",
+   "tags": [
+    "情绪",
+    "失落",
+    "转折"
+   ],
+   "usage": [
+    "emotion"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 2500,
+   "file": "sfx/drone_01.mp3",
+   "gainHintDb": -18,
+   "id": "sfx.drone.01",
+   "kind": "sfx",
+   "label": "低吟铺底",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "f34d2f930dd04c8b574420cd678041fa86fedfcfc6b2e8fcb825a2d6e99b2831",
+   "source": "自产",
+   "tags": [
+    "情绪",
+    "氛围",
+    "深度"
+   ],
+   "usage": [
+    "emotion",
+    "chapter"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 2000,
+   "file": "sfx/applause_01.mp3",
+   "gainHintDb": -12,
+   "id": "sfx.applause.01",
+   "kind": "sfx",
+   "label": "掌声",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "92ead1e28b12b9dcb53a500a87ecee4c1a101a21f0b4156ae5424d687890230b",
+   "source": "自产",
+   "tags": [
+    "综艺",
+    "掌声",
+    "喝彩"
+   ],
+   "usage": [
+    "punchline",
+    "ending"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 2200,
+   "file": "sfx/crowd_cheer_01.mp3",
+   "gainHintDb": -12,
+   "id": "sfx.crowd_cheer.01",
+   "kind": "sfx",
+   "label": "人群欢呼(合成模拟)",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "6079417e53efe66ac4cb3706bbc516d136820b57c97e5e60781ca08d67997639",
+   "source": "自产",
+   "tags": [
+    "综艺",
+    "欢呼",
+    "人群"
+   ],
+   "usage": [
+    "punchline",
+    "ending"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 1500,
+   "file": "sfx/boo_01.mp3",
+   "gainHintDb": -14,
+   "id": "sfx.boo.01",
+   "kind": "sfx",
+   "label": "嘘声(合成模拟)",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "7bcd1cc0e9fd64593d55c092731d692e264c4160ec3b8bd001d2da2da255d860",
+   "source": "自产",
+   "tags": [
+    "综艺",
+    "嘘声",
+    "反差"
+   ],
+   "usage": [
+    "punchline"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 800,
+   "file": "sfx/surprise_01.mp3",
+   "gainHintDb": -12,
+   "id": "sfx.surprise.01",
+   "kind": "sfx",
+   "label": "惊讶哇哦",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "ad29217702293588751d5c34d9c6e7601cda45cfbeccf16ee4983ea19df9b1cc",
+   "source": "自产",
+   "tags": [
+    "综艺",
+    "惊讶",
+    "转折"
+   ],
+   "usage": [
+    "punchline"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 1800,
+   "file": "sfx/drumroll_01.mp3",
+   "gainHintDb": -12,
+   "id": "sfx.drumroll.01",
+   "kind": "sfx",
+   "label": "滚奏鼓点",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "c20df6cb6be77113c2bff428d5ff23c3be7d270313bf2f8e1d0ef4335a93a0a8",
+   "source": "自产",
+   "tags": [
+    "综艺",
+    "悬念",
+    "揭晓"
+   ],
+   "usage": [
+    "chapter",
+    "punchline"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 900,
+   "file": "sfx/gavel_01.mp3",
+   "gainHintDb": -12,
+   "id": "sfx.gavel.01",
+   "kind": "sfx",
+   "label": "法槌定音",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "cc182fec8b4fa60f5fb55a286ba62f4283362a55c613177f9f9747e00d3c925b",
+   "source": "自产",
+   "tags": [
+    "综艺",
+    "定论",
+    "敲定"
+   ],
+   "usage": [
+    "punchline",
+    "ending"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 3000,
+   "file": "sfx/wind_01.mp3",
+   "gainHintDb": -18,
+   "id": "sfx.wind.01",
+   "kind": "sfx",
+   "label": "风声",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "1354c690b355a9c90c98cc3c4ae268d941df8ffb779b7ed9f6d1c333aa7cb274",
+   "source": "自产",
+   "tags": [
+    "环境",
+    "风",
+    "户外"
+   ],
+   "usage": [
+    "decor",
+    "emotion"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 3000,
+   "file": "sfx/rain_01.mp3",
+   "gainHintDb": -18,
+   "id": "sfx.rain.01",
+   "kind": "sfx",
+   "label": "雨声",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "43909a617f5f8bc25df72101f528f9188c284bf1166478e0a6f406ec02865cf7",
+   "source": "自产",
+   "tags": [
+    "环境",
+    "雨",
+    "安静"
+   ],
+   "usage": [
+    "decor",
+    "emotion"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 3000,
+   "file": "sfx/city_01.mp3",
+   "gainHintDb": -20,
+   "id": "sfx.city.01",
+   "kind": "sfx",
+   "label": "城市底噪",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "b55186ee7595784be508a84f660206bcf99fe7d20e957885d3495426a7b1049c",
+   "source": "自产",
+   "tags": [
+    "环境",
+    "城市",
+    "vlog"
+   ],
+   "usage": [
+    "decor"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 3000,
+   "file": "sfx/room_tone_01.mp3",
+   "gainHintDb": -24,
+   "id": "sfx.room_tone.01",
+   "kind": "sfx",
+   "label": "室内底噪",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "1e77ca5743288c8850c651d489e50de683990c999364f7e461e3aab92fc154ea",
+   "source": "自产",
+   "tags": [
+    "环境",
+    "室内",
+    "铺底"
+   ],
+   "usage": [
+    "decor"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 2800,
+   "file": "sfx/outro_bell_01.mp3",
+   "gainHintDb": -12,
+   "id": "sfx.outro_bell.01",
+   "kind": "sfx",
+   "label": "片尾钟",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "2e24d40ba7004933132cf45aa9bf02abee582b38db6ffcd7ce5f2518d2f7cf50",
+   "source": "自产",
+   "tags": [
+    "收尾",
+    "片尾",
+    "定格"
+   ],
+   "usage": [
+    "ending"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 2000,
+   "file": "sfx/fade_riser_01.mp3",
+   "gainHintDb": -14,
+   "id": "sfx.fade_riser.01",
+   "kind": "sfx",
+   "label": "渐隐上扫",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "1ddc39b746745b99e53f3fd26f2ca5b179a046358a254244395329f22331cd6f",
+   "source": "自产",
+   "tags": [
+    "收尾",
+    "预告",
+    "悬念"
+   ],
+   "usage": [
+    "ending",
+    "chapter"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 2200,
+   "file": "sfx/end_sting_01.mp3",
+   "gainHintDb": -12,
+   "id": "sfx.end_sting.01",
+   "kind": "sfx",
+   "label": "终结和弦",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "22d44f64cade4958f9caaa239dc59353a56a8d0d89be9b2378b8b2b72c630526",
+   "source": "自产",
+   "tags": [
+    "收尾",
+    "定格",
+    "落版"
+   ],
+   "usage": [
+    "ending"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "attribution": "CutFlow 自产合成,无需归因",
+   "bpm": 140,
+   "commercial": true,
+   "durationMs": 28800,
+   "durationSec": 28.8,
+   "file": "bgm/pulse_rhythm_140bpm.mp3",
+   "gainHintDb": -12,
+   "id": "bgm.pulse.01",
+   "kind": "bgm",
+   "label": "脉冲节奏 140",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "mood": "节奏驱动/高燃",
+   "pacingFit": [
+    "music",
+    "fast"
+   ],
+   "sha256": "1f37d0af4f7cd4883ac80333ed06653644fa8d12d4e550274c2daedaa3712fa6",
+   "source": "自产",
+   "tags": [
+    "混剪",
+    "卡点",
+    "高燃"
+   ],
+   "usage": [
+    "emotion"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "attribution": "CutFlow 自产合成,无需归因",
+   "bpm": 120,
+   "commercial": true,
+   "durationMs": 32000,
+   "durationSec": 32.0,
+   "file": "bgm/warm_pad_120bpm.mp3",
+   "gainHintDb": -18,
+   "id": "bgm.warm_pad.01",
+   "kind": "bgm",
+   "label": "暖垫 120",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "mood": "温暖铺底/正向",
+   "pacingFit": [
+    "fast",
+    "normal"
+   ],
+   "sha256": "7c09c348b8a4c258f58fbec7a2104db15a51d741901d192c495d677f7f75b8e4",
+   "source": "自产",
+   "tags": [
+    "知识口播",
+    "温暖",
+    "正向"
+   ],
+   "usage": [
+    "emotion"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "attribution": "CutFlow 自产合成,无需归因",
+   "bpm": 100,
+   "commercial": true,
+   "durationMs": 36000,
+   "durationSec": 36.0,
+   "file": "bgm/lofi_groove_100bpm.mp3",
+   "gainHintDb": -18,
+   "id": "bgm.lofi.01",
+   "kind": "bgm",
+   "label": "LoFi 慢摇 100",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "mood": "松弛/生活感",
+   "pacingFit": [
+    "normal"
+   ],
+   "sha256": "41615187d438ef5e2d98badfcce768977257b5fdfb732f0443584ccb0b02822b",
+   "source": "自产",
+   "tags": [
+    "vlog",
+    "松弛",
+    "生活感"
+   ],
+   "usage": [
+    "emotion"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "attribution": "CutFlow 自产合成,无需归因",
+   "bpm": 90,
+   "commercial": true,
+   "durationMs": 40000,
+   "durationSec": 40.0,
+   "file": "bgm/ambient_calm_90bpm.mp3",
+   "gainHintDb": -20,
+   "id": "bgm.ambient.01",
+   "kind": "bgm",
+   "label": "氛围低吟 90",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "mood": "安静/深度",
+   "pacingFit": [
+    "slow"
+   ],
+   "sha256": "5bbd70de85dea437b2caa131c0fbe00b5659966b715c5ebf2841e7f506ed10f7",
+   "source": "自产",
+   "tags": [
+    "教程",
+    "深度",
+    "安静"
+   ],
+   "usage": [
+    "emotion"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "attribution": "CutFlow 自产合成,无需归因",
+   "bpm": 128,
+   "commercial": true,
+   "durationMs": 18749,
+   "durationSec": 18.7,
+   "file": "bgm/bright_fast_128bpm.mp3",
+   "gainHintDb": -12,
+   "id": "bgm.bright_fast.01",
+   "kind": "bgm",
+   "label": "明亮快线 128",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "mood": "明亮/轻快",
+   "pacingFit": [
+    "fast",
+    "music"
+   ],
+   "sha256": "033109c19204a9d90259e2a0b38c900c8161c7c1b836f62b4852973728533f63",
+   "source": "自产",
+   "tags": [
+    "快节奏",
+    "明亮",
+    "种草"
+   ],
+   "usage": [
+    "emotion"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "attribution": "CutFlow 自产合成,无需归因",
+   "bpm": 132,
+   "commercial": true,
+   "durationMs": 18182,
+   "durationSec": 18.2,
+   "file": "bgm/tech_fast_132bpm.mp3",
+   "gainHintDb": -12,
+   "id": "bgm.tech_fast.01",
+   "kind": "bgm",
+   "label": "科技脉冲 132",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "mood": "科技/紧凑",
+   "pacingFit": [
+    "fast",
+    "music"
+   ],
+   "sha256": "fee8f978db61dd191dece03b15e43225efc5e4de08d3172b869740f85a8e6b58",
+   "source": "自产",
+   "tags": [
+    "科技",
+    "数码",
+    "评测"
+   ],
+   "usage": [
+    "emotion"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "attribution": "CutFlow 自产合成,无需归因",
+   "bpm": 140,
+   "commercial": true,
+   "durationMs": 17143,
+   "durationSec": 17.1,
+   "file": "bgm/drive_fast_140bpm.mp3",
+   "gainHintDb": -12,
+   "id": "bgm.drive_fast.01",
+   "kind": "bgm",
+   "label": "鼓动驱动 140",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "mood": "鼓动/热血",
+   "pacingFit": [
+    "fast",
+    "music"
+   ],
+   "sha256": "774f5df7fb3bb95073021a82f973c0317eaad94e4a5f3d2f60a2a431da4e0b15",
+   "source": "自产",
+   "tags": [
+    "热血",
+    "运动",
+    "燃"
+   ],
+   "usage": [
+    "emotion"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "attribution": "CutFlow 自产合成,无需归因",
+   "bpm": 110,
+   "commercial": true,
+   "durationMs": 17454,
+   "durationSec": 17.5,
+   "file": "bgm/tension_normal_110bpm.mp3",
+   "gainHintDb": -18,
+   "id": "bgm.tension.01",
+   "kind": "bgm",
+   "label": "紧张脉冲 110",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "mood": "紧张/压迫",
+   "pacingFit": [
+    "normal",
+    "fast",
+    "music"
+   ],
+   "sha256": "c12987b71d843b7e7c46bdf4b7b0836158a876937c9e40e9b1e06c757ca7533c",
+   "source": "自产",
+   "tags": [
+    "紧张",
+    "悬疑",
+    "冲突"
+   ],
+   "usage": [
+    "emotion"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "attribution": "CutFlow 自产合成,无需归因",
+   "bpm": 95,
+   "commercial": true,
+   "durationMs": 20210,
+   "durationSec": 20.2,
+   "file": "bgm/suspense_normal_95bpm.mp3",
+   "gainHintDb": -18,
+   "id": "bgm.suspense.01",
+   "kind": "bgm",
+   "label": "悬疑铺陈 95",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "mood": "悬疑/探究",
+   "pacingFit": [
+    "normal"
+   ],
+   "sha256": "cccb8193fe524259c4cbd726995316c0217658f3a5de12a74d2d4ad72ced6bbf",
+   "source": "自产",
+   "tags": [
+    "悬疑",
+    "解密",
+    "叙事"
+   ],
+   "usage": [
+    "emotion"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "attribution": "CutFlow 自产合成,无需归因",
+   "bpm": 80,
+   "commercial": true,
+   "durationMs": 24000,
+   "durationSec": 24.0,
+   "file": "bgm/sad_normal_80bpm.mp3",
+   "gainHintDb": -18,
+   "id": "bgm.sad.01",
+   "kind": "bgm",
+   "label": "叙事伤感 80",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "mood": "悲伤/叙事",
+   "pacingFit": [
+    "normal",
+    "slow"
+   ],
+   "sha256": "1f34e78ce5be6c515e50d19a46afc252e9b9d015b16e1e974e9f6dce0ec665b7",
+   "source": "自产",
+   "tags": [
+    "伤感",
+    "故事",
+    "情感号"
+   ],
+   "usage": [
+    "emotion"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "attribution": "CutFlow 自产合成,无需归因",
+   "bpm": 105,
+   "commercial": true,
+   "durationMs": 20571,
+   "durationSec": 20.6,
+   "file": "bgm/bright_normal_105bpm.mp3",
+   "gainHintDb": -18,
+   "id": "bgm.bright.01",
+   "kind": "bgm",
+   "label": "明亮轻快 105",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "mood": "明亮/日常",
+   "pacingFit": [
+    "normal"
+   ],
+   "sha256": "fecc5c361098abf7aabf855329ff59a858bbfe7d352705247342b6d27fc2fd70",
+   "source": "自产",
+   "tags": [
+    "日常",
+    "轻快",
+    "知识口播"
+   ],
+   "usage": [
+    "emotion"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "attribution": "CutFlow 自产合成,无需归因",
+   "bpm": 112,
+   "commercial": true,
+   "durationMs": 19286,
+   "durationSec": 19.3,
+   "file": "bgm/tech_normal_112bpm.mp3",
+   "gainHintDb": -18,
+   "id": "bgm.tech.01",
+   "kind": "bgm",
+   "label": "科技中速 112",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "mood": "科技/理性",
+   "pacingFit": [
+    "normal",
+    "music"
+   ],
+   "sha256": "882b26259a5fc2e8daacb4cff6339c7f8b80f6a84c2d7cf39816be57ff3ef0f5",
+   "source": "自产",
+   "tags": [
+    "科技",
+    "教程",
+    "演示"
+   ],
+   "usage": [
+    "emotion"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "attribution": "CutFlow 自产合成,无需归因",
+   "bpm": 75,
+   "commercial": true,
+   "durationMs": 25600,
+   "durationSec": 25.6,
+   "file": "bgm/warm_slow_75bpm.mp3",
+   "gainHintDb": -20,
+   "id": "bgm.warm_slow.01",
+   "kind": "bgm",
+   "label": "温暖慢板 75",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "mood": "温暖/治愈",
+   "pacingFit": [
+    "slow"
+   ],
+   "sha256": "88eeb702b8a4d5440577039657d25e8d0830bde38a41c616f588a19f8052c8af",
+   "source": "自产",
+   "tags": [
+    "治愈",
+    "温暖",
+    "慢节奏"
+   ],
+   "usage": [
+    "emotion"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "attribution": "CutFlow 自产合成,无需归因",
+   "bpm": 70,
+   "commercial": true,
+   "durationMs": 27429,
+   "durationSec": 27.4,
+   "file": "bgm/sad_slow_70bpm.mp3",
+   "gainHintDb": -20,
+   "id": "bgm.sad_slow.01",
+   "kind": "bgm",
+   "label": "伤感慢板 70",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "mood": "悲伤/深度",
+   "pacingFit": [
+    "slow"
+   ],
+   "sha256": "31a25ef6fa56710ffbcff4204e6aeb3e3583d928633bc2557da4355ad249a730",
+   "source": "自产",
+   "tags": [
+    "伤感",
+    "深度",
+    "人物"
+   ],
+   "usage": [
+    "emotion"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "attribution": "CutFlow 自产合成,无需归因",
+   "bpm": 85,
+   "commercial": true,
+   "durationMs": 22588,
+   "durationSec": 22.6,
+   "file": "bgm/chill_slow_85bpm.mp3",
+   "gainHintDb": -20,
+   "id": "bgm.chill_slow.01",
+   "kind": "bgm",
+   "label": "闲适慢摇 85",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "mood": "闲适/生活",
+   "pacingFit": [
+    "slow",
+    "normal"
+   ],
+   "sha256": "9007d458cc30071a033cd7d255c44ccb927038c2f7c8b33c814051b6eee5e974",
+   "source": "自产",
+   "tags": [
+    "闲适",
+    "生活",
+    "vlog"
+   ],
+   "usage": [
+    "emotion"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "attribution": "CutFlow 自产合成,无需归因",
+   "bpm": 128,
+   "commercial": true,
+   "durationMs": 18749,
+   "durationSec": 18.7,
+   "file": "bgm/bright_music_128bpm.mp3",
+   "gainHintDb": -12,
+   "id": "bgm.bright_music.01",
+   "kind": "bgm",
+   "label": "明亮卡点 128",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "mood": "明亮/卡点",
+   "pacingFit": [
+    "music",
+    "fast"
+   ],
+   "sha256": "27f79176c4c57dd5780dbc2b6133c7158dea25facf0a2ff1d3a856669b26cb9a",
+   "source": "自产",
+   "tags": [
+    "混剪",
+    "卡点",
+    "明亮"
+   ],
+   "usage": [
+    "emotion"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "anchorHint": "center",
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 0,
+   "file": "elements/png/badge_new.png",
+   "gainHintDb": 0,
+   "id": "element.badge.new",
+   "kind": "element",
+   "label": "NEW 星爆角标",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "3d42f68c3ff91a7fdf632c1b77c5b5f64cf587b2c7632b28b2ffc8a3b84e001a",
+   "sizeHint": {
+    "base": "2x",
+    "h1x": 120,
+    "h2x": 240,
+    "h3x": 360,
+    "w1x": 120,
+    "w2x": 240,
+    "w3x": 360
+   },
+   "source": "自产",
+   "tags": [
+    "角标",
+    "上新",
+    "促销"
+   ],
+   "usage": [
+    "decor"
+   ],
+   "variants": [
+    "elements/png/badge_new@1x.png",
+    "elements/png/badge_new@3x.png"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "anchorHint": "center",
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 0,
+   "file": "elements/png/badge_hot.png",
+   "gainHintDb": 0,
+   "id": "element.badge.hot",
+   "kind": "element",
+   "label": "HOT 火焰角标",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "596d31da405cf46383764f9b07874f4987982abb6b3265ba5368756deeafd95a",
+   "sizeHint": {
+    "base": "2x",
+    "h1x": 120,
+    "h2x": 240,
+    "h3x": 360,
+    "w1x": 120,
+    "w2x": 240,
+    "w3x": 360
+   },
+   "source": "自产",
+   "tags": [
+    "角标",
+    "热门",
+    "爆款"
+   ],
+   "usage": [
+    "decor"
+   ],
+   "variants": [
+    "elements/png/badge_hot@1x.png",
+    "elements/png/badge_hot@3x.png"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "anchorHint": "center",
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 0,
+   "file": "elements/png/badge_top1.png",
+   "gainHintDb": 0,
+   "id": "element.badge.top1",
+   "kind": "element",
+   "label": "TOP1 皇冠角标",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "19f67f3ba32837d31ee2fd2923d7cfeb61f9871b8afb667613733d0a29d7a019",
+   "sizeHint": {
+    "base": "2x",
+    "h1x": 120,
+    "h2x": 240,
+    "h3x": 360,
+    "w1x": 120,
+    "w2x": 240,
+    "w3x": 360
+   },
+   "source": "自产",
+   "tags": [
+    "角标",
+    "排名",
+    "第一"
+   ],
+   "usage": [
+    "decor"
+   ],
+   "variants": [
+    "elements/png/badge_top1@1x.png",
+    "elements/png/badge_top1@3x.png"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "anchorHint": "center",
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 0,
+   "file": "elements/png/badge_limited.png",
+   "gainHintDb": 0,
+   "id": "element.badge.limited",
+   "kind": "element",
+   "label": "限时钟环角标",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "f4129e3c00aa5106ef0057a31da8cd3e0e34fb335f2bfa2e5dd5821ffc2b3673",
+   "sizeHint": {
+    "base": "2x",
+    "h1x": 120,
+    "h2x": 240,
+    "h3x": 360,
+    "w1x": 120,
+    "w2x": 240,
+    "w3x": 360
+   },
+   "source": "自产",
+   "tags": [
+    "角标",
+    "限时",
+    "紧迫"
+   ],
+   "usage": [
+    "decor"
+   ],
+   "variants": [
+    "elements/png/badge_limited@1x.png",
+    "elements/png/badge_limited@3x.png"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "anchorHint": "center",
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 0,
+   "file": "elements/png/badge_recommend.png",
+   "gainHintDb": 0,
+   "id": "element.badge.recommend",
+   "kind": "element",
+   "label": "推荐拇指角标",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "a12aefb7fd66d61b68e38246e9534bdca29c88266f0efbd6c698af9dc708e27a",
+   "sizeHint": {
+    "base": "2x",
+    "h1x": 120,
+    "h2x": 240,
+    "h3x": 360,
+    "w1x": 120,
+    "w2x": 240,
+    "w3x": 360
+   },
+   "source": "自产",
+   "tags": [
+    "角标",
+    "推荐",
+    "好评"
+   ],
+   "usage": [
+    "decor"
+   ],
+   "variants": [
+    "elements/png/badge_recommend@1x.png",
+    "elements/png/badge_recommend@3x.png"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "anchorHint": "center",
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 0,
+   "file": "elements/png/badge_mustsee.png",
+   "gainHintDb": 0,
+   "id": "element.badge.mustsee",
+   "kind": "element",
+   "label": "必看闪电角标",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "8e65280d73d782cb1063ea37f83b05e485fc540b9f3c6933a0a3daac6e2deb02",
+   "sizeHint": {
+    "base": "2x",
+    "h1x": 120,
+    "h2x": 240,
+    "h3x": 360,
+    "w1x": 120,
+    "w2x": 240,
+    "w3x": 360
+   },
+   "source": "自产",
+   "tags": [
+    "角标",
+    "必看",
+    "重点"
+   ],
+   "usage": [
+    "decor"
+   ],
+   "variants": [
+    "elements/png/badge_mustsee@1x.png",
+    "elements/png/badge_mustsee@3x.png"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "anchorHint": "center",
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 0,
+   "file": "elements/png/badge_drygoods.png",
+   "gainHintDb": 0,
+   "id": "element.badge.drygoods",
+   "kind": "element",
+   "label": "干货书本角标",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "19a7cad44abec333405b31cb1e9e8af876535bbe4fe2610b82786ccbb0962173",
+   "sizeHint": {
+    "base": "2x",
+    "h1x": 120,
+    "h2x": 240,
+    "h3x": 360,
+    "w1x": 120,
+    "w2x": 240,
+    "w3x": 360
+   },
+   "source": "自产",
+   "tags": [
+    "角标",
+    "干货",
+    "知识"
+   ],
+   "usage": [
+    "decor"
+   ],
+   "variants": [
+    "elements/png/badge_drygoods@1x.png",
+    "elements/png/badge_drygoods@3x.png"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "anchorHint": "center",
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 0,
+   "file": "elements/png/badge_favorite.png",
+   "gainHintDb": 0,
+   "id": "element.badge.favorite",
+   "kind": "element",
+   "label": "收藏书签角标",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "98453f83af01626819009094efe493e297d2cf5bcb588306b6822b83fe995190",
+   "sizeHint": {
+    "base": "2x",
+    "h1x": 120,
+    "h2x": 240,
+    "h3x": 360,
+    "w1x": 120,
+    "w2x": 240,
+    "w3x": 360
+   },
+   "source": "自产",
+   "tags": [
+    "角标",
+    "收藏",
+    "引导"
+   ],
+   "usage": [
+    "decor"
+   ],
+   "variants": [
+    "elements/png/badge_favorite@1x.png",
+    "elements/png/badge_favorite@3x.png"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "anchorHint": "center",
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 0,
+   "file": "elements/png/arrow_up.png",
+   "gainHintDb": 0,
+   "id": "element.arrow.up",
+   "kind": "element",
+   "label": "箭头·上",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "fe23c087ddf85822debc7dececd01365c1602bbff6179da765d53400a5c57ce8",
+   "sizeHint": {
+    "base": "2x",
+    "h1x": 120,
+    "h2x": 240,
+    "h3x": 360,
+    "w1x": 120,
+    "w2x": 240,
+    "w3x": 360
+   },
+   "source": "自产",
+   "tags": [
+    "箭头",
+    "指示",
+    "强调"
+   ],
+   "usage": [
+    "decor"
+   ],
+   "variants": [
+    "elements/png/arrow_up@1x.png",
+    "elements/png/arrow_up@3x.png"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "anchorHint": "center",
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 0,
+   "file": "elements/png/arrow_down.png",
+   "gainHintDb": 0,
+   "id": "element.arrow.dn",
+   "kind": "element",
+   "label": "箭头·下",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "ec5a9370f3442d587a4fe81a2f020cfcdc96c5481383dc2ad163a75c246281c3",
+   "sizeHint": {
+    "base": "2x",
+    "h1x": 120,
+    "h2x": 240,
+    "h3x": 360,
+    "w1x": 120,
+    "w2x": 240,
+    "w3x": 360
+   },
+   "source": "自产",
+   "tags": [
+    "箭头",
+    "指示",
+    "强调"
+   ],
+   "usage": [
+    "decor"
+   ],
+   "variants": [
+    "elements/png/arrow_down@1x.png",
+    "elements/png/arrow_down@3x.png"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "anchorHint": "center",
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 0,
+   "file": "elements/png/arrow_left.png",
+   "gainHintDb": 0,
+   "id": "element.arrow.left",
+   "kind": "element",
+   "label": "箭头·左",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "befd44a19276b4aec8e6b112fdb301777cd4911650790a87d9f28273b337e7b5",
+   "sizeHint": {
+    "base": "2x",
+    "h1x": 120,
+    "h2x": 240,
+    "h3x": 360,
+    "w1x": 120,
+    "w2x": 240,
+    "w3x": 360
+   },
+   "source": "自产",
+   "tags": [
+    "箭头",
+    "指示",
+    "强调"
+   ],
+   "usage": [
+    "decor"
+   ],
+   "variants": [
+    "elements/png/arrow_left@1x.png",
+    "elements/png/arrow_left@3x.png"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "anchorHint": "center",
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 0,
+   "file": "elements/png/arrow_right.png",
+   "gainHintDb": 0,
+   "id": "element.arrow.right",
+   "kind": "element",
+   "label": "箭头·右",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "1dfab48aa57206f5fa64667f42c5018f2f036c58d5a7a8408e04a498d64e2d73",
+   "sizeHint": {
+    "base": "2x",
+    "h1x": 120,
+    "h2x": 240,
+    "h3x": 360,
+    "w1x": 120,
+    "w2x": 240,
+    "w3x": 360
+   },
+   "source": "自产",
+   "tags": [
+    "箭头",
+    "指示",
+    "强调"
+   ],
+   "usage": [
+    "decor"
+   ],
+   "variants": [
+    "elements/png/arrow_right@1x.png",
+    "elements/png/arrow_right@3x.png"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "anchorHint": "center",
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 0,
+   "file": "elements/png/arrow_upleft.png",
+   "gainHintDb": 0,
+   "id": "element.arrow.upleft",
+   "kind": "element",
+   "label": "箭头·左上",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "9f6794f05b756a38260d89fbb6cb0ab73a79bf08c7e72a7dba0c3f9147ce053d",
+   "sizeHint": {
+    "base": "2x",
+    "h1x": 120,
+    "h2x": 240,
+    "h3x": 360,
+    "w1x": 120,
+    "w2x": 240,
+    "w3x": 360
+   },
+   "source": "自产",
+   "tags": [
+    "箭头",
+    "指示",
+    "强调"
+   ],
+   "usage": [
+    "decor"
+   ],
+   "variants": [
+    "elements/png/arrow_upleft@1x.png",
+    "elements/png/arrow_upleft@3x.png"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "anchorHint": "center",
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 0,
+   "file": "elements/png/arrow_upright.png",
+   "gainHintDb": 0,
+   "id": "element.arrow.upright",
+   "kind": "element",
+   "label": "箭头·右上",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "96b2179403f297af1a54cde8003639ebca6246e2c228710df49a24f878346280",
+   "sizeHint": {
+    "base": "2x",
+    "h1x": 120,
+    "h2x": 240,
+    "h3x": 360,
+    "w1x": 120,
+    "w2x": 240,
+    "w3x": 360
+   },
+   "source": "自产",
+   "tags": [
+    "箭头",
+    "指示",
+    "强调"
+   ],
+   "usage": [
+    "decor"
+   ],
+   "variants": [
+    "elements/png/arrow_upright@1x.png",
+    "elements/png/arrow_upright@3x.png"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "anchorHint": "center",
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 0,
+   "file": "elements/png/arrow_downleft.png",
+   "gainHintDb": 0,
+   "id": "element.arrow.dnleft",
+   "kind": "element",
+   "label": "箭头·左下",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "96415be6d70077f2c351cde60553a70af672443b04f78687c42caf3beb3a8209",
+   "sizeHint": {
+    "base": "2x",
+    "h1x": 120,
+    "h2x": 240,
+    "h3x": 360,
+    "w1x": 120,
+    "w2x": 240,
+    "w3x": 360
+   },
+   "source": "自产",
+   "tags": [
+    "箭头",
+    "指示",
+    "强调"
+   ],
+   "usage": [
+    "decor"
+   ],
+   "variants": [
+    "elements/png/arrow_downleft@1x.png",
+    "elements/png/arrow_downleft@3x.png"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "anchorHint": "center",
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 0,
+   "file": "elements/png/arrow_downright.png",
+   "gainHintDb": 0,
+   "id": "element.arrow.dnright",
+   "kind": "element",
+   "label": "箭头·右下",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "4d859ddec7103a5fe1bce7f11a81096121b34fb0e46d1c53dbf5de7365ba6668",
+   "sizeHint": {
+    "base": "2x",
+    "h1x": 120,
+    "h2x": 240,
+    "h3x": 360,
+    "w1x": 120,
+    "w2x": 240,
+    "w3x": 360
+   },
+   "source": "自产",
+   "tags": [
+    "箭头",
+    "指示",
+    "强调"
+   ],
+   "usage": [
+    "decor"
+   ],
+   "variants": [
+    "elements/png/arrow_downright@1x.png",
+    "elements/png/arrow_downright@3x.png"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "anchorHint": "center",
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 0,
+   "file": "elements/png/highlight_circle.png",
+   "gainHintDb": 0,
+   "id": "element.highlight.circle",
+   "kind": "element",
+   "label": "高亮圈",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "0764dc946d52398088f9612cc6a2fdc24c8717040e71dfc68e261d743ee919e9",
+   "sizeHint": {
+    "base": "2x",
+    "h1x": 120,
+    "h2x": 240,
+    "h3x": 360,
+    "w1x": 120,
+    "w2x": 240,
+    "w3x": 360
+   },
+   "source": "自产",
+   "tags": [
+    "强调",
+    "圈注",
+    "重点"
+   ],
+   "usage": [
+    "decor"
+   ],
+   "variants": [
+    "elements/png/highlight_circle@1x.png",
+    "elements/png/highlight_circle@3x.png"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "anchorHint": "center",
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 0,
+   "file": "elements/png/highlight_box.png",
+   "gainHintDb": 0,
+   "id": "element.highlight.box",
+   "kind": "element",
+   "label": "高亮框",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "dff1eb3722d4f6b55612883fc74159e7754096906c0194bfbe5857ef0a0ee6ef",
+   "sizeHint": {
+    "base": "2x",
+    "h1x": 78,
+    "h2x": 156,
+    "h3x": 234,
+    "w1x": 120,
+    "w2x": 240,
+    "w3x": 360
+   },
+   "source": "自产",
+   "tags": [
+    "强调",
+    "框选",
+    "重点"
+   ],
+   "usage": [
+    "decor"
+   ],
+   "variants": [
+    "elements/png/highlight_box@1x.png",
+    "elements/png/highlight_box@3x.png"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "anchorHint": "center",
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 0,
+   "file": "elements/png/underline_brush.png",
+   "gainHintDb": 0,
+   "id": "element.highlight.brush",
+   "kind": "element",
+   "label": "笔刷下划线",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "4340bc0c626f1c7820535757c2aa899533c3b729e1a8642758aa8f573c21d513",
+   "sizeHint": {
+    "base": "2x",
+    "h1x": 27,
+    "h2x": 54,
+    "h3x": 81,
+    "w1x": 120,
+    "w2x": 240,
+    "w3x": 360
+   },
+   "source": "自产",
+   "tags": [
+    "强调",
+    "笔刷",
+    "下划线"
+   ],
+   "usage": [
+    "decor"
+   ],
+   "variants": [
+    "elements/png/underline_brush@1x.png",
+    "elements/png/underline_brush@3x.png"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "anchorHint": "center",
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 0,
+   "file": "elements/png/progress_red.png",
+   "gainHintDb": 0,
+   "id": "element.progress.red",
+   "kind": "element",
+   "label": "进度条·红 72%",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "2fa3bfd40ea542114804d13d8d716f5f6a81fa528e9bf6a052331e6fa7be6423",
+   "sizeHint": {
+    "base": "2x",
+    "h1x": 17,
+    "h2x": 34,
+    "h3x": 50,
+    "w1x": 120,
+    "w2x": 240,
+    "w3x": 360
+   },
+   "source": "自产",
+   "tags": [
+    "进度",
+    "对比",
+    "红"
+   ],
+   "usage": [
+    "data"
+   ],
+   "variants": [
+    "elements/png/progress_red@1x.png",
+    "elements/png/progress_red@3x.png"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "anchorHint": "center",
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 0,
+   "file": "elements/png/progress_gold.png",
+   "gainHintDb": 0,
+   "id": "element.progress.gold",
+   "kind": "element",
+   "label": "进度条·金 45%",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "6fef7b38dcb315492e52fcb2ffad020db4c728e72a9a5070590af2e91f55a513",
+   "sizeHint": {
+    "base": "2x",
+    "h1x": 17,
+    "h2x": 34,
+    "h3x": 50,
+    "w1x": 120,
+    "w2x": 240,
+    "w3x": 360
+   },
+   "source": "自产",
+   "tags": [
+    "进度",
+    "对比",
+    "金"
+   ],
+   "usage": [
+    "data"
+   ],
+   "variants": [
+    "elements/png/progress_gold@1x.png",
+    "elements/png/progress_gold@3x.png"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "anchorHint": "center",
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 0,
+   "file": "elements/png/progress_green.png",
+   "gainHintDb": 0,
+   "id": "element.progress.green",
+   "kind": "element",
+   "label": "进度条·绿 88%",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "7b461c931f22c438dea9eb1abda4d22088599dd1f79566bc5aa4d0dfa5991732",
+   "sizeHint": {
+    "base": "2x",
+    "h1x": 17,
+    "h2x": 34,
+    "h3x": 50,
+    "w1x": 120,
+    "w2x": 240,
+    "w3x": 360
+   },
+   "source": "自产",
+   "tags": [
+    "进度",
+    "对比",
+    "绿"
+   ],
+   "usage": [
+    "data"
+   ],
+   "variants": [
+    "elements/png/progress_green@1x.png",
+    "elements/png/progress_green@3x.png"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "anchorHint": "center",
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 0,
+   "file": "elements/png/progress_ring.png",
+   "gainHintDb": 0,
+   "id": "element.progress.ring",
+   "kind": "element",
+   "label": "环形进度 68%",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "eb62d80cdf89ad900e4ea485ab07956b3789f80bf05f7ea7a8ee1af375f12b76",
+   "sizeHint": {
+    "base": "2x",
+    "h1x": 120,
+    "h2x": 240,
+    "h3x": 360,
+    "w1x": 120,
+    "w2x": 240,
+    "w3x": 360
+   },
+   "source": "自产",
+   "tags": [
+    "进度",
+    "环形",
+    "占比"
+   ],
+   "usage": [
+    "data"
+   ],
+   "variants": [
+    "elements/png/progress_ring@1x.png",
+    "elements/png/progress_ring@3x.png"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "anchorHint": "center",
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 0,
+   "file": "elements/png/countdown_arc.png",
+   "gainHintDb": 0,
+   "id": "element.progress.countdown",
+   "kind": "element",
+   "label": "倒计时弧",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "8293246acd4524507f6e3029f7bcdfe20568bd500984162673c5b465c72ec595",
+   "sizeHint": {
+    "base": "2x",
+    "h1x": 120,
+    "h2x": 240,
+    "h3x": 360,
+    "w1x": 120,
+    "w2x": 240,
+    "w3x": 360
+   },
+   "source": "自产",
+   "tags": [
+    "倒计时",
+    "紧迫",
+    "环形"
+   ],
+   "usage": [
+    "data"
+   ],
+   "variants": [
+    "elements/png/countdown_arc@1x.png",
+    "elements/png/countdown_arc@3x.png"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "anchorHint": "center",
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 0,
+   "file": "elements/png/counter_frame.png",
+   "gainHintDb": 0,
+   "id": "element.progress.counter",
+   "kind": "element",
+   "label": "计数框底衬",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "77580e0c594e3367ae42e601943f735f04706f6288876a2ec7f1a590fc866fa6",
+   "sizeHint": {
+    "base": "2x",
+    "h1x": 72,
+    "h2x": 144,
+    "h3x": 216,
+    "w1x": 120,
+    "w2x": 240,
+    "w3x": 360
+   },
+   "source": "自产",
+   "tags": [
+    "计数",
+    "数据",
+    "底衬"
+   ],
+   "usage": [
+    "data"
+   ],
+   "variants": [
+    "elements/png/counter_frame@1x.png",
+    "elements/png/counter_frame@3x.png"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "anchorHint": "center",
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 0,
+   "file": "elements/png/divider_wave.png",
+   "gainHintDb": 0,
+   "id": "element.decor.divider",
+   "kind": "element",
+   "label": "波浪分隔线",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "8e539b42303a03ff3e582483191f1ce0643542c85d9309b4771a0b78b72e97b2",
+   "sizeHint": {
+    "base": "2x",
+    "h1x": 18,
+    "h2x": 36,
+    "h3x": 54,
+    "w1x": 120,
+    "w2x": 240,
+    "w3x": 360
+   },
+   "source": "自产",
+   "tags": [
+    "装饰",
+    "分隔",
+    "过渡"
+   ],
+   "usage": [
+    "decor"
+   ],
+   "variants": [
+    "elements/png/divider_wave@1x.png",
+    "elements/png/divider_wave@3x.png"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "anchorHint": "center",
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 0,
+   "file": "elements/png/light_spot.png",
+   "gainHintDb": 0,
+   "id": "element.decor.light_spot",
+   "kind": "element",
+   "label": "光斑",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "975dd4a7557e9aa91663f9575cd4bb59281eafe154190b1f7734b72deea57128",
+   "sizeHint": {
+    "base": "2x",
+    "h1x": 120,
+    "h2x": 240,
+    "h3x": 360,
+    "w1x": 120,
+    "w2x": 240,
+    "w3x": 360
+   },
+   "source": "自产",
+   "tags": [
+    "装饰",
+    "光效",
+    "氛围"
+   ],
+   "usage": [
+    "decor"
+   ],
+   "variants": [
+    "elements/png/light_spot@1x.png",
+    "elements/png/light_spot@3x.png"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "anchorHint": "center",
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 0,
+   "file": "elements/png/star_burst.png",
+   "gainHintDb": 0,
+   "id": "element.decor.star_burst",
+   "kind": "element",
+   "label": "四芒星闪",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "f0b1564de8b25ccb0c262822c874fa865291363e4c3a4f93b66992720fdc9437",
+   "sizeHint": {
+    "base": "2x",
+    "h1x": 120,
+    "h2x": 240,
+    "h3x": 360,
+    "w1x": 120,
+    "w2x": 240,
+    "w3x": 360
+   },
+   "source": "自产",
+   "tags": [
+    "装饰",
+    "星芒",
+    "闪亮"
+   ],
+   "usage": [
+    "decor"
+   ],
+   "variants": [
+    "elements/png/star_burst@1x.png",
+    "elements/png/star_burst@3x.png"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "anchorHint": "center",
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 0,
+   "file": "elements/png/particles.png",
+   "gainHintDb": 0,
+   "id": "element.decor.particles",
+   "kind": "element",
+   "label": "彩色粒子",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "f76d372be1517b21de9dccf522dc84ba55a5af50b311092e736b192baeed0f49",
+   "sizeHint": {
+    "base": "2x",
+    "h1x": 120,
+    "h2x": 240,
+    "h3x": 360,
+    "w1x": 120,
+    "w2x": 240,
+    "w3x": 360
+   },
+   "source": "自产",
+   "tags": [
+    "装饰",
+    "粒子",
+    "活泼"
+   ],
+   "usage": [
+    "decor"
+   ],
+   "variants": [
+    "elements/png/particles@1x.png",
+    "elements/png/particles@3x.png"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "anchorHint": "center",
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 0,
+   "file": "elements/png/grid_base.png",
+   "gainHintDb": 0,
+   "id": "element.decor.grid",
+   "kind": "element",
+   "label": "网格底",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "7d2a4431b79caed0103c59a2d493ec197a0330e42ace2d7a1ff077f75537fde9",
+   "sizeHint": {
+    "base": "2x",
+    "h1x": 120,
+    "h2x": 240,
+    "h3x": 360,
+    "w1x": 120,
+    "w2x": 240,
+    "w3x": 360
+   },
+   "source": "自产",
+   "tags": [
+    "装饰",
+    "网格",
+    "科技"
+   ],
+   "usage": [
+    "decor"
+   ],
+   "variants": [
+    "elements/png/grid_base@1x.png",
+    "elements/png/grid_base@3x.png"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "anchorHint": "center",
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 0,
+   "file": "elements/png/noise_overlay.png",
+   "gainHintDb": 0,
+   "id": "element.decor.noise",
+   "kind": "element",
+   "label": "噪点覆层",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "0c842e78403306a0078f0abd28b377635a0bdb18fbcffb142dc8e722ccb942f4",
+   "sizeHint": {
+    "base": "2x",
+    "h1x": 120,
+    "h2x": 240,
+    "h3x": 360,
+    "w1x": 120,
+    "w2x": 240,
+    "w3x": 360
+   },
+   "source": "自产",
+   "tags": [
+    "装饰",
+    "噪点",
+    "质感"
+   ],
+   "usage": [
+    "decor"
+   ],
+   "variants": [
+    "elements/png/noise_overlay@1x.png",
+    "elements/png/noise_overlay@3x.png"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "anchorHint": "center",
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 0,
+   "file": "elements/png/gradient_block.png",
+   "gainHintDb": 0,
+   "id": "element.decor.gradient",
+   "kind": "element",
+   "label": "渐变色块",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "8551f6b7341aa629c3d66422f0aafaa92a2f79c9fd6b8bba2aa708655e901ac1",
+   "sizeHint": {
+    "base": "2x",
+    "h1x": 66,
+    "h2x": 132,
+    "h3x": 198,
+    "w1x": 120,
+    "w2x": 240,
+    "w3x": 360
+   },
+   "source": "自产",
+   "tags": [
+    "装饰",
+    "渐变",
+    "色块"
+   ],
+   "usage": [
+    "decor"
+   ],
+   "variants": [
+    "elements/png/gradient_block@1x.png",
+    "elements/png/gradient_block@3x.png"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "anchorHint": "center",
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 0,
+   "file": "elements/png/dot_matrix.png",
+   "gainHintDb": 0,
+   "id": "element.decor.dots",
+   "kind": "element",
+   "label": "圆点阵",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "db750bbc7b4a4b83327f9be8ef4299c767f31015c18e984c0690bb9768a1dacc",
+   "sizeHint": {
+    "base": "2x",
+    "h1x": 120,
+    "h2x": 240,
+    "h3x": 360,
+    "w1x": 120,
+    "w2x": 240,
+    "w3x": 360
+   },
+   "source": "自产",
+   "tags": [
+    "装饰",
+    "圆点",
+    "阵列"
+   ],
+   "usage": [
+    "decor"
+   ],
+   "variants": [
+    "elements/png/dot_matrix@1x.png",
+    "elements/png/dot_matrix@3x.png"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "anchorHint": "center",
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 0,
+   "file": "elements/png/ui_like.png",
+   "gainHintDb": 0,
+   "id": "element.ui.like",
+   "kind": "element",
+   "label": "点赞红心",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "88bc336c63bd15a6acae9fd91e1c6894872340bbbe88ac847078243d28411998",
+   "sizeHint": {
+    "base": "2x",
+    "h1x": 120,
+    "h2x": 240,
+    "h3x": 360,
+    "w1x": 120,
+    "w2x": 240,
+    "w3x": 360
+   },
+   "source": "自产",
+   "tags": [
+    "平台",
+    "点赞",
+    "引导"
+   ],
+   "usage": [
+    "ui"
+   ],
+   "variants": [
+    "elements/png/ui_like@1x.png",
+    "elements/png/ui_like@3x.png"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "anchorHint": "center",
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 0,
+   "file": "elements/png/ui_follow.png",
+   "gainHintDb": 0,
+   "id": "element.ui.follow",
+   "kind": "element",
+   "label": "关注提醒铃",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "3a7714e0b4fad3327b7f096aeeb325b6e4eafd0efae0281f77341caac6cf9882",
+   "sizeHint": {
+    "base": "2x",
+    "h1x": 120,
+    "h2x": 240,
+    "h3x": 360,
+    "w1x": 120,
+    "w2x": 240,
+    "w3x": 360
+   },
+   "source": "自产",
+   "tags": [
+    "平台",
+    "关注",
+    "引导"
+   ],
+   "usage": [
+    "ui"
+   ],
+   "variants": [
+    "elements/png/ui_follow@1x.png",
+    "elements/png/ui_follow@3x.png"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "anchorHint": "center",
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 0,
+   "file": "elements/png/ui_comment.png",
+   "gainHintDb": 0,
+   "id": "element.ui.comment",
+   "kind": "element",
+   "label": "评论气泡",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "ed29301b9b187710408752669b1843fbbbcd9f101ed8568a5b8ff96e3ed73a51",
+   "sizeHint": {
+    "base": "2x",
+    "h1x": 120,
+    "h2x": 240,
+    "h3x": 360,
+    "w1x": 120,
+    "w2x": 240,
+    "w3x": 360
+   },
+   "source": "自产",
+   "tags": [
+    "平台",
+    "评论",
+    "互动"
+   ],
+   "usage": [
+    "ui"
+   ],
+   "variants": [
+    "elements/png/ui_comment@1x.png",
+    "elements/png/ui_comment@3x.png"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "anchorHint": "center",
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 0,
+   "file": "elements/png/ui_share.png",
+   "gainHintDb": 0,
+   "id": "element.ui.share",
+   "kind": "element",
+   "label": "分享箭头",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "aab3d4a19ec4c2f8c1f0fbaec0e18afce5f36fb0ad6ad8537b9e553b60c6e687",
+   "sizeHint": {
+    "base": "2x",
+    "h1x": 120,
+    "h2x": 240,
+    "h3x": 360,
+    "w1x": 120,
+    "w2x": 240,
+    "w3x": 360
+   },
+   "source": "自产",
+   "tags": [
+    "平台",
+    "分享",
+    "引导"
+   ],
+   "usage": [
+    "ui"
+   ],
+   "variants": [
+    "elements/png/ui_share@1x.png",
+    "elements/png/ui_share@3x.png"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "anchorHint": "center",
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 0,
+   "file": "elements/png/ui_fav.png",
+   "gainHintDb": 0,
+   "id": "element.ui.favorite",
+   "kind": "element",
+   "label": "收藏星",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "d0971b14048aebec9e0949a4dcb3c4a44c147958fd5cf725a00f458d7291861a",
+   "sizeHint": {
+    "base": "2x",
+    "h1x": 120,
+    "h2x": 240,
+    "h3x": 360,
+    "w1x": 120,
+    "w2x": 240,
+    "w3x": 360
+   },
+   "source": "自产",
+   "tags": [
+    "平台",
+    "收藏",
+    "引导"
+   ],
+   "usage": [
+    "ui"
+   ],
+   "variants": [
+    "elements/png/ui_fav@1x.png",
+    "elements/png/ui_fav@3x.png"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "anchorHint": "center",
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 0,
+   "file": "elements/png/ui_next.png",
+   "gainHintDb": 0,
+   "id": "element.ui.next",
+   "kind": "element",
+   "label": "下期预告条",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "1e05d58c77e693b54d0d6fdb751a0ce6553faa80d8f95de5527e9da1af3a12d8",
+   "sizeHint": {
+    "base": "2x",
+    "h1x": 33,
+    "h2x": 66,
+    "h3x": 99,
+    "w1x": 120,
+    "w2x": 240,
+    "w3x": 360
+   },
+   "source": "自产",
+   "tags": [
+    "平台",
+    "预告",
+    "下期"
+   ],
+   "usage": [
+    "ui"
+   ],
+   "variants": [
+    "elements/png/ui_next@1x.png",
+    "elements/png/ui_next@3x.png"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "anchorHint": "center",
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 0,
+   "file": "elements/png/frame_polaroid.png",
+   "gainHintDb": 0,
+   "id": "element.frame.polaroid",
+   "kind": "element",
+   "label": "拍立得相框",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "ca09db10f8a2c8b4245511b90d631091e1022c98b63674e082d3bd25f6ffca40",
+   "sizeHint": {
+    "base": "2x",
+    "h1x": 120,
+    "h2x": 240,
+    "h3x": 360,
+    "w1x": 120,
+    "w2x": 240,
+    "w3x": 360
+   },
+   "source": "自产",
+   "tags": [
+    "相框",
+    "拍立得",
+    "照片"
+   ],
+   "usage": [
+    "decor"
+   ],
+   "variants": [
+    "elements/png/frame_polaroid@1x.png",
+    "elements/png/frame_polaroid@3x.png"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "anchorHint": "center",
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 0,
+   "file": "elements/png/frame_film.png",
+   "gainHintDb": 0,
+   "id": "element.frame.film",
+   "kind": "element",
+   "label": "胶片框",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "8a62974a99d3ff870976d3c026a4d952d07d97133b3e631e0ed4d779a810f62f",
+   "sizeHint": {
+    "base": "2x",
+    "h1x": 90,
+    "h2x": 180,
+    "h3x": 270,
+    "w1x": 120,
+    "w2x": 240,
+    "w3x": 360
+   },
+   "source": "自产",
+   "tags": [
+    "相框",
+    "胶片",
+    "复古"
+   ],
+   "usage": [
+    "decor"
+   ],
+   "variants": [
+    "elements/png/frame_film@1x.png",
+    "elements/png/frame_film@3x.png"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "anchorHint": "center",
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 0,
+   "file": "elements/png/frame_round.png",
+   "gainHintDb": 0,
+   "id": "element.frame.round",
+   "kind": "element",
+   "label": "圆角相框",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "dddb4286ea562dfd45eaca823cf7cfaf25af305da09992b8dfbc6b78a95178ec",
+   "sizeHint": {
+    "base": "2x",
+    "h1x": 120,
+    "h2x": 240,
+    "h3x": 360,
+    "w1x": 120,
+    "w2x": 240,
+    "w3x": 360
+   },
+   "source": "自产",
+   "tags": [
+    "相框",
+    "圆角",
+    "简约"
+   ],
+   "usage": [
+    "decor"
+   ],
+   "variants": [
+    "elements/png/frame_round@1x.png",
+    "elements/png/frame_round@3x.png"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "anchorHint": "center",
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 0,
+   "file": "elements/png/frame_stroke.png",
+   "gainHintDb": 0,
+   "id": "element.frame.stroke",
+   "kind": "element",
+   "label": "描边相框",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "sha256": "b348769bf1c10ed74f9b3a160abbbcd839de072f3e3c5ea0abc386263de814b6",
+   "sizeHint": {
+    "base": "2x",
+    "h1x": 120,
+    "h2x": 240,
+    "h3x": 360,
+    "w1x": 120,
+    "w2x": 240,
+    "w3x": 360
+   },
+   "source": "自产",
+   "tags": [
+    "相框",
+    "描边",
+    "金框"
+   ],
+   "usage": [
+    "decor"
+   ],
+   "variants": [
+    "elements/png/frame_stroke@1x.png",
+    "elements/png/frame_stroke@3x.png"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "anchorHint": "center",
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 400,
+   "file": "elements/seq/bar_rise/0001.png",
+   "fps": 30,
+   "frameCount": 12,
+   "gainHintDb": 0,
+   "id": "element.seq.bar_rise",
+   "kind": "element",
+   "label": "柱状图升起",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "seqDir": "elements/seq/bar_rise",
+   "sha256": "e746ea4fce71c189e1cd1c67e2f5beb66eaea4413a6f2a1b1628a85ca9d2c55c",
+   "sizeHint": null,
+   "source": "自产",
+   "tags": [
+    "数据",
+    "柱状图",
+    "入场"
+   ],
+   "usage": [
+    "data"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "anchorHint": "center",
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 400,
+   "file": "elements/seq/line_draw/0001.png",
+   "fps": 30,
+   "frameCount": 12,
+   "gainHintDb": 0,
+   "id": "element.seq.line_draw",
+   "kind": "element",
+   "label": "折线绘制",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "seqDir": "elements/seq/line_draw",
+   "sha256": "c86737609ccef762a037a680e1f1e01489fb1c29ae3f2a9a49e0c075a9f4ec7a",
+   "sizeHint": null,
+   "source": "自产",
+   "tags": [
+    "数据",
+    "折线",
+    "入场"
+   ],
+   "usage": [
+    "data"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "anchorHint": "center",
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 400,
+   "file": "elements/seq/pie_sweep/0001.png",
+   "fps": 30,
+   "frameCount": 12,
+   "gainHintDb": 0,
+   "id": "element.seq.pie_sweep",
+   "kind": "element",
+   "label": "饼图扫开",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "seqDir": "elements/seq/pie_sweep",
+   "sha256": "19670b3c2a1e5f3d0a64a913d14bfa6f4a372d507eda2ca1eb07668836843e97",
+   "sizeHint": null,
+   "source": "自产",
+   "tags": [
+    "数据",
+    "饼图",
+    "占比"
+   ],
+   "usage": [
+    "data"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "anchorHint": "center",
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 400,
+   "file": "elements/seq/gauge_fill/0001.png",
+   "fps": 30,
+   "frameCount": 12,
+   "gainHintDb": 0,
+   "id": "element.seq.gauge_fill",
+   "kind": "element",
+   "label": "仪表盘填充",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "seqDir": "elements/seq/gauge_fill",
+   "sha256": "bcc27bea70b8868a1441180bd33915f441ea4d76e5b2da49f70c3fee51c6ed4a",
+   "sizeHint": null,
+   "source": "自产",
+   "tags": [
+    "数据",
+    "仪表盘",
+    "指标"
+   ],
+   "usage": [
+    "data"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "anchorHint": "center",
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 400,
+   "file": "elements/seq/count_up/0001.png",
+   "fps": 30,
+   "frameCount": 12,
+   "gainHintDb": 0,
+   "id": "element.seq.count_up",
+   "kind": "element",
+   "label": "数字滚动底衬",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "seqDir": "elements/seq/count_up",
+   "sha256": "d19c4672f6d829a14ebde0b7d5366dbdbbbd06236b8a12671a5b7fe4a1f363b8",
+   "sizeHint": null,
+   "source": "自产",
+   "tags": [
+    "数据",
+    "计数",
+    "递进"
+   ],
+   "usage": [
+    "data"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "anchorHint": "center",
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 400,
+   "file": "elements/seq/progress_fill/0001.png",
+   "fps": 30,
+   "frameCount": 12,
+   "gainHintDb": 0,
+   "id": "element.seq.progress_fill",
+   "kind": "element",
+   "label": "进度条充满",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "seqDir": "elements/seq/progress_fill",
+   "sha256": "b694c1a6d08e3b99416002cb77ac5b398f9e25be3fba0ab7171e997324385b75",
+   "sizeHint": null,
+   "source": "自产",
+   "tags": [
+    "数据",
+    "进度",
+    "入场"
+   ],
+   "usage": [
+    "data"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 0,
+   "effect": "box",
+   "file": "huazi/ass/keyword_box.ass",
+   "gainHintDb": 0,
+   "id": "huazi.keyword.box",
+   "kind": "huazi",
+   "label": "关键词·方框底衬",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "medium": "ass",
+   "params": {
+    "color": "&H00E5FF00",
+    "pad": 10
+   },
+   "sha256": "61b4af01278deedf00e7208b55efe569c98fe42dc6233fab56b9b6f6e7fd453d",
+   "source": "自产",
+   "tags": [
+    "关键词",
+    "底衬",
+    "强调"
+   ],
+   "usage": [
+    "punchline"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 0,
+   "effect": "brush",
+   "file": "huazi/ass/keyword_brush.ass",
+   "gainHintDb": 0,
+   "id": "huazi.keyword.brush",
+   "kind": "huazi",
+   "label": "关键词·笔刷底衬",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "medium": "ass",
+   "params": {
+    "element": "element.highlight.brush"
+   },
+   "sha256": "5f0db53df326a0ae94d583815bfc0dbdeba7403d33d79ed4cb0c945d65dc5ee9",
+   "source": "自产",
+   "tags": [
+    "关键词",
+    "笔刷",
+    "手写感"
+   ],
+   "usage": [
+    "punchline"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 0,
+   "effect": "pop",
+   "file": "huazi/ass/title_pop.ass",
+   "gainHintDb": 0,
+   "id": "huazi.title.pop",
+   "kind": "huazi",
+   "label": "标题·逐字弹入",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "medium": "ass",
+   "params": {
+    "overshoot": 1.1,
+    "stepMs": 60
+   },
+   "sha256": "69291ae219e083eb2d8ba0968950125ac658b9a6676d2995ac8b99ed7f955275",
+   "source": "自产",
+   "tags": [
+    "标题",
+    "弹入",
+    "逐字"
+   ],
+   "usage": [
+    "chapter"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 0,
+   "effect": "slide",
+   "file": "huazi/ass/title_slide.ass",
+   "gainHintDb": 0,
+   "id": "huazi.title.slide",
+   "kind": "huazi",
+   "label": "标题·逐行滑入",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "medium": "ass",
+   "params": {
+    "distPx": 80,
+    "durMs": 260
+   },
+   "sha256": "4378fd2a9f61b54c71f575dfb4c6fc096ee063366500b8354a7c76a9c481e0ed",
+   "source": "自产",
+   "tags": [
+    "标题",
+    "滑入",
+    "整行"
+   ],
+   "usage": [
+    "chapter"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 0,
+   "effect": "typewriter",
+   "file": "huazi/ass/quote_typewriter.ass",
+   "gainHintDb": 0,
+   "id": "huazi.quote.typewriter",
+   "kind": "huazi",
+   "label": "金句·打字机",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "medium": "ass",
+   "params": {
+    "stepMs": 70
+   },
+   "sha256": "0f0507a493f2633dcfb1b37c974fa81e099b6437b194342741ef32e4f87d950a",
+   "source": "自产",
+   "tags": [
+    "金句",
+    "打字机",
+    "逐字"
+   ],
+   "usage": [
+    "punchline"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 0,
+   "effect": "count",
+   "file": "huazi/ass/data_count.ass",
+   "gainHintDb": 0,
+   "id": "huazi.data.count",
+   "kind": "huazi",
+   "label": "数据·数字滚动",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "medium": "ass",
+   "params": {
+    "stepMs": 90,
+    "steps": 5
+   },
+   "sha256": "0329148d3000e41564b64e0253e979d28dfb17b527df51947732fe0c2ace05fa",
+   "source": "自产",
+   "tags": [
+    "数据",
+    "滚动",
+    "递进"
+   ],
+   "usage": [
+    "punchline"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 0,
+   "effect": "tab",
+   "file": "huazi/ass/section_tab.ass",
+   "gainHintDb": 0,
+   "id": "huazi.section.tab",
+   "kind": "huazi",
+   "label": "章节·斜切色块",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "medium": "ass",
+   "params": {
+    "color": "&H00E5FF00",
+    "skew": 12
+   },
+   "sha256": "37f32461a83b40f01a90e0e298657fa4ad7b8004ac8a5a5db13af68ba1579436",
+   "source": "自产",
+   "tags": [
+    "章节",
+    "斜切",
+    "色块"
+   ],
+   "usage": [
+    "chapter"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 0,
+   "effect": "subscribe",
+   "file": "huazi/ass/ending_subscribe.ass",
+   "gainHintDb": 0,
+   "id": "huazi.ending.subscribe",
+   "kind": "huazi",
+   "label": "片尾·关注引导",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "medium": "ass",
+   "params": {
+    "fadMs": [
+     200,
+     400
+    ]
+   },
+   "sha256": "b484d4d095684c2b9fd00ffee75eda1c4198e15b3024d9491fb3c2674aa7d5b9",
+   "source": "自产",
+   "tags": [
+    "片尾",
+    "引导",
+    "关注"
+   ],
+   "usage": [
+    "ending"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 0,
+   "effect": "burst",
+   "file": "huazi/cards/title_burst/card.html",
+   "gainHintDb": 0,
+   "id": "huazi.card.title.burst",
+   "kind": "huazi",
+   "label": "进阶卡·标题爆闪",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "medium": "artboard-card",
+   "ratio": "9x16",
+   "renderVia": "rs_artboard",
+   "sha256": "94ca50a7ba430b47d34a48504e954eed3e9395db45fe03bea812b7c02e12e166",
+   "source": "自产",
+   "tags": [
+    "标题",
+    "爆闪",
+    "片头"
+   ],
+   "usage": [
+    "chapter"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 0,
+   "effect": "gold",
+   "file": "huazi/cards/keyword_gold/card.html",
+   "gainHintDb": 0,
+   "id": "huazi.card.keyword.gold",
+   "kind": "huazi",
+   "label": "进阶卡·金字强调",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "medium": "artboard-card",
+   "ratio": "9x16",
+   "renderVia": "rs_artboard",
+   "sha256": "0ad2f1edf972e92aa014d70b0303613a11a30da690948bd7e3b889b69da37bd8",
+   "source": "自产",
+   "tags": [
+    "关键词",
+    "金色",
+    "强调"
+   ],
+   "usage": [
+    "punchline"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 0,
+   "effect": "paper",
+   "file": "huazi/cards/quote_paper/card.html",
+   "gainHintDb": 0,
+   "id": "huazi.card.quote.paper",
+   "kind": "huazi",
+   "label": "进阶卡·金句纸卡",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "medium": "artboard-card",
+   "ratio": "9x16",
+   "renderVia": "rs_artboard",
+   "sha256": "aa375847f56e1a131774a858d26df06a4f24e1ab08a2b1bcb94fd93893d6101f",
+   "source": "自产",
+   "tags": [
+    "金句",
+    "纸卡",
+    "文艺"
+   ],
+   "usage": [
+    "punchline"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 0,
+   "effect": "tab",
+   "file": "huazi/cards/section_tab/card.html",
+   "gainHintDb": 0,
+   "id": "huazi.card.section.tab",
+   "kind": "huazi",
+   "label": "进阶卡·章节斜切",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "medium": "artboard-card",
+   "ratio": "9x16",
+   "renderVia": "rs_artboard",
+   "sha256": "ec8b7d5c1ea5034cb3d1d3c8be028c12ec64183fcb20189199d19e968b200990",
+   "source": "自产",
+   "tags": [
+    "章节",
+    "斜切",
+    "转场"
+   ],
+   "usage": [
+    "chapter"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 0,
+   "effect": "stat",
+   "file": "huazi/cards/stat_rise/card.html",
+   "gainHintDb": 0,
+   "id": "huazi.card.stat.rise",
+   "kind": "huazi",
+   "label": "进阶卡·数据跃升",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "medium": "artboard-card",
+   "ratio": "9x16",
+   "renderVia": "rs_artboard",
+   "sha256": "f7edbe04db6e0947fe4349713a8a86e54ab983bdf89500bc774e23e59e150445",
+   "source": "自产",
+   "tags": [
+    "数据",
+    "跃升",
+    "大字"
+   ],
+   "usage": [
+    "punchline"
+   ]
+  },
+  {
+   "aiGenerated": true,
+   "attribution": "CutFlow 自产合成,无需归因",
+   "commercial": true,
+   "durationMs": 0,
+   "effect": "follow",
+   "file": "huazi/cards/ending_follow/card.html",
+   "gainHintDb": 0,
+   "id": "huazi.card.ending.follow",
+   "kind": "huazi",
+   "label": "进阶卡·片尾关注",
+   "license": "自产合成(ffmpeg/numpy/Pillow,无版权约束)",
+   "medium": "artboard-card",
+   "ratio": "9x16",
+   "renderVia": "rs_artboard",
+   "sha256": "7f422e38430ce4e7489a21f99d08773908fd59f8f0b2596e0e21f0b7d3719dc0",
+   "source": "自产",
+   "tags": [
+    "片尾",
+    "关注",
+    "引导"
+   ],
+   "usage": [
+    "ending"
+   ]
+  }
+ ],
+ "generatedAt": "2026-09-26T00:00:00+08:00",
+ "version": 1
+}

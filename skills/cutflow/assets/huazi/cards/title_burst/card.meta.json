@@ -1,0 +1,11 @@
+{
+ "id": "huazi.card.title.burst",
+ "label": "进阶卡·标题爆闪",
+ "ratio": "9x16",
+ "effect": "burst",
+ "usage": [
+  "chapter"
+ ],
+ "medium": "artboard-card",
+ "renderVia": "rs_artboard"
+}

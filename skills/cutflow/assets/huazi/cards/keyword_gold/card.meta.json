@@ -1,0 +1,11 @@
+{
+ "id": "huazi.card.keyword.gold",
+ "label": "进阶卡·金字强调",
+ "ratio": "9x16",
+ "effect": "gold",
+ "usage": [
+  "punchline"
+ ],
+ "medium": "artboard-card",
+ "renderVia": "rs_artboard"
+}

@@ -1,0 +1,11 @@
+{
+ "id": "huazi.card.quote.paper",
+ "label": "进阶卡·金句纸卡",
+ "ratio": "9x16",
+ "effect": "paper",
+ "usage": [
+  "punchline"
+ ],
+ "medium": "artboard-card",
+ "renderVia": "rs_artboard"
+}
