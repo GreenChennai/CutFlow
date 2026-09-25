@@ -278,8 +278,23 @@ def test_doctor_zero_env_reports_basic_tier(tmp_path, monkeypatch, isolated_env,
     """
     deps, _ = isolated_env                                   # 空的临时 deps 目录
     real = json.loads(CONFIG.read_text(encoding="utf-8"))
-    real["vqa_exe"] = str(tmp_path / "vqa-stub.exe")         # 唯一致命缺口补齐(本机无 VQA 直连)
+    # 机器装配轴全量 stub(与 vqa 同口径):本测试只主张「能力组件零环境 ≠ fatal」,
+    # OCR/剪映/音色卡在 CI 是 config.example 的 <path-to> 占位路径,必须一并提供存在性。
+    real["vqa_exe"] = str(tmp_path / "vqa-stub.exe")
     Path(real["vqa_exe"]).write_bytes(b"stub")
+    real["ocr_exe"] = str(tmp_path / "ocr-stub.exe")
+    Path(real["ocr_exe"]).write_bytes(b"stub")
+    jy = real.setdefault("jianying59", {})
+    jy["exe"] = str(tmp_path / "jy-stub.exe")
+    Path(jy["exe"]).write_bytes(b"stub")
+    jy["draft_root"] = str(tmp_path / "drafts")
+    Path(jy["draft_root"]).mkdir(parents=True, exist_ok=True)
+    voice_name = str(real.get("tts", {}).get("default_voice") or "stub-voice")
+    voices = tmp_path / "voices" / voice_name
+    voices.mkdir(parents=True, exist_ok=True)
+    (voices / "card.json").write_text(json.dumps({"name": voice_name}, ensure_ascii=False),
+                                      encoding="utf-8")
+    real.setdefault("tts", {})["voices_dir"] = str(voices.parent)
     monkeypatch.setattr(rs_doctor, "load_config", lambda: real)
     monkeypatch.setattr(rs_doctor, "_bridge_probe_checks", lambda: [])
     monkeypatch.setattr(sys, "argv", ["rs_doctor.py", "--report"])
