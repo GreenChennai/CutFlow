@@ -220,7 +220,7 @@ def test_events_skip_punct_only_sentence():
 
 def test_retext_cli_flow(tmp_path, monkeypatch, capsys):
     wl = _mk_wl()
-    wlp = tmp_path / "05_ir" / "wordline.json"
+    wlp = tmp_path / "05_时间线工程" / "wordline.json"
     wlp.parent.mkdir(parents=True)
     wlp.write_text(json.dumps(wl, ensure_ascii=False), encoding="utf-8")
     proof = tmp_path / "proof.txt"
@@ -234,7 +234,7 @@ def test_retext_cli_flow(tmp_path, monkeypatch, capsys):
     assert json.loads(wlp.read_text(encoding="utf-8"))["chars"][7]["ch"] == "蓝"
 
     # 正式回灌到 --out
-    out2 = tmp_path / "05_ir" / "wl2.json"
+    out2 = tmp_path / "05_时间线工程" / "wl2.json"
     monkeypatch.setattr(sys, "argv", ["rs_align.py", "retext", str(wlp),
                                       "--text", str(proof), "--out", str(out2)])
     assert rs_align.main() == 0
@@ -314,7 +314,7 @@ def test_karaoke_cli_wordline_end_to_end(tmp_path, monkeypatch, capsys):
     """正常 wordline + --karaoke → ASS 含 \\kf 染色(小闭环)。"""
     wlp = tmp_path / "wl.json"
     wlp.write_text(json.dumps(_mk_wl(), ensure_ascii=False), encoding="utf-8")
-    outd = tmp_path / "06_output"
+    outd = tmp_path / "06_成片输出"
     monkeypatch.setattr(sys, "argv", ["rs_subtitle.py", "--from-wordline", str(wlp),
                                       "--style", "subtitle-white", "--ratio", "9x16",
                                       "--out", str(outd), "--karaoke"])
@@ -340,7 +340,7 @@ def test_karaoke_cli_degraded_gates(tmp_path, monkeypatch, capsys):
     assert wl["degraded"]
     wlp = tmp_path / "wl.json"
     wlp.write_text(json.dumps(wl, ensure_ascii=False), encoding="utf-8")
-    outd = tmp_path / "06_output"
+    outd = tmp_path / "06_成片输出"
 
     monkeypatch.setattr(sys, "argv", ["rs_subtitle.py", "--from-wordline", str(wlp),
                                       "--out", str(outd), "--karaoke"])
@@ -406,20 +406,20 @@ def test_cover_crop_geometry():
 def test_render_dryrun_reports_cache_state(tmp_path):
     """--explain 干跑:只报命中,不碰 ffmpeg、不写任何缓存文件。"""
     proj = tmp_path / "proj"
-    (proj / "05_ir").mkdir(parents=True)
-    (proj / "03_assets").mkdir()
-    (proj / "03_assets" / "a.png").write_bytes(b"png")
+    (proj / "05_时间线工程").mkdir(parents=True)
+    (proj / "03_创作素材").mkdir()
+    (proj / "03_创作素材" / "a.png").write_bytes(b"png")
     ir = {"version": 1, "slug": "t", "fps": 30, "canvas": {"width": 1080, "height": 1920},
           "tracks": [{"kind": "video", "clips": [
-              {"src": "03_assets/a.png", "startMs": 0, "durationMs": 1000}]}],
+              {"src": "03_创作素材/a.png", "startMs": 0, "durationMs": 1000}]}],
           "subtitle": {}}
-    ir_path = proj / "05_ir" / "project.json"
+    ir_path = proj / "05_时间线工程" / "project.json"
     ir_path.write_text(json.dumps(ir), encoding="utf-8")
     res = rs_render.render(ir, ir_path, "9x16", "draft", dry_run=True)
     assert res["dryRun"] is True
     assert res["segTotal"] == 1 and res["segHits"] == 0
     assert set(res["steps"]) == {"concat", "compose", "mix", "subtitle", "encode"}
-    build = proj / "06_output" / "_build" / "9x16"
+    build = proj / "06_成片输出" / "_build" / "9x16"
     assert not (build / "segcache").exists() and not (build / "step_keys.json").exists()
 
 
@@ -436,7 +436,7 @@ def test_prune_seg_cache_keeps_newest(tmp_path, monkeypatch):
 
 
 def test_s1_wordline_is_registry_source_of_truth():
-    """S1 必须产出 05_ir/wordline.json —— 全片时间唯一真相源(ADR-0011)。"""
+    """S1 必须产出 05_时间线工程/wordline.json —— 全片时间唯一真相源(ADR-0011)。"""
     s1 = next(s for s in rs_run.spec() if s["id"] == "S1")
     assert "wordline.json" in " ".join(s1["cmd"])
 
@@ -633,7 +633,7 @@ def test_rs_sync_karaoke_ass_sync_ok(tmp_path, monkeypatch, capsys):
         "Dialogue: 0,0:00:00.97,0:00:02.12,Main,,0,0,0,,"
         "{\kf28}店{\kf14}群{\kf14}运{\kf20}营\n",
         encoding="utf-8")
-    outd = tmp_path / "06_output"
+    outd = tmp_path / "06_成片输出"
     monkeypatch.setattr(sys, "argv", ["rs_sync.py", "--wordline", str(wlp),
                                       "--ass", str(ass), "--out", str(outd)])
     assert rs_sync.main() == 0

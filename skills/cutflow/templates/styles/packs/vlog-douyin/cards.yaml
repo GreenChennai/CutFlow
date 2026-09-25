@@ -1,0 +1,15 @@
+# 风格包卡片映射(ADR-0051 体例见 _template/cards.yaml):Vlog 旅拍 → artboard 借格。
+slug: vlog-douyin
+artboard:
+  styles: [xhs-cover]                            # [内部] artboard references/styles/xhs-cover.md(暖底贴纸手账感)
+  cases: ["assets/cases/xhs-cover-case.html"]    # [内部] artboard assets/cases/xhs-cover-case.html
+templates:
+  opener: 1        # 片头卡:目的地/主题一句话(最漂亮空镜前置)
+  title: 0
+  section: 0
+  stat: 0
+  compare: 0
+  endcard: 1       # 片尾卡:下期预告/订阅钩子(vlog 观众订阅靠人设)
+durationMsHint:
+  opener: 4200
+  endcard: 4800

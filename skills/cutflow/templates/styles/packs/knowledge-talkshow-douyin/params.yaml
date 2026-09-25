@@ -1,0 +1,16 @@
+# 风格包参数档(ADR-0051):知识口播·抖音竖屏。出处标注体例见 _template/params.yaml。
+slug: knowledge-talkshow-douyin
+label: 知识口播·抖音竖屏
+videoType: talking-head
+platform: douyin                       # [内部] templates/platforms.json douyin
+ratio: 9x16                            # [内部] templates/platforms.json douyin.ratio
+
+pacing: fast                           # [内部] registry.entries.knowledge-talkshow-douyin.pacing
+cardMs: [900, 3500]                    # [内部] registry.pacingTiers.fast.cardMs
+visualBeatSec: [2, 3]                  # [内部] registry.pacingTiers.fast.visualBeatSec
+bgm: {enabled: false, gainDb: -18, ducking: none}   # [内部] registry.pacingTiers.fast(bgm=false;-18 仅显式开 BGM 时生效);[经验] 口播以人声为绝对主角
+transition: {default: hard_cut, allow: [fade], snapToBeat: false}   # [经验] 口播重信息传达,花哨转场分散注意力;插入动画切换才用 fade
+subtitle: {style: talkshow-bold, maxChars: 12, cpsMax: 9, lyricOnly: false}   # [内部] registry 同名条目 style + platforms.douyin.maxChars=12 + 全库 CPS≤9 红线
+cards: {density: 少, template: info}   # [内部] registry.entries.knowledge-talkshow-douyin.cards
+capabilities: [vision.greenscreen, cut.dead-air, qc.black-frame]   # [内部] registry.videoTypes.talking-head.capabilities(描述符均已登记)
+artboard: {styles: [tech-kv], templates: ["opener:1", "title:3", "endcard:1"]}   # [内部] ADR-0051 示例;artboard references/styles/tech-kv.md

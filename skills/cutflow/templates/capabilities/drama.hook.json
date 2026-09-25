@@ -1,0 +1,24 @@
+{
+ "id": "drama.hook",
+ "label": "短剧钩子/反转密度 + 废帧检测",
+ "appliesTo": [
+  "drama"
+ ],
+ "stage": "S9",
+ "detector": "rs_sync.py",
+ "depends": [],
+ "degrade": {
+  "to": "manual-check",
+  "trace": "hookDensityDegraded",
+  "message": "缺成片(--video)或检测工具不可用时,钩子密度/废帧判据降级为 L1 目测,请对照短剧分册验收清单人工确认"
+ },
+ "params": {
+  "hookEverySec": 3,
+  "twistEverySec": 5,
+  "anchorWindowSec": 7,
+  "wasteFrameMinSec": 1.2
+ },
+ "artifact": "output/sync_rows.json",
+ "verify": "tests/test_drama_commentary.py",
+ "notes": "M8 第二波落地(方案 §5.5.3)。rs_sync 按能力声明启用(ADR-0047 数据驱动):钩子密度=画面变化间隔 ≤5s/前 7s ≥1 次变化,L0 只给 WARN 级提示(方案允许 L1 目测兜底);废帧=≥1.2s 全画面无变化(freezedetect/blackdetect 同源滤镜收紧阈值),机械可查,命中即硬判。detector 与 S9 阶段脚本同体,不重复执行,产物由阶段主命令落盘。"
+}

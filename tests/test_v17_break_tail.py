@@ -53,7 +53,7 @@ def _seg(text: str, start_ms: int, per: int = 200) -> dict:
 
 
 def _wordline(text: str, start_ms: int = 0, per: int = 200,
-              source: str = "01_materials/a.mp4") -> dict:
+              source: str = "01_原始素材/a.mp4") -> dict:
     return rs_align.build_wordline([_seg(text, start_ms, per)], source)
 
 
@@ -190,14 +190,14 @@ def test_p27_2_ledger_assertion_and_sync_helper():
 
 
 def _mk_project(tmp_path: Path, wl: dict | None = None) -> tuple[Path, Path, dict]:
-    """最小工程:05_ir/wordline.json + 04_cut/cutlist.json(含 1 刀 remove)。"""
+    """最小工程:05_时间线工程/wordline.json + 04_粗剪决策/cutlist.json(含 1 刀 remove)。"""
     root = tmp_path / "proj"
-    (root / "05_ir").mkdir(parents=True)
-    (root / "04_cut").mkdir()
+    (root / "05_时间线工程").mkdir(parents=True)
+    (root / "04_粗剪决策").mkdir()
     if wl is None:
         wl = _wordline("大家好今天我们来讲桌面运维先看蓝屏", 0)
-        wl["source"] = "01_materials/a.mp4"
-    (root / "05_ir" / "wordline.json").write_text(
+        wl["source"] = "01_原始素材/a.mp4"
+    (root / "05_时间线工程" / "wordline.json").write_text(
         json.dumps(wl, ensure_ascii=False, indent=1), encoding="utf-8")
     total = int(wl["srcDurationMs"])
     cut_out = int(total * 0.5)
@@ -208,9 +208,9 @@ def _mk_project(tmp_path: Path, wl: dict | None = None) -> tuple[Path, Path, dic
                               "tailKeepMs": 600, "ok": True, "okByReason": True}}],
           "keep": [[0, cut_out - 600], [cut_out, total]],
           "removedMs": 600, "srcTotalMs": total}
-    (root / "04_cut" / "cutlist.json").write_text(
+    (root / "04_粗剪决策" / "cutlist.json").write_text(
         json.dumps(cl, ensure_ascii=False, indent=1), encoding="utf-8")
-    return root, (root / "04_cut" / "cutlist.json"), cl
+    return root, (root / "04_粗剪决策" / "cutlist.json"), cl
 
 
 def test_p27_1_apply_auto_syncs_wordline_durations(tmp_path, monkeypatch):
@@ -224,7 +224,7 @@ def test_p27_1_apply_auto_syncs_wordline_durations(tmp_path, monkeypatch):
     code, doc = _capture(rs_cut.main)
     assert code == 0 and doc["ok"], doc
     assert doc["data"]["wordlineSync"]["wordline"], doc["data"]["wordlineSync"]
-    wl = json.loads((root / "05_ir" / "wordline.json").read_text(encoding="utf-8"))
+    wl = json.loads((root / "05_时间线工程" / "wordline.json").read_text(encoding="utf-8"))
     assert wl["srcDurationMs"] == 9000 and wl["removedMs"] == 600
     assert wl["finalDurationMs"] == 8400
     assert rs_common.duration_ledger_error(wl) is None
@@ -233,7 +233,7 @@ def test_p27_1_apply_auto_syncs_wordline_durations(tmp_path, monkeypatch):
 def test_p27_1_apply_refuses_manual_edit_wordline(tmp_path, monkeypatch):
     """P27-1/B8 同源:wordline 带手工编辑痕迹 → 拒绝自动改写并告警;--force 可越过。"""
     root, cl_path, cl = _mk_project(tmp_path)
-    wlp = root / "05_ir" / "wordline.json"
+    wlp = root / "05_时间线工程" / "wordline.json"
     wl = json.loads(wlp.read_text(encoding="utf-8"))
     wl["manualEdit"] = "手改过时间锚"
     wlp.write_text(json.dumps(wl, ensure_ascii=False), encoding="utf-8")
@@ -254,18 +254,18 @@ def test_p27_3_ir_build_gates_on_broken_ledger(tmp_path, monkeypatch):
     cl_path.write_text(json.dumps(cl, ensure_ascii=False, indent=1), encoding="utf-8")
     monkeypatch.chdir(root)
     monkeypatch.setattr(sys, "argv", ["rs_ir.py", "build", "--from-cutlist",
-                                      "04_cut/cutlist.json", "--slug", "t",
-                                      "--out", "05_ir/project.json"])
+                                      "04_粗剪决策/cutlist.json", "--slug", "t",
+                                      "--out", "05_时间线工程/project.json"])
     code, doc = _capture(rs_ir.main)
     assert code == 2 and doc["code"] == "DURATION_LEDGER", doc
     assert "rs_cut.py --apply" in doc["message"]
     # 平账后(等价 --apply 的同步效果)→ 通过
-    wl = json.loads((root / "05_ir" / "wordline.json").read_text(encoding="utf-8"))
+    wl = json.loads((root / "05_时间线工程" / "wordline.json").read_text(encoding="utf-8"))
     wl = rs_common.sync_wordline_durations(wl, 9000, 600)
-    (root / "05_ir" / "wordline.json").write_text(json.dumps(wl, ensure_ascii=False), encoding="utf-8")
+    (root / "05_时间线工程" / "wordline.json").write_text(json.dumps(wl, ensure_ascii=False), encoding="utf-8")
     monkeypatch.setattr(sys, "argv", ["rs_ir.py", "build", "--from-cutlist",
-                                      "04_cut/cutlist.json", "--slug", "t",
-                                      "--out", "05_ir/project.json"])
+                                      "04_粗剪决策/cutlist.json", "--slug", "t",
+                                      "--out", "05_时间线工程/project.json"])
     code, doc = _capture(rs_ir.main)
     assert doc["ok"], doc
 
@@ -579,9 +579,9 @@ def test_p26_end_to_end_tail_reserve_and_ledger(tmp_path, monkeypatch):
     二次 remap 被拦、rs_sync 总时长差 ≤0.05s、rs_verify L0 通过。
     """
     root = tmp_path / "proj"
-    for d in ("01_materials", "02_sensed", "04_cut", "05_ir", "06_output"):
+    for d in ("01_原始素材", "02_转写与校对", "04_粗剪决策", "05_时间线工程", "06_成片输出"):
         (root / d).mkdir(parents=True)
-    media = root / "01_materials" / "a.mp4"
+    media = root / "01_原始素材" / "a.mp4"
     # 正弦"语音" 9.22s + 静音底噪 0.78s → 真实媒体 10.0s(尾底噪即验收的"自然收尾")
     subprocess.run([FFMPEG, "-y", "-v", "error",
                     "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=9.22",
@@ -595,16 +595,16 @@ def test_p26_end_to_end_tail_reserve_and_ledger(tmp_path, monkeypatch):
 
     # 1) wordline 被钳制:末字 endMs == 记录总时长 9220(P26-2 检测应报疑点)
     segs = [_seg("大家好今天我们讲片尾截断的教训务必高度重视", 100, per=200)]
-    (root / "02_sensed" / "transcript.json").write_text(
+    (root / "02_转写与校对" / "transcript.json").write_text(
         json.dumps({"segments": segs}, ensure_ascii=False), encoding="utf-8")
     monkeypatch.chdir(root)
     monkeypatch.setattr(sys, "argv", ["rs_align.py", "build", "--from-transcript",
-                                      "02_sensed/transcript.json",
-                                      "--src", "01_materials/a.mp4",
-                                      "--out", "05_ir/wordline.json"])
+                                      "02_转写与校对/transcript.json",
+                                      "--src", "01_原始素材/a.mp4",
+                                      "--out", "05_时间线工程/wordline.json"])
     code, doc = _capture(rs_align.main)
     assert doc["ok"], doc
-    wl = json.loads((root / "05_ir" / "wordline.json").read_text(encoding="utf-8"))
+    wl = json.loads((root / "05_时间线工程" / "wordline.json").read_text(encoding="utf-8"))
     # P26-1:--src 指向真实素材 → build 时直接 ffprobe 实测,ASR 记录值不再采用
     assert wl["srcDurationMs"] == pytest.approx(measured, abs=50)
     assert wl["durationProvenance"] == "ffprobe"
@@ -615,64 +615,64 @@ def test_p26_end_to_end_tail_reserve_and_ledger(tmp_path, monkeypatch):
     # 接下来 rs_cut 的实测保底 + --apply 自动同步就是这次的修复主链
     wl["srcDurationMs"] = 9220
     wl["finalDurationMs"] = 9220
-    (root / "05_ir" / "wordline.json").write_text(
+    (root / "05_时间线工程" / "wordline.json").write_text(
         json.dumps(wl, ensure_ascii=False), encoding="utf-8")
 
     # 2) rs_cut --detect --media:P26-3 keep 末段保底到实测 10.0s
-    monkeypatch.setattr(sys, "argv", ["rs_cut.py", "05_ir/wordline.json", "--detect", "all",
-                                      "--out", "04_cut", "--media", "01_materials/a.mp4"])
+    monkeypatch.setattr(sys, "argv", ["rs_cut.py", "05_时间线工程/wordline.json", "--detect", "all",
+                                      "--out", "04_粗剪决策", "--media", "01_原始素材/a.mp4"])
     code, doc = _capture(rs_cut.main)
     assert doc["ok"], doc
     tail = doc["data"].get("tail") or {}
     assert tail.get("keepEndMs", 0) >= 9900, tail
-    cl = json.loads((root / "04_cut" / "cutlist.json").read_text(encoding="utf-8"))
+    cl = json.loads((root / "04_粗剪决策" / "cutlist.json").read_text(encoding="utf-8"))
     assert cl["srcTotalMs"] == doc["data"]["srcTotalMs"]
 
     # 3) --apply:自动同步 wordline 时长账(P27-1),不再手改两字段
-    monkeypatch.setattr(sys, "argv", ["rs_cut.py", "--apply", "04_cut/cutlist.json"])
+    monkeypatch.setattr(sys, "argv", ["rs_cut.py", "--apply", "04_粗剪决策/cutlist.json"])
     code, doc = _capture(rs_cut.main)
     assert doc["ok"] and doc["data"]["wordlineSync"]["wordline"], doc
-    wl = json.loads((root / "05_ir" / "wordline.json").read_text(encoding="utf-8"))
+    wl = json.loads((root / "05_时间线工程" / "wordline.json").read_text(encoding="utf-8"))
     assert wl["srcDurationMs"] >= 9900 and wl["removedMs"] == 0
     assert wl["finalDurationMs"] == wl["srcDurationMs"]
-    applied = json.loads((root / "04_cut" / "cutlist.applied.json").read_text(encoding="utf-8"))
+    applied = json.loads((root / "04_粗剪决策" / "cutlist.applied.json").read_text(encoding="utf-8"))
     assert applied["keep"][-1][1] >= 9900                   # 末段保住 ~0.78s 底噪
 
     # 4) remap(P28 本体丢幽灵字)→ 二次 remap 被拦(P29-1)
-    monkeypatch.setattr(sys, "argv", ["rs_align.py", "remap", "05_ir/wordline.json",
-                                      "--cutlist", "04_cut/cutlist.applied.json",
-                                      "--out", "05_ir/wordline.final.json"])
+    monkeypatch.setattr(sys, "argv", ["rs_align.py", "remap", "05_时间线工程/wordline.json",
+                                      "--cutlist", "04_粗剪决策/cutlist.applied.json",
+                                      "--out", "05_时间线工程/wordline.final.json"])
     code, doc = _capture(rs_align.main)
     assert doc["ok"], doc
-    wlf = json.loads((root / "05_ir" / "wordline.final.json").read_text(encoding="utf-8"))
+    wlf = json.loads((root / "05_时间线工程" / "wordline.final.json").read_text(encoding="utf-8"))
     assert wlf["space"] == "final"
     assert [c["i"] for c in wlf["chars"]] == list(range(len(wlf["chars"])))
-    monkeypatch.setattr(sys, "argv", ["rs_align.py", "remap", "05_ir/wordline.final.json",
-                                      "--cutlist", "04_cut/cutlist.applied.json",
-                                      "--out", "05_ir/wordline.final2.json"])
+    monkeypatch.setattr(sys, "argv", ["rs_align.py", "remap", "05_时间线工程/wordline.final.json",
+                                      "--cutlist", "04_粗剪决策/cutlist.applied.json",
+                                      "--out", "05_时间线工程/wordline.final2.json"])
     code, doc = _capture(rs_align.main)
     assert code == 2 and doc["code"] == "ALREADY_FINAL_SPACE", doc
 
     # 5) S3 IR → S7 字幕 → 渲染 → rs_sync(实测基准,总时长差 ≤0.05s)
     monkeypatch.setattr(sys, "argv", ["rs_ir.py", "build", "--from-cutlist",
-                                      "04_cut/cutlist.applied.json", "--slug", "tail",
-                                      "--out", "05_ir/project.json"])
+                                      "04_粗剪决策/cutlist.applied.json", "--slug", "tail",
+                                      "--out", "05_时间线工程/project.json"])
     code, doc = _capture(rs_ir.main)
     assert doc["ok"], doc
     monkeypatch.setattr(sys, "argv", ["rs_subtitle.py", "--from-wordline",
-                                      "05_ir/wordline.final.json", "--ratio", "9x16",
-                                      "--out", "06_output"])
+                                      "05_时间线工程/wordline.final.json", "--ratio", "9x16",
+                                      "--out", "06_成片输出"])
     code, doc = _capture(rsub.main)
     assert doc["ok"], doc
-    monkeypatch.setattr(sys, "argv", ["rs_render.py", "05_ir/project.json",
+    monkeypatch.setattr(sys, "argv", ["rs_render.py", "05_时间线工程/project.json",
                                       "--ratio", "9x16", "--profile", "draft"])
     import rs_render
     code, doc = _capture(rs_render.main)
     assert doc["ok"], doc
-    videos = sorted((root / "06_output").glob("*.mp4"))
+    videos = sorted((root / "06_成片输出").glob("*.mp4"))
     assert videos, "必须产出成片"
-    monkeypatch.setattr(sys, "argv", ["rs_sync.py", "--wordline", "05_ir/wordline.final.json",
-                                      "--ass", "06_output/subtitles.ass", "--out", "06_output",
+    monkeypatch.setattr(sys, "argv", ["rs_sync.py", "--wordline", "05_时间线工程/wordline.final.json",
+                                      "--ass", "06_成片输出/subtitles.ass", "--out", "06_成片输出",
                                       "--video", str(videos[-1])])
     code, doc = _capture(rs_sync.main)
     assert doc["ok"], (doc.get("message"), (doc.get("data") or {}).get("video"))
@@ -702,17 +702,17 @@ def test_acceptance_sync_report_records_two_explained_short_cards(tmp_path, monk
     """验收 §5-5:override 通道产出的 2 张短卡(借款时 0.76s / 规范股东与 0.80s)如实记入
     sync_report.md 软告警,总判定仍通过(L0 不因短卡硬失败,坑 #4 的规范口径)。"""
     root = tmp_path / "proj"
-    (root / "05_ir").mkdir(parents=True)
-    (root / "06_output").mkdir()
+    (root / "05_时间线工程").mkdir(parents=True)
+    (root / "06_成片输出").mkdir()
     # 紧凑时间轴(句间无间隙):短卡的延长被下一卡锚点顶住(经验贴同款约束)
     t1 = _seg_gap("借款时", 0)
     t2 = _seg_gap("发生纳税年度内周转归还", int(t1["end"] * 1000))
     t3 = _seg_gap("依据财税〔2003〕158号文件的规定", int(t2["end"] * 1000))
     t4 = _seg_gap("规范股东与公司之间的资金往来务必高度重视", int(t3["end"] * 1000))
     wl = rs_align.build_wordline([t1, t2, t3, t4], "a.mp4")
-    (root / "05_ir" / "wordline.json").write_text(
+    (root / "05_时间线工程" / "wordline.json").write_text(
         json.dumps(wl, ensure_ascii=False, indent=1), encoding="utf-8")
-    ov = root / "06_output" / "subtitles_override.json"
+    ov = root / "06_成片输出" / "subtitles_override.json"
     ov.write_text(json.dumps({"cards": [
         {"text": "借款时"}, {"text": "发生纳税年度内周转归还"},
         {"text": "依据财税〔2003〕"}, {"text": "158号文件的规定"},
@@ -720,19 +720,19 @@ def test_acceptance_sync_report_records_two_explained_short_cards(tmp_path, monk
         {"text": "务必高度重视"}]}, ensure_ascii=False), encoding="utf-8")
     monkeypatch.chdir(root)
     monkeypatch.setattr(sys, "argv", ["rs_subtitle.py", "--from-wordline",
-                                      "05_ir/wordline.json", "--override",
-                                      "06_output/subtitles_override.json",
-                                      "--ratio", "9x16", "--out", "06_output"])
+                                      "05_时间线工程/wordline.json", "--override",
+                                      "06_成片输出/subtitles_override.json",
+                                      "--ratio", "9x16", "--out", "06_成片输出"])
     code, doc = _capture(rsub.main)
     assert doc["ok"], doc
-    monkeypatch.setattr(sys, "argv", ["rs_sync.py", "--wordline", "05_ir/wordline.json",
-                                      "--ass", "06_output/subtitles.ass", "--out", "06_output"])
+    monkeypatch.setattr(sys, "argv", ["rs_sync.py", "--wordline", "05_时间线工程/wordline.json",
+                                      "--ass", "06_成片输出/subtitles.ass", "--out", "06_成片输出"])
     code, doc = _capture(rs_sync.main)
     assert doc["ok"], (doc.get("message"), doc["data"].get("shortDuration"))
     short = doc["data"]["shortDuration"]
     assert len(short) == 2, short
     assert any("借款时" in x for x in short) and any("规范股东与" in x for x in short)
-    report = (root / "06_output" / "sync_report.md").read_text(encoding="utf-8")
+    report = (root / "06_成片输出" / "sync_report.md").read_text(encoding="utf-8")
     assert "时长过短明细" in report and "借款时" in report
     # rs_verify 的字幕检查:短卡是软告警,不是 L0 硬失败(坑 #4)
     import rs_verify

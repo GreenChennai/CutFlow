@@ -1,8 +1,8 @@
 """S6 音效自动落点:把「手动挂音效」变成「Agent 出草案 + 人审」(rules/sfx.md)。
 
 用法:
-  rs_sfx.py 05_ir/project.json --auto --out 05_ir/sfx_draft.json
-  rs_sfx.py 05_ir/project.json --apply 05_ir/sfx_draft.json [--write 05_ir/project.sfx.json]
+  rs_sfx.py 05_时间线工程/project.json --auto --out 05_时间线工程/sfx_draft.json
+  rs_sfx.py 05_时间线工程/project.json --apply 05_时间线工程/sfx_draft.json [--write 05_时间线工程/project.sfx.json]
 
 落点规则:转场=切点/卡片切换;强调=关键词;列举=第一/第二/第三;章节=markers;结尾=末卡。
 密度硬约束:**每 15s 内音效 ≤ 2 个**,超出者进 dropped(不静默丢弃)。
@@ -16,6 +16,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from rs_common import REPO_ROOT, emit  # noqa: E402
+import rs_paths  # noqa: E402  — 阶段路径唯一真相源(ADR-0046),本文件禁止目录字面量
 
 DENSITY_WINDOW_MS = 15000
 DENSITY_MAX = 2
@@ -160,7 +161,7 @@ def main() -> int:
     ap.add_argument("--apply")
     ap.add_argument("--write")
     ap.add_argument("--wordline")
-    ap.add_argument("--out", default="05_ir/sfx_draft.json")
+    ap.add_argument("--out", default=rs_paths.p("timeline") + "/sfx_draft.json")
     a = ap.parse_args()
     ir = json.loads(Path(a.ir).read_text(encoding="utf-8"))
 

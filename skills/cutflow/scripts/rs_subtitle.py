@@ -1,9 +1,9 @@
 """字幕:时间轴来源(Wordline / TTS manifest / transcript)→ SRT + ASS(DP 卡切分 + 风格模板)。
 
 用法:
-  rs_subtitle.py --from-wordline 05_ir/wordline.json --style talkshow-bold --ratio 9x16 --out 06_output
-  rs_subtitle.py --from-tts 03_assets/tts/manifest.json --style tutorial-clean --ratio 9x16 --out 06_output
-  rs_subtitle.py --from-transcript 02_sensed/transcript_corrected.json --ratio 16x9 --out 06_output
+  rs_subtitle.py --from-wordline 05_时间线工程/wordline.json --style talkshow-bold --ratio 9x16 --out 06_成片输出
+  rs_subtitle.py --from-tts 03_创作素材/tts/manifest.json --style tutorial-clean --ratio 9x16 --out 06_成片输出
+  rs_subtitle.py --from-transcript 02_转写与校对/transcript_corrected.json --ratio 16x9 --out 06_成片输出
 
 核心变化(ADR-0001 修订 / ADR-0011):
   · 卡切分走约束最优 DP(segmentation.py),不再是长度驱动
@@ -60,6 +60,16 @@ RELEASE_MS = segmentation.RELEASE_MS             # 卡相对首/末字的时间�
 EXTEND_MAX_S = 0.30                               # 为凑最短时长可延长的后沿上限(秒)
 
 _PUNCT_ONLY = set("。,、;::!?!?…,. ;:~·—–-()()《》「」『』【】[]“”‘’\"' ")
+
+# ---------------------------------------------------------------- 双 Style(M8 短剧/影视解说,方案 §5.5.3)
+# 解说/原声对白双 Style:解说体 Main(常规样式)+ 原声对白体 Quote(暖黄斜体,
+# 视觉可区分);对白文本自动包中文引号。voice 标记来自校对后的 wordline 句级
+# 字段(sentences[].voice = "dialogue");无标记 → 全部按解说体(降级留痕)。
+QUOTE_OPEN, QUOTE_CLOSE = "\u201c", "\u201d"   # “ ”
+QUOTE_RESERVE_CHARS = 2                        # 对白卡为引号预留的字数预算(sub.pair 描述符同源)
+VOICE_COMMENTARY, VOICE_DIALOGUE = "commentary", "dialogue"
+QUOTE_STYLE_NAME = "Quote"                     # ASS 第二 Style 段名
+QUOTE_COLOR = "&H0000E5FF"                     # 暖黄(BGR);与白字解说体一眼可分
 
 STYLES = {
     "talkshow-bold": {
@@ -160,8 +170,12 @@ def _ts_ass(sec: float) -> str:
 
 # ---------------------------------------------------------------- Wordline 路径(唯一时间来源)
 
-def _sentence_slices(wl: dict) -> list[tuple[str, list[int], dict]]:
-    """把 Wordline 切成 (原始文本, 位置→chars下标 映射, 停顿表)。"""
+def _sentence_slices(wl: dict) -> list[tuple[str, list[int], dict, str]]:
+    """把 Wordline 切成 (原始文本, 位置→chars下标 映射, 停顿表, 声轨标记)。
+
+    声轨标记 = 句级 voice 字段("dialogue"=原声对白,其余/缺省=解说);
+    双 Style(--dual-style)据此分派 ASS Style 与引号。
+    """
     chars = wl.get("chars", [])
     sents = wl.get("sentences") or []
     out = []
@@ -179,7 +193,8 @@ def _sentence_slices(wl: dict) -> list[tuple[str, list[int], dict]]:
             d = int(chars[a + k]["startMs"]) - int(chars[a + k - 1]["endMs"])
             if d > 0:
                 gaps[k] = float(d)
-        out.append((text, idxmap, gaps))
+        voice = str(s.get("voice") or VOICE_COMMENTARY)
+        out.append((text, idxmap, gaps, voice))
     return out
 
 
@@ -197,35 +212,42 @@ def _to_cards(events: list[dict]) -> list[dict]:
 
 
 def _dp_events(wl: dict, max_chars: int, *, terms=(), top: int = 3,
-               mode: str = "dp") -> tuple[list[dict], list[dict], list[str], int]:
+               mode: str = "dp", dual_style: bool = False) -> tuple[list[dict], list[dict], list[str], int]:
     """逐句 DP 切分 → 原始事件(未必并/未延长/未间距),附候选与降级留痕。
 
     events_from_wordline 与 override 的 partial 模式共用(B7:部分替换需要
     DP 分组做基底)。
+    dual_style=True 时:对白句的切分预算按 max_chars−QUOTE_RESERVE_CHARS 收紧
+    (引号在出卡时补上,显示字形不超每卡上限);事件携带 voice 标记。
     """
     events: list[dict] = []
     candidates: list[dict] = []
     seg_degrade: list[str] = []      # 单句 DP 失败 → 退回长度算法,但必须留痕
     word_fb_count = 0                # 词内全禁无可行解、走了词内强惩罚的句数(留痕)
-    for text, idxmap, gaps in _sentence_slices(wl):
+    for text, idxmap, gaps, voice in _sentence_slices(wl):
         if all(ch in _PUNCT_ONLY or not ch.strip() for ch in text):
             continue          # 纯标点句跳过:DP 对它产卡缺 startMs(会以 0.0s 污染排序)
+        eff_max = max_chars
+        if dual_style and voice == VOICE_DIALOGUE:
+            # 引号预算:对白卡出卡时自动包“ ”,切分阶段先扣掉,显示不超上限
+            eff_max = max(4, max_chars - QUOTE_RESERVE_CHARS)
         if mode == "length":
             cards = [{"i": i, "text": c, "start": None, "end": None}
-                     for i, c in enumerate(textopt.card_split(text, max_chars, mode="length"))]
+                     for i, c in enumerate(textopt.card_split(text, eff_max, mode="length"))]
             plan = {"cards": cards, "violations": [], "ambiguous": False}
         else:
             try:
-                plan = segmentation.segment(text, max_chars, gaps=gaps, index_map=idxmap,
+                plan = segmentation.segment(text, eff_max, gaps=gaps, index_map=idxmap,
                                             char_times=wl.get("chars"), terms=terms, top=top)
             except Exception as exc:  # noqa: BLE001 — 单句分段失败不该炸掉整条字幕
                 seg_degrade.append(f"句「{text[:12]}」DP 分段失败,退回长度算法"
                                    f"({type(exc).__name__}: {exc})")
                 plan = {"cards": [{"i": i, "text": c, "startMs": None, "endMs": None}
-                                  for i, c in enumerate(textopt.card_split_length(text, max_chars))],
+                                  for i, c in enumerate(textopt.card_split_length(text, eff_max))],
                         "violations": [], "ambiguous": False, "plans": []}
         word_fb_count += 1 if plan.get("wordFallback") else 0
         candidates.append({"sentence": text, "ambiguous": plan.get("ambiguous", False),
+                           "voice": voice,
                            "plans": [{"score": p["score"], "cards": [c["text"] for c in p["cards"]]}
                                      for p in plan.get("plans", [])]})
         for c in plan["cards"]:
@@ -242,21 +264,27 @@ def _dp_events(wl: dict, max_chars: int, *, terms=(), top: int = 3,
             if c.get("charSpan"):
                 # Agent 复核定位用:卡 ↔ wordline 内容字全局索引(ADR-0020)
                 ev["charSpan"] = list(c["charSpan"])
+            if dual_style:
+                ev["voice"] = voice
             events.append(ev)
     return events, candidates, seg_degrade, word_fb_count
 
 
 def events_from_wordline(wl: dict, max_chars: int, *, terms=(), top: int = 3,
                          mode: str = "dp", karaoke: bool = False,
-                         cps_max: float | None = None) -> tuple[list[dict], dict]:
+                         cps_max: float | None = None,
+                         dual_style: bool = False) -> tuple[list[dict], dict]:
     """Wordline → 字幕事件。卡时间 = 首字/末字时间戳聚合(align.md §4)。
 
     `wl.charTimingEstimated`(无字级时间戳)时,卡内位置是**估算**的:仍按 max_chars
     出卡以保证可读性,但在 `degradeReasons` 里显式标注"卡内位置为估算",并由
     `meta["charTimingEstimated"]` 告知上游 —— 真正的字级时间由 `rs_dub align`(#10)补齐。
+
+    dual_style=True(方案 §5.5.3):对白句(voice=dialogue)切分预算预留引号位,
+    事件携带 voice;并卡/吞卡不跨声轨(解说卡与对白卡不合并)。
     """
     events, candidates, seg_degrade, word_fb_count = _dp_events(
-        wl, max_chars, terms=terms, top=top, mode=mode)
+        wl, max_chars, terms=terms, top=top, mode=mode, dual_style=dual_style)
 
     events.sort(key=lambda e: e["start"])
     kar_attached = 0
@@ -286,6 +314,17 @@ def events_from_wordline(wl: dict, max_chars: int, *, terms=(), top: int = 3,
         reasons.append("卡内位置为估算(无字级时间戳),建议 rs_dub align 补字级")
     if word_fb_count:
         reasons.append(f"{word_fb_count} 句词内全禁无可行解,按词内强惩罚切分(ADR-0020 留痕)")
+    dlg = sum(1 for e in events if e.get("voice") == VOICE_DIALOGUE)
+    dual_meta = None
+    if dual_style:
+        dual_meta = {"requested": True, "applied": dlg > 0, "dialogueCards": dlg,
+                     "reason": "" if dlg else
+                     "wordline 无 voice=dialogue 句(降级:单 Style + 引号标注,无对白可标)"}
+        if dlg:
+            reasons.append(f"双 Style:解说 {len(events) - dlg} 卡 / 原声对白 {dlg} 卡(引号区分)")
+        else:
+            reasons.append("双 Style 降级:wordline 无原声对白标记,按单 Style 出卡"
+                           "(sub.pair 降级档:单 Style + 引号标注)")
     meta = {"degraded": bool(wl.get("degraded")) or any(e.get("degraded") for e in events),
             "degradeReasons": reasons,
             "charTimingEstimated": estimated,
@@ -295,6 +334,8 @@ def events_from_wordline(wl: dict, max_chars: int, *, terms=(), top: int = 3,
             "karaokeAttached": kar_attached,
             "wordFallbackSentences": word_fb_count,
             "ambiguous": sum(1 for c in candidates if c["ambiguous"])}
+    if dual_meta:
+        meta["dualStyle"] = dual_meta
     return events, meta
 
 
@@ -610,7 +651,8 @@ def _drop_ghost_cards(events: list[dict], max_chars: int,
         return events, 0, []
     for e in events:
         if _ghost_span_ms(e) >= min_ms:
-            if pending is not None:          # 幽灵卡作前缀并入下一张正常卡
+            if pending is not None and _same_voice(pending, e):
+                # 幽灵卡作前缀并入下一张正常卡(跨声轨不并:对白/解说分界保持)
                 joined = _join(pending.get("text", ""), e["text"])
                 if len(joined.replace(" ", "")) <= max_chars:
                     e = dict(e)
@@ -632,9 +674,9 @@ def _drop_ghost_cards(events: list[dict], max_chars: int,
                     pending = None
             out.append(e)
             continue
-        # e 是幽灵卡:先试向前吞(并入上一张已落卡)
+        # e 是幽灵卡:先试向前吞(并入上一张已落卡;跨声轨不并)
         text = e.get("text") or ""
-        if out:
+        if out and _same_voice(out[-1], e):
             prev = out[-1]
             joined = _join(prev.get("text", ""), text)
             if len(joined.replace(" ", "")) <= max_chars:
@@ -665,6 +707,14 @@ def _join(a: str, b: str) -> str:
     return a.rstrip() + sep + b.lstrip()
 
 
+def _same_voice(a: dict, b: dict) -> bool:
+    """两事件是否同声轨(双 Style 并卡护栏:解说卡与原声对白卡不合并)。
+
+    无 voice 标记的事件(override 路径/旧工程)视为同轨,行为与 historic 一致。
+    """
+    return a.get("voice", "") == b.get("voice", "")
+
+
 def _merge_short(events: list[dict], max_chars: int,
                  min_dur: float = MIN_DUR_S) -> tuple[list[dict], int]:
     """<0.83s 必并(rules/subtitles.md §4.4):与相邻卡合并,前提是合并后不超字数上限。
@@ -682,7 +732,7 @@ def _merge_short(events: list[dict], max_chars: int,
             prev = out[-1]
             text = _join(prev["text"], e["text"])
             short = (prev["end"] - prev["start"] < min_dur) or (e["end"] - e["start"] < min_dur)
-            if short and len(text.replace(" ", "")) <= max_chars:
+            if short and _same_voice(prev, e) and len(text.replace(" ", "")) <= max_chars:
                 prev["end"] = e["end"]
                 prev["text"] = text
                 if "anchorEnd" in e:
@@ -706,7 +756,7 @@ def _merge_short(events: list[dict], max_chars: int,
             continue
         nxt = out[i + 1]
         text = _join(e["text"], nxt["text"])
-        if len(text.replace(" ", "")) <= max_chars:
+        if len(text.replace(" ", "")) <= max_chars and _same_voice(e, nxt):
             nxt["text"] = text
             nxt["start"] = e["start"]
             if "anchorStart" in e:
@@ -853,20 +903,47 @@ def write_srt(events: list[dict], path: Path) -> None:
     path.write_text(body, encoding="utf-8")
 
 
+def _style_line(name: str, st: dict, ratio: str, secondary: str, italic: int = 0) -> str:
+    """一条 ASS Style 行(双 Style 的 Main/Quote 共用同一拼装,保证字段同构)。"""
+    margin_r, margin_l = 60, 60
+    return (f"Style: {name},{st['font']},{st['size'][ratio]},{st['primary']},{secondary},"
+            f"{st['outline']},{st['back']},{st['bold']},{italic},0,0,100,100,0,0,"
+            f"{st.get('border_style', 1)},{st['outline_w']},{st['shadow']},{st['align']},"
+            f"{margin_l},{margin_r},{st['margin_v'][ratio]},1")
+
+
+def quote_text(e: dict) -> str:
+    """原声对白卡文本:自动包中文引号(已带前引号不重复包;sub.pair 降级档同款规则)。"""
+    t = e.get("text") or ""
+    if not t or t.lstrip().startswith(QUOTE_OPEN):
+        return t
+    return f"{QUOTE_OPEN}{t}{QUOTE_CLOSE}"
+
+
 def write_ass(events: list[dict], path: Path, style_name: str, ratio: str, canvas: str,
-              karaoke: bool = False) -> None:
+              karaoke: bool = False, dual_style: bool = False) -> bool:
     """karaoke=True 时生成逐字卡拉OK:Primary=已唱色(黄),Secondary=未唱色(白),
-    每字一个 \\kf 标签(时长=厘秒,取自字级时间戳;字间停顿计入前字)。"""
+    每字一个 \\kf 标签(时长=厘秒,取自字级时间戳;字间停顿计入前字)。
+
+    dual_style=True(M8 短剧/影视解说):生成两个 Style 段 —— 解说体 Main(常规样式)
+    + 原声对白体 Quote(暖黄斜体,视觉可区分);voice=dialogue 的事件走 Quote 并自动
+    包中文引号。卡拉OK 路径只换 Style 不加引号字形(逐字时间不含引号,包引号会
+    破坏「显示字形=预算」口径)。返回是否真的出了双 Style(供 CLI 留痕)。
+    """
     st = STYLES.get(style_name) or STYLES["subtitle-white"]
     w, h = canvas.split("x")
     play_res = f"PlayResX: {w}\nPlayResY: {h}"
-    margin_r, margin_l = 60, 60
     if karaoke:
         st = dict(st)
         st["primary"] = "&H0000E5FF"          # 已唱:暖黄(BGR)
         secondary = "&H00FFFFFF"              # 未唱:白
     else:
         secondary = "&H000000FF"
+
+    def _is_dlg(e: dict) -> bool:
+        return dual_style and e.get("voice") == VOICE_DIALOGUE
+
+    has_dlg = dual_style and any(_is_dlg(e) for e in events)
     header = f"""[Script Info]
 Title: CutFlow subtitles
 ScriptType: v4.00+
@@ -876,18 +953,30 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Main,{st['font']},{st['size'][ratio]},{st['primary']},{secondary},{st['outline']},{st['back']},{st['bold']},0,0,0,100,100,0,0,{st.get('border_style', 1)},{st['outline_w']},{st['shadow']},{st['align']},{margin_l},{margin_r},{st['margin_v'][ratio]},1
-
+"""
+    header += _style_line("Main", st, ratio, secondary) + "\n"
+    if has_dlg:
+        # 原声对白体:同字号/同底部安全区(MarginV 不动),暖黄 + 斜体区分
+        st_q = dict(st)
+        st_q["primary"] = QUOTE_COLOR
+        header += _style_line(QUOTE_STYLE_NAME, st_q, ratio, secondary, italic=1) + "\n"
+    header += f"""
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
-    if karaoke:
-        lines = "".join(f"Dialogue: 0,{_ts_ass(e['start'])},{_ts_ass(e['end'])},Main,,0,0,0,,{_kar_text(e)}\n"
-                        for e in events)
-    else:
-        lines = "".join(f"Dialogue: 0,{_ts_ass(e['start'])},{_ts_ass(e['end'])},Main,,0,0,0,,{e['text']}\n"
-                        for e in events)
-    path.write_text(header + lines, encoding="utf-8")
+    lines = []
+    for e in events:
+        style = QUOTE_STYLE_NAME if _is_dlg(e) else "Main"
+        if karaoke:
+            body = _kar_text(e)
+        elif _is_dlg(e):
+            body = quote_text(e)              # 对白自动包引号(已是引号开头不重复包)
+        else:
+            body = e["text"]
+        lines.append(f"Dialogue: 0,{_ts_ass(e['start'])},{_ts_ass(e['end'])},{style},"
+                     f",0,0,0,,{body}\n")
+    path.write_text(header + "".join(lines), encoding="utf-8")
+    return has_dlg
 
 
 def _kar_text(e: dict) -> str:
@@ -985,6 +1074,10 @@ def main() -> int:
     ap.add_argument("--no-optimize", action="store_true", help="关闭轻改写(默认开启)")
     ap.add_argument("--karaoke", action="store_true",
                     help="逐字卡拉OK字幕(\\kf 染色;需 pkg 后端字级时间戳的 wordline)")
+    ap.add_argument("--dual-style", dest="dual_style", action="store_true",
+                    help="解说/原声对白双 Style(方案 §5.5.3):解说体 Main + 原声对白体 Quote,"
+                         "对白自动包中文引号;需 --from-wordline 且句级 voice=dialogue 标记,"
+                         "无标记时降级为单 Style(留痕)")
     ap.add_argument("--allow-degraded", dest="allow_degraded", action="store_true",
                     help="卡拉OK 但 wordline 降级时,降级为普通字幕而不是报错")
     ap.add_argument("--override", default=None,
@@ -1014,6 +1107,13 @@ def main() -> int:
         canvas = f"{w}x{h}"
     terms = tuple(t.strip() for t in a.terms.split(",") if t.strip())
     max_chars = a.max_chars or preset.get("maxChars") or MAX_CHARS[ratio]
+
+    # 双 Style 判定先于读源:voice 标记只来自校对后的 wordline,其他源直接拒绝
+    dual_style = bool(a.dual_style)
+    if dual_style and not a.from_wordline:
+        return emit(False, "DUAL_NEEDS_WORDLINE",
+                    "--dual-style 仅支持 --from-wordline(voice 标记来自校对后的句级字段)",
+                    exit_code=2)
 
     if a.from_wordline:
         wl = json.loads(Path(a.from_wordline).read_text(encoding="utf-8"))
@@ -1082,7 +1182,8 @@ def main() -> int:
     else:
         events, meta = events_from_wordline(wl, max_chars, terms=terms, top=a.top,
                                             mode=a.segment, karaoke=karaoke,
-                                            cps_max=preset.get("cpsMax"))
+                                            cps_max=preset.get("cpsMax"),
+                                            dual_style=dual_style)
         if karaoke and not meta.get("karaokeAttached"):
             karaoke = False
             kar_note = "卡拉OK 降级:字级时间未覆盖任何字幕卡"
@@ -1102,14 +1203,16 @@ def main() -> int:
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
     write_srt(events, out / "master.srt")
-    write_ass(events, out / "subtitles.ass", style, ratio, canvas, karaoke=karaoke)
+    dual_applied = write_ass(events, out / "subtitles.ass", style, ratio, canvas,
+                             karaoke=karaoke, dual_style=dual_style)
 
     if meta["candidates"]:
         (out / "segments_candidates.json").write_text(
             json.dumps(meta["candidates"], ensure_ascii=False, indent=1), encoding="utf-8")
 
     # Agent 复核输入:卡 ↔ charSpan(wordline 内容字全局索引);改 span 后用 --override 回灌
-    cards_json = [{"i": i, "text": e["text"], "charSpan": e.get("charSpan"),
+    cards_json = [{"i": i, "text": e["text"], "voice": e.get("voice") or "commentary",
+                   "charSpan": e.get("charSpan"),
                    "startMs": int(round(e["start"] * 1000)), "endMs": int(round(e["end"] * 1000))}
                   for i, e in enumerate(events)]
     (out / "cards.json").write_text(
@@ -1119,6 +1222,13 @@ def main() -> int:
                    ensure_ascii=False, indent=1), encoding="utf-8")
 
     msg = f"{len(events)} 条字幕事件(卡切分 {a.segment},每卡 ≤{max_chars} 字)"
+    if dual_style:
+        dm = meta.get("dualStyle") or {}
+        if dual_applied:
+            msg += (f";双 Style 生效(解说 {len(events) - (dm.get('dialogueCards') or 0)}"
+                    f" / 对白 {dm.get('dialogueCards')} 卡,引号区分)")
+        else:
+            msg += ";双 Style 降级:单 Style 出卡(wordline 无对白标记)"
     if meta.get("overrideApplied"):
         msg += f";override 重建 {meta['overrideCards']} 卡"
         if meta.get("residualRegrouped"):
@@ -1141,6 +1251,8 @@ def main() -> int:
                  "cards": str(out / "cards.json"),
                  "style": style, "ratio": ratio, "platform": a.platform,
                  "canvas": canvas, "count": len(events),
+                 "dualStyle": dual_style,
+                 "dualStyleApplied": bool(dual_applied),
                  "overrideApplied": bool(meta.get("overrideApplied")),
                  "maxChars": max_chars, "ambiguous": meta["ambiguous"],
                  "violations": meta["violations"][:20], "degraded": meta["degraded"],

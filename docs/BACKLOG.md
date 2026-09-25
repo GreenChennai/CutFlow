@@ -4,6 +4,32 @@
 > 每轮自迭代:取最高优先 1–3 项 → 实现 → 验证 → tag `iter-NN` → push。
 > 2026-09-21 v0.18 清账(副文档 03 O8-1):已落地条目收口打勾,"仍成立"条目补当前证据;对照本轮交付(P17–P25、RT 闭环)无已落地仍挂 `[ ]` 的条目。
 
+## v0.19 清账(2026-09-25,多风格迭代方案 §1.7 的 18 条逐条处置)
+
+> 处置口径:**清**=本轮解决,附当前证据;**顺延**=明确不做但记账;**关门**=判定不再需要。
+> 判据:不存在「已落地仍挂 `[ ]`」——下表未打勾的条目均给出顺延理由。
+
+| # | 欠账(出处) | 处置 | 证据 / 去向 |
+|---|---|---|---|
+| 1 | 真实素材端到端验收缺位(v4/v5/v7 区) | **清**(以 ffmpeg 合成素材完成机械验收;用户睡嘱全权委托) | `tests/test_mixcut_e2e.py` / `test_vlog_e2e.py` / `test_drama_commentary.py` / `test_screen_e2e.py` 四型端到端全绿;成片/压缩率/占比真值断言见各文件 docstring。**真实素材复验建议由用户醒后执行**(方案 §9.4:样本外不作承诺) |
+| 2 | safeArea 未进脚本硬校验(#A6) | **清** | `rs_verify.check_safe_area`(M2):声明平台的字幕底沿/贴片矩形硬判;`tests/test_deliverables.py` 夹具断言界内绿/界外红 |
+| 3 | `rs_sync` OVERLAP_TOL_MS 未按 fps 自适应(W6) | **清** | v0.19:容差=1000/fps(fps 读自 `--ir` project.json;IR 缺席回退 34);`--frame-ms` 显式覆盖优先;`tests/test_v12.py` 回归绿 |
+| 4 | 尾部黑场检测器缺失(I3) | **清**(并入 S9 QC) | `rs_sync.run_qc` blackdetect + `detect_waste_frames`(M8 短剧)双处覆盖;片内黑帧 ≥QC_BLACK_MIN_S 即红(首尾 0.5s 白名单口径在册) |
+| 5 | `--terms` 未接进 S7 断句保护(I2 后半) | **顺延**(部分落地) | `rs_subtitle --terms` 断词禁切可用(v0.12);brief 自动喂入 S7 与候选 terms 命中展示未做——S7 命令接线需过 `rs_run` spec 面改动,本轮让位四型端到端 |
+| 6 | DP 断句语义单元惩罚(I1) | **顺延**(影响质量不影响正确性,方案原处置) | segmentation 现有 NO_TAIL/连词/词内禁切;语义单元罚分留 M10 后迭代 |
+| 7 | W3 词表扩充 / W4 复核实跑 / W5 事件层去重 | **部分清 / 顺延** | W5 文本锚定三处已抽 `rs_common.content_index/anchor_span`(v0.12 起);事件层管线去重方案原定与 M4 EditOp 事件层合并处理——rs_edit 落地后 OpLog 侧接管变更留痕,旧管线重构降级为 P2 顺延;W3/W4 仍成立(滚动项) |
+| 8 | 绿幕检测阈值实测校准(v0.14 区 P2) | **部分清**(并入抠像重建分流) | S0 分流 (b) 路线落地:`--allow-auto-matting` → `rs_matting` 五项质量门禁达标才放行(ADR-0050);rs_greenscreen 的 BORDER_FRAC/OVERALL_FRAC/MAX_CV 仍为经验初值——实测定档依赖真实素材批跑,随 #1 用户复验一并执行 |
+| 9 | I4 说话人分离 | **顺延**(决策性挂起,方案原处置) | 勿为单人口播引入 ~1GB 模型;`interview` 立项时重议(M3 已实证 interview 扩展零引擎改动) |
+| 10 | I5 音频事件(SenseVoice) | **关门**(方案原处置) | 改用轻量 VAD/能量事件;rs_cut dead-air 能量探测已在册 |
+| 11 | 真·剪映花字(resource_id 建库) | **顺延** | 剪映 6.0+ 加密永不读写(ADR-0044);5.9 花字走 resource_id 建库成本高收益低 |
+| 12 | 关键词高亮字幕(ASS 富文本 span) | **顺延**(显式不承诺) | M4 U7:`project.schema.json` 无高亮字段 → `subtitle.highlight` 为 OP_UNSUPPORTED(退出码 2,拒绝静默写 schema 外字段);补高亮字段进契约后即可启用 op |
+| 13 | 内置 CC0 BGM 小曲库 + `--bgm auto` | **清** | `skills/cutflow/assets/bgm/`(自产合成 4 条,无版权约束)+ `rs_intent` `bgm: auto` 按节奏档选曲(decision_log source=library)→ `rs_ir` 接线进 IR;`tests/test_m8_infra.py` |
+| 14 | 纯声音视频背景动态化 | **顺延**(方案原处置) | — |
+| 15 | MomentShift `_normalize_wav` WinError 2 | **顺延**(跨项目,需用户点头,方案原处置) | — |
+| 16 | `rs_bench` 采样点去重 / 网格时间码标签 | **顺延** | 方案原定 M4;M4 实际工作量让位于 rs_edit 四门禁与全链路演示;rs_bench 既有产物可用,属可读性优化 |
+| 17 | 剪映 GUI 自动导出改「导出至」目录(P3) | **关门**(方案原处置) | 剪映降为单向出口(ADR-0052);`rules/jianying.md` 已如实写明 |
+| 18 | 双后端能力对齐矩阵文档(IDEA) | **清** | `docs/capability-matrix.md`(M7):九能力行 × FFmpeg 管线 / cutforge-render 双后端,变速差口如实标注 |
+
 ## 待办
 
 ### v0.14(2026-09-16,来源用户要求:抠像移交用户 + 幕布检测)

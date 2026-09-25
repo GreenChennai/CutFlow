@@ -13,6 +13,21 @@
 
 ---
 
+## 🆕 v0.19 · 多风格 + 自然语言改片 + 懒加载大版本
+
+> 依据《CutFlow-多风格迭代方案-v1.md》(M0–M10,ADR-0045~0052)。目录契约中文化:`00_制作简报`…`06_成片输出` + 顶层 **`成品/` 交付区**(工程/成品物理分离;文件名守 ASCII);路径唯一真相源 `rs_paths.py`,全仓 0 处目录字面量(门禁把守)。
+
+- **多风格引擎级落地**:`混剪`(节拍检测 beats.json + `rs_edit beat.snap` 卡点)/ `vlog`(镜头切分 + 横转竖 reframe,裁切不拉伸)/ `短剧·影视解说`(解说/引号双 Style 字幕 + 版权 L0 门禁)/ `录屏教程`(等待段压缩 ≥30% + 点击缩放 + 打码)。能力经**可插拔能力注册表**挂载:引擎无 `if videoType` 分支,新增类型只加三处数据(`interview` 实证 `rs_run.py` 零改动);
+- **自然语言改片**:`rs_edit`(context 投影 ≤12KB 不抽帧 → ops.json → `--dry-run` 人话差异表 → apply/undo);幂等、确定性、冲突即停(CF-*),与 CutForge 共用同一条 OpLog;实测 apply 0.1ms/op;
+- **风格包 + 提示词模板**:六包 `templates/styles/packs/`(与 artboard 共用 slug 命名空间,三处同名对拍门禁)+ `rs_intent template match`(模糊描述 → 模板命中可复现,预填值 source=template 留痕);
+- **剪辑手法库**:`rules/editing-grammar.md` 25 条手法逐条可执行、全部标出处分级(【规范】【研究】【经验】【内部】)+ 7 条禁忌;
+- **懒加载依赖**:初始零环境;`rs_fetchable` 三态协议,缺失必降级留痕,`--no-fetch` 绝不触网;`rs_doctor` 零环境报「基础档可用」;
+- **artboard 片头尾产品化**:`rs_artboard.py gen-frames` 六类卡(片头/片尾/标题/章节/数据/对比)五段式 + 安全区机检 + Kiln 主引擎;`docs/capability-matrix.md` 双后端对齐矩阵;
+- **抠像重建(ADR-0050)**:默认仍由用户预处理;显式 `rs_ingest scan --allow-auto-matting` 走 RVM 质量五门禁(达标才放行,不达标阻断并给具体建议)——质量有客观锚点,不再「感觉不行就砍掉」;
+- **内置 BGM 小曲库**(`--bgm auto` 按节奏档选曲,source=library 留痕)+ 剪映降为**单向出口**(可编辑半成品 = CutForge 工程,双向闭环)。
+
+兼容矩阵:**CutFlow v0.19 ↔ cutforge v0.5.0 ↔ 目录契约 v2(中文)**。
+
 ## 🆕 v0.16–v0.18 · 提示词驱动 + 管线可信大版本
 
 > 本轮把"能用"推进到"像 AI 生图一样给提示词就出片",并把状态机、断句、剪映出口全部换成可机械验收的机制。
@@ -56,10 +71,10 @@ S0 素材(幕布检测门禁)→ S1 自带 ASR 转写+字级对齐+能量校准 
 
 | 你改了什么 | 运行哪个 |
 |---|---|
-| 字幕 `06_output/subtitles.ass` | `python 06_output\rebuild.py` |
-| IR / Wordline `05_ir/`(手注过单 clip 音频/转场) | ⚠ 改跑 `python 06_output\rebuild.py`(S8 只重烧,不碰 IR) |
-| 粗剪决策 `04_cut/cutlist*.json` | `python 04_cut\rebuild.py` |
-| artboard 卡片 `03_assets/artboard/` | `python 03_assets\artboard\rebuild.py` |
+| 字幕 `06_成片输出/subtitles.ass` | `python 06_成片输出\rebuild.py` |
+| IR / Wordline `05_时间线工程/`(手注过单 clip 音频/转场) | ⚠ 改跑 `python 06_成片输出\rebuild.py`(S8 只重烧,不碰 IR) |
+| 粗剪决策 `04_粗剪决策/cutlist*.json` | `python 04_粗剪决策\rebuild.py` |
+| artboard 卡片 `03_创作素材/artboard/` | `python 03_创作素材\artboard\rebuild.py` |
 | CutForge 编辑器改了盘面 | `rs_run.py --status` 看标脏 → `rs_editor.py diff` 看改了什么 → 上表定向重建 |
 | 拿不准 | `python rebuild.py`(工程根,全量) |
 
@@ -198,23 +213,23 @@ CutFlow 的"剪得好"不是玄学,每条数值都有出处(完整索引见 [ITE
 
 | 环节 | 命令 |
 |---|---|
-| 意图编译(提示词入口) | `rs_intent.py compile --brief 00_brief\brief.json --plan 00_brief\plan.json --out 00_brief`(`--dry-run` 打印推断表) |
+| 意图编译(提示词入口) | `rs_intent.py compile --brief 00_制作简报\brief.json --plan 00_制作简报\plan.json --out 00_制作简报`(`--dry-run` 打印推断表) |
 | 全自动流水线 | `rs_run.py --auto`(无人值守:自动裁决+留痕;L2 验收仍归用户) |
 | 阶段状态 / 增量 | `rs_run.py --status` / `--from S3` / `--only S7` / `--explain S7` |
 | 一键重建 | `rs_run.py --init`(生成 rebuild.py)/ `--rollback` |
 | 分级自检 | `rs_verify.py <工程>` / `--mark-first --result pass` |
 | 转写 | `python tools\fun_asr.py <媒体>` / `--probe` |
-| 对齐(S1) | `rs_align.py build --media <素材> --out 05_ir\wordline.json`(专名错 → `--terms-file 00_brief\terms.txt` 热词重跑) |
-| wordline 平滑 / 时长修正 | `rs_align.py smooth …` / `rs_align.py refresh-durations 05_ir\wordline.json --media <素材>`(只改时长不动字符时间) |
-| 粗剪(S2) | `rs_cut.py 05_ir\wordline.json --detect all --media 源 --out 04_cut` → `--apply`(自动同步时长账;`--protect` 标保护区) |
-| 按文本裁片 | `rs_cut.py 05_ir\wordline.json --from-text "只想要的引文"`(引文外走 guard) |
-| CutList→IR(S3) | `rs_ir.py build --from-cutlist 04_cut\cutlist.applied.json --slug X --out 05_ir\project.json`(`--punch-in-auto` 启用变焦掩饰) |
-| 挂动画卡(I7 / O2) | `rs_ir.py add-overlay --manifest 03_assets\artboard\manifest.json --plan 00_brief\cards.json` / `rs_artboard.py gen-cards --from 00_brief\cards.json` |
-| 字幕(S7) | `rs_subtitle.py --from-wordline 05_ir\wordline.final.json --platform douyin --out 06_output`(`--override` 复核回灌,余字自动重组) |
-| 对齐自检+体检(S9) | `rs_sync.py --wordline 05_ir\wordline.final.json --ass 06_output\subtitles.ass --video 成片.mp4 --audio-content --qc` |
-| 封面文案(S10) | `rs_meta.py --wordline ... --brief 00_brief\brief.md --platform douyin,bili` |
+| 对齐(S1) | `rs_align.py build --media <素材> --out 05_时间线工程\wordline.json`(专名错 → `--terms-file 00_制作简报\terms.txt` 热词重跑) |
+| wordline 平滑 / 时长修正 | `rs_align.py smooth …` / `rs_align.py refresh-durations 05_时间线工程\wordline.json --media <素材>`(只改时长不动字符时间) |
+| 粗剪(S2) | `rs_cut.py 05_时间线工程\wordline.json --detect all --media 源 --out 04_粗剪决策` → `--apply`(自动同步时长账;`--protect` 标保护区) |
+| 按文本裁片 | `rs_cut.py 05_时间线工程\wordline.json --from-text "只想要的引文"`(引文外走 guard) |
+| CutList→IR(S3) | `rs_ir.py build --from-cutlist 04_粗剪决策\cutlist.applied.json --slug X --out 05_时间线工程\project.json`(`--punch-in-auto` 启用变焦掩饰) |
+| 挂动画卡(I7 / O2) | `rs_ir.py add-overlay --manifest 03_创作素材\artboard\manifest.json --plan 00_制作简报\cards.json` / `rs_artboard.py gen-cards --from 00_制作简报\cards.json` |
+| 字幕(S7) | `rs_subtitle.py --from-wordline 05_时间线工程\wordline.final.json --platform douyin --out 06_成片输出`(`--override` 复核回灌,余字自动重组) |
+| 对齐自检+体检(S9) | `rs_sync.py --wordline 05_时间线工程\wordline.final.json --ass 06_成片输出\subtitles.ass --video 成片.mp4 --audio-content --qc` |
+| 封面文案(S10) | `rs_meta.py --wordline ... --brief 00_制作简报\brief.md --platform douyin,bili` |
 | 决策说明书 | `rs_ingest.py decisions <工程>`(每个参数从哪来,改一条重跑一段) |
-| 剪映草稿 | `rs_jy_draft.py 05_ir\project.json --name <名>`(`--dry-run` 打印 IR→草稿映射表;只写 5.9 明文草稿) |
+| 剪映草稿 | `rs_jy_draft.py 05_时间线工程\project.json --name <名>`(`--dry-run` 打印 IR→草稿映射表;只写 5.9 明文草稿) |
 | 清理 | `rs_cleanup.py <工程> [--apply]` |
 | CutForge 桥:编辑器视图/变更识别 | `rs_editor.py view/timeline/check/diff <工程>`(只读;diff 输出编辑器改动的人话摘要) |
 | CutForge 桥:标注 | `rs_notes.py list/stats <工程> [--state open]`(含孤儿统计) |

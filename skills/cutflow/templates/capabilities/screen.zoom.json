@@ -1,0 +1,24 @@
+{
+ "id": "screen.zoom",
+ "label": "点击处 punch-in 缩放",
+ "appliesTo": [
+  "screen-recording"
+ ],
+ "stage": "S3",
+ "detector": "rs_screen.py",
+ "depends": [
+  "vision.cv"
+ ],
+ "degrade": {
+  "to": "static-zoom",
+  "trace": "zoomDegraded",
+  "message": "OpenCV 组件未部署,已降级为固定区域缩放(static-zoom):居中 punch-in,点击落拍需人工确认"
+ },
+ "params": {
+  "zoomFactor": 1.4,
+  "cursorDwellMs": 400
+ },
+ "artifact": "cut/screen.json",
+ "verify": "tests/test_m8_infra.py",
+ "notes": "M8 落地(方案 §5.5.4)。READY=点击点(光标滞留≥400ms 后快速移动)→ 逐点击 punch-in 计划;降级 static-zoom 给单条居中缩放计划(zoomPlan[0].mode=static-zoom)。方案节奏默认:点击瞬间→缩放动作 ±80ms 内启动(渲染端消费 zoomPlan 时把守)。"
+}

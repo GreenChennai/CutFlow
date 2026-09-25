@@ -1,11 +1,11 @@
 """IR 校验与生成。
 用法:python rs_ir.py validate <project.json>
-      python rs_ir.py build --from-cutlist 04_cut/cutlist.applied.json --slug X --out 05_ir/project.json
-      python rs_ir.py build --from-cards 03_assets/artboard/manifest.json \\
-             --anchors 00_brief/cards.json --wordline 05_ir/wordline.json \\
-             --voice 03_assets/vo/voice.wav --slug X --ratio 16x9 --out 05_ir/project.json
-      python rs_ir.py add-overlay 05_ir/project.json --manifest 03_assets/artboard/manifest.json \\
-             --plan 00_brief/cards.json [--track-name overlay] [--replace]
+      python rs_ir.py build --from-cutlist 04_粗剪决策/cutlist.applied.json --slug X --out 05_时间线工程/project.json
+      python rs_ir.py build --from-cards 03_创作素材/artboard/manifest.json \\
+             --anchors 00_制作简报/cards.json --wordline 05_时间线工程/wordline.json \\
+             --voice 03_创作素材/vo/voice.wav --slug X --ratio 16x9 --out 05_时间线工程/project.json
+      python rs_ir.py add-overlay 05_时间线工程/project.json --manifest 03_创作素材/artboard/manifest.json \\
+             --plan 00_制作简报/cards.json [--track-name overlay] [--replace]
 
 build 把 CutList 的 keep 区间转成 IR 主轨——**消灭「Agent 手写毫秒」这一整类误差**(rules/compose.md)。
 build --from-cards(ADR-0027,I7):纯动画工程一条命令组装 IR——卡片↔旁白字符级锚点
@@ -22,6 +22,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from rs_common import emit, write_text_atomic  # noqa: E402
+import rs_paths  # noqa: E402  — 阶段路径唯一真相源(ADR-0046),本文件禁止目录字面量
 from rs_align import keep_to_segments, map_src_to_final  # noqa: E402
 from rs_common import RATIOS, content_text  # noqa: E402
 import segmentation  # noqa: E402  — 标点口径与断句/字幕全链一致
@@ -127,14 +128,48 @@ def validate(doc: dict, base_dir: Path) -> list[str]:
     return errs
 
 
+def _subtitle_refs(project_root: Path | None) -> dict:
+    """IR 的 subtitle 相对引用:按工程实际目录名解析(旧结构工程出旧名,内引用不悬空)。"""
+    if project_root is None:
+        return {"ass": rs_paths.p("output") + "/subtitles.ass",
+                "source": rs_paths.p("timeline") + "/wordline.json"}
+    return {"ass": rs_paths.rel(project_root, "output", "subtitles.ass"),
+            "source": rs_paths.rel(project_root, "timeline", "wordline.json")}
+
+
+def _intent_bgm(project_root: Path) -> dict | None:
+    """读意图编译产物里 bgm=auto 的曲库选曲(M8 接线口)。
+
+    返回 {absPath, gainDb};未选曲/文件不存在 → None(不臆测,渲染端不加 BGM)。
+    """
+    p = project_root / rs_paths.p("brief") / "intent_decisions.json"
+    if not p.is_file():
+        return None
+    try:
+        bgm = (json.loads(p.read_text(encoding="utf-8")).get("resolved") or {}).get("bgm") or {}
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError):
+        return None
+    rel = str(bgm.get("src") or "")
+    if not rel or not bgm.get("enabled"):
+        return None
+    from rs_common import REPO_ROOT  # noqa: PLC0415
+    abs_path = Path(rel)
+    if not abs_path.is_absolute():
+        abs_path = REPO_ROOT / rel
+    if not abs_path.is_file():
+        return None
+    return {"absPath": abs_path, "gainDb": float(bgm.get("gainDb", -18))}
+
+
 def build_from_cutlist(cutlist: dict, *, slug: str, ratio: str = "9x16",
                        xfade_ms: int = 8, with_audio: bool = True,
-                       punch_in_auto: bool = False) -> dict:
+                       punch_in_auto: bool = False,
+                       project_root: Path | None = None) -> dict:
     """CutList(keep 区间)→ IR 主视频/音频轨(时间一律经 map_src_to_final 换算)。"""
     keep = [[int(a), int(b)] for a, b in (cutlist.get("keep") or [])]
     if not keep:
         raise ValueError("cutlist 缺少 keep 区间(先跑 rs_cut.py --apply)")
-    src = cutlist.get("source") or "01_materials/"
+    src = cutlist.get("source") or rs_paths.p("materials") + "/"
     segs = keep_to_segments(keep)
 
     video, audio = [], []
@@ -175,7 +210,7 @@ def build_from_cutlist(cutlist: dict, *, slug: str, ratio: str = "9x16",
         "version": 1, "slug": slug, "fps": 30, "canvas": dict(CANVAS[ratio]),
         "tracks": [{"kind": "video", "clips": video},
                    {"kind": "audio", "clips": audio}],
-        "subtitle": {"ass": "06_output/subtitles.ass", "source": "05_ir/wordline.json"},
+        "subtitle": _subtitle_refs(project_root),
         "outputs": [ratio],
         "_meta": {"generatedFrom": "cutlist", "keepSegments": len(keep),
                   "finalDurationMs": cursor,
@@ -333,7 +368,7 @@ def build_from_cards(manifest: dict, wordline: dict, anchors: list[dict], *, slu
         "version": 1, "slug": slug, "fps": fps, "canvas": dict(CANVAS[ratio]),
         "tracks": [{"kind": "video", "clips": clips},
                    {"kind": "audio", "clips": audio}],
-        "subtitle": {"ass": "06_output/subtitles.ass", "source": "05_ir/wordline.json"},
+        "subtitle": _subtitle_refs(base_dir),
         "outputs": [ratio],
         "_meta": {"generatedFrom": "cards", "cardCount": len(clips),
                   "freezeClips": freeze_count, "finalDurationMs": bounds[-1],
@@ -528,15 +563,21 @@ def add_overlay(doc: dict, manifest: dict, plan: list[dict], *, root: Path,
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("command", choices=["validate", "build", "add-overlay"])
+    ap.add_argument("command", choices=["validate", "build", "add-overlay", "add-matte"])
     ap.add_argument("project", nargs="?")
+    ap.add_argument("--clip", help="add-matte:目标 clipId(主轨)")
+    ap.add_argument("--quality", help="add-matte:rs_matting gate 产出的 matte/quality.json")
+    ap.add_argument("--alpha-dir", dest="alpha_dir", default="",
+                    help="add-matte:alpha PNG 序列目录(默认 05_时间线工程/matte/alpha)")
+    ap.add_argument("--matte-bg", dest="matte_bg", default="",
+                    help="add-matte:背景图路径(写进 matte.bg.src;cover 模式)")
     ap.add_argument("--from-cutlist")
     ap.add_argument("--from-cards", dest="from_cards",
                     help="I7 纯动画组装:artboard manifest.json(卡清单);"
                          "配合 --anchors/--wordline/--voice")
     ap.add_argument("--anchors", help="卡片↔旁白分组表 JSON:[{\"card\":…,\"match\":\"词A|词B\"}]"
                                       "(顺序=卡片顺序;match 归一化后必须与旁白逐字一致)")
-    ap.add_argument("--wordline", help="from-cards:05_ir/wordline.json(时间唯一来源)")
+    ap.add_argument("--wordline", help="from-cards:05_时间线工程/wordline.json(时间唯一来源)")
     ap.add_argument("--voice", help="from-cards:旁白音频(总时长来源)")
     ap.add_argument("--bgm", help="from-cards:BGM 音频(渲染端自动裁齐循环)")
     ap.add_argument("--gain-db", dest="gain_db", type=float, default=-20)
@@ -579,13 +620,13 @@ def main() -> int:
                                        voice=a.voice, bgm=bgm_cfg, base_dir=base_dir)
             except (ValueError, KeyError, json.JSONDecodeError) as exc:
                 return emit(False, "BUILD_FAIL", f"生成失败:{exc}", exit_code=2)
-            out = Path(a.out or "05_ir/project.json")
+            out = Path(a.out or rs_paths.p("timeline") + "/project.json")
             out.parent.mkdir(parents=True, exist_ok=True)
             manual = _manual_edits(out)
             if manual and not a.force:
                 return emit(False, "IR_MANUAL_EDITS",
                             f"现存 IR 含手注痕迹,重建会冲掉:{';'.join(manual[:4])};"
-                            "确认放弃手注请加 --force(I7 生成式产物同样不得手改)", exit_code=2)
+                            f"确认放弃手注请加 --force(I7 生成式产物同样不得手改)", exit_code=2)
             errs = validate(doc, base_dir)
             out.write_text(json.dumps(doc, ensure_ascii=False, indent=1), encoding="utf-8")
             msg = (f"IR 已生成:{doc['_meta']['cardCount']} 卡 / "
@@ -604,10 +645,25 @@ def main() -> int:
             doc = build_from_cutlist(cl_doc,
                                      slug=a.slug, ratio=a.ratio, xfade_ms=a.xfade,
                                      with_audio=not a.no_audio,
-                                     punch_in_auto=a.punch_in_auto)
+                                     punch_in_auto=a.punch_in_auto,
+                                     project_root=(cl_path.parent.parent
+                                                   if rs_paths.is_stage_dirname(cl_path.parent.name)
+                                                   else None))
         except (ValueError, KeyError) as exc:
             return emit(False, "BUILD_FAIL", f"生成失败:{exc}", exit_code=2)
-        out = Path(a.out or "05_ir/project.json")
+        # M8(清欠账 #13):bgm=auto 的曲库选曲从意图编译产物接线进 IR。
+        # 最小接线不重构:resolved.bgm 有 src(库选)且 IR 尚无 bgm 才落;增益用
+        # resolved.bgm.gainDb(节奏档/风格包是增益真相源,曲库 pick 只提供文件)。
+        # src 落【绝对路径】—— rs_render step_mix 以工程根解析相对路径,而曲库在
+        # 仓库不在工程;rs_edit bgm.set 的存在性检查对绝对路径同样成立。
+        root_guess = (cl_path.parent.parent
+                      if rs_paths.is_stage_dirname(cl_path.parent.name) else Path.cwd())
+        bgm_lib = _intent_bgm(root_guess)
+        if bgm_lib and not doc.get("bgm"):
+            doc["bgm"] = {"src": str(bgm_lib["absPath"]),
+                          "gainDb": float(bgm_lib["gainDb"]), "ducking": True}
+            doc.setdefault("_meta", {})["bgmFrom"] = "intent-library"
+        out = Path(a.out or rs_paths.p("timeline") + "/project.json")
         out.parent.mkdir(parents=True, exist_ok=True)
         # P27-3(副文档 07):「改 keep 但 wordline 时长字段未同步」在 S3 入口就报错,
         # 不等 rs_sync 事后挂红叉。给出修复命令而非静默继续。
@@ -638,15 +694,51 @@ def main() -> int:
         if manual and not a.force:
             return emit(False, "IR_MANUAL_EDITS",
                         f"现存 IR 含手注痕迹,重建会冲掉:{';'.join(manual[:4])};"
-                        "确认放弃手注请加 --force;要保留手注只重烧录用 python 06_output/rebuild.py"
+                        f"确认放弃手注请加 --force;要保留手注只重烧录用 "
+                        f"python {rs_paths.p('output')}/rebuild.py"
                         "(S8,只用现有 ass,不碰 IR;BUGREPORT B8)", exit_code=2)
-        errs = validate(doc, out.parent.parent if out.parent.name == "05_ir" else out.parent)
+        errs = validate(doc, out.parent.parent if rs_paths.is_stage_dirname(out.parent.name)
+                        else out.parent)
         out.write_text(json.dumps(doc, ensure_ascii=False, indent=1), encoding="utf-8")
         msg = (f"IR 已生成:{doc['_meta']['keepSegments']} 段 / "
                f"{doc['_meta']['finalDurationMs'] / 1000:.1f}s")
         if errs:
             msg += f"(校验 {len(errs)} 个提示:src 文件可能尚未就位)"
         return emit(True, "IR_BUILT", msg, {"path": str(out), **doc["_meta"], "validateErrors": errs})
+
+    if a.command == "add-matte":
+        # M9(ADR-0050):gate 判定写进 clip.matte;verdict ∈ pass|warn 才放行,
+        # fail/blocked 拒绝写入——「不达标不启用」是本 ADR 的核心纪律。
+        if not a.project or not a.clip or not a.quality:
+            return emit(False, "NO_INPUT",
+                        "add-matte 需要:<project.json> --clip <clipId> --quality <quality.json>",
+                        exit_code=2)
+        ir_path = Path(a.project)
+        if not ir_path.is_file():
+            return emit(False, "NO_PROJECT", f"IR 不存在:{ir_path}", exit_code=2)
+        doc = json.loads(ir_path.read_text(encoding="utf-8"))
+        q = json.loads(Path(a.quality).read_text(encoding="utf-8"))
+        if q.get("verdict") not in ("pass", "warn"):
+            return emit(False, "MATTE_QUALITY_FAIL",
+                        f"抠像判定 {q.get('verdict')} 不达启用档(仅 pass/warn 可入 IR);"
+                        "建议改走用户预处理(ADR-0031 默认路径)", {"quality": q}, exit_code=4)
+        clip_hit = next((c for t in doc.get("tracks", []) if t.get("kind") == "video"
+                         for c in t.get("clips", []) if c.get("id") == a.clip), None)
+        if clip_hit is None:
+            return emit(False, "NO_CLIP", f"主轨找不到 clipId {a.clip}", exit_code=2)
+        matte = {"engine": q.get("engine", "rvm"),
+                 "quality": {"verdict": q["verdict"], "metrics": q.get("metrics", {})},
+                 "alphaDir": a.alpha_dir or f"{rs_paths.p('timeline')}/matte/alpha",
+                 "cacheVer": q.get("cacheVer", "")}
+        if a.matte_bg:
+            matte["bg"] = {"src": a.matte_bg, "mode": "cover"}
+        clip_hit["matte"] = matte
+        errs = validate(doc, ir_path.parent.parent
+                        if rs_paths.is_stage_dirname(ir_path.parent.name) else ir_path.parent)
+        ir_path.write_text(json.dumps(doc, ensure_ascii=False, indent=1), encoding="utf-8")
+        return emit(True, "MATTE_APPLIED",
+                    f"matte 已写入 {a.clip}(verdict={q['verdict']},engine={q.get('engine')})",
+                    {"clipId": a.clip, "verdict": q["verdict"], "validateErrors": errs})
 
     if a.command == "add-overlay":
         if not a.project or not a.manifest or not a.plan:
@@ -696,7 +788,7 @@ def main() -> int:
         doc = json.loads(p.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
         return emit(False, "BAD_JSON", f"JSON 解析失败:{exc}", exit_code=2)
-    errs = validate(doc, p.parent.parent)  # IR 在 05_ir/ 下,相对路径以工程根为基准
+    errs = validate(doc, p.parent.parent)  # IR 在 05_时间线工程/ 下,相对路径以工程根为基准
     if errs:
         return emit(False, "IR_INVALID", f"{len(errs)} 个问题(hint:逐条修复后重跑)", {"errors": errs}, exit_code=2)
     return emit(True, "IR_VALID", "IR 校验通过",

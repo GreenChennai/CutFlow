@@ -6,7 +6,7 @@
 
 旧 `compose.md` 的「中间件」一节全文是:
 
-> `06_output/_build/<ratio>/` 下 `seg_*/base/composed/mixed/subtitled` 可复用;**改了字幕只重跑 step6-7(重调 rs_render 会全跑,手改时可复用 mixed.mkv)**。
+> `06_成片输出/_build/<ratio>/` 下 `seg_*/base/composed/mixed/subtitled` 可复用;**改了字幕只重跑 step6-7(重调 rs_render 会全跑,手改时可复用 mixed.mkv)**。
 
 这就是全部了——产物摆在目录里,能不能复用、复用哪几个,**靠 Agent 每次现场判断**。没有依赖声明,没有脏值计算,没有工具版本记录。于是:
 
@@ -21,7 +21,7 @@
 
 ## 2. 状态文件
 
-### `05_ir/pipeline.json`(阶段清单)
+### `05_时间线工程/pipeline.json`(阶段清单)
 
 ```json
 {
@@ -32,10 +32,10 @@
   "stages": {
     "S1": {
       "status": "done",
-      "inputs":  [{"path": "01_materials/a.mp4", "sha1": "9f2c..."}],
+      "inputs":  [{"path": "01_原始素材/a.mp4", "sha1": "9f2c..."}],
       "params":  {"model": "paraformer-zh", "punc": "ct-punc"},
       "tool":    {"rs_align.py": "ab31...", "asr_server": "0.4.2"},
-      "outputs": [{"path": "05_ir/wordline.json", "sha1": "77de..."}],
+      "outputs": [{"path": "05_时间线工程/wordline.json", "sha1": "77de..."}],
       "ts": "2026-09-10T14:02:11+08:00"
     },
     "S7": {"status": "stale", "staleReason": "S3 输出 hash 变化"}
@@ -43,7 +43,7 @@
 }
 ```
 
-- `status`(`_state/S*.json` 落盘口径)`∈ {done, failed, missing, corrupt}`;`stale` / `blocked` 是 `--status` 的实时判定,不落盘。
+- `status`(`_内部状态/S*.json` 落盘口径)`∈ {done, failed, missing, corrupt}`;`stale` / `blocked` 是 `--status` 的实时判定,不落盘。
   **`failed` 已实现(P25-1,原为文档承诺)**:阶段执行失败即落 `{"status":"failed","error":…}`,
   `--status` 显式显示 failed + 原因,其下游全部显示 **blocked**(`--dirty` 本轮不选 blocked,
   先让失败的上游重跑,成功后下轮收敛循环自然接上);重跑成功状态自然回 `done`;
@@ -52,24 +52,24 @@
   - 参数来源与优先级:brief.md 显式声明(`每卡字数:` / `CPS:` / `画幅:` / `平台:` 逐行)> pipeline.json 已存值 > 代码默认(`segmentation.MAX_CHARS` + cps 9);
   - **改 brief 里声明的参数 → 字幕(S7)变脏**;`params_of` 仅在完全缺失时回退默认。
 - `staleReason` 必须能指到**具体哪个输入变了**;
-- **状态文件损坏 ≠ missing**(P15-1):`_state/S*.json` 解析失败判 `corrupt` 并在 `--status` 显式告警,按缺失处理重跑但绝不静默;状态与记账写盘一律「临时文件 + `os.replace`」原子写,中断/掉电不留半截 JSON。
+- **状态文件损坏 ≠ missing**(P15-1):`_内部状态/S*.json` 解析失败判 `corrupt` 并在 `--status` 显式告警,按缺失处理重跑但绝不静默;状态与记账写盘一律「临时文件 + `os.replace`」原子写,中断/掉电不留半截 JSON。
 
-### `_state/S*.json` 与 `06_output/_build/<ratio>/segcache/`(实码口径,P25-1)
+### `_内部状态/S*.json` 与 `06_成片输出/_build/<ratio>/segcache/`(实码口径,P25-1)
 
-阶段级状态在 `_state/S*.json`;**segment 级**缓存在 rs_render 手里,真实落点是
-`06_output/_build/<ratio>/segcache/<segKey>.mp4`:`segKey` 按「该段输入(clip 全字段含尾帧扩展)+
+阶段级状态在 `_内部状态/S*.json`;**segment 级**缓存在 rs_render 手里,真实落点是
+`06_成片输出/_build/<ratio>/segcache/<segKey>.mp4`:`segKey` 按「该段输入(clip 全字段含尾帧扩展)+
 文档参数 + 画幅 + 源指纹」内容寻址,**只重渲 key 变了的 seg**,其余 concat 复用;
 上限 `SEG_CACHE_KEEP=400` 按 mtime 淘汰,`rs_render --clear-cache` / `--no-cache` 显式管理。
 
 > **缓存粒度 = segment。粗于 segment 没收益,细于 segment 管理成本爆炸。**
 
-(旧文档写的 `_state/seg_S3_0007.json` 从未存在过——段级键一直在 rs_render 的 segcache 里,已改指实码。)
+(旧文档写的 `_内部状态/seg_S3_0007.json` 从未存在过——段级键一直在 rs_render 的 segcache 里,已改指实码。)
 
 ### 2.5 人工阶段的「真实产物标记」与产物落点(P11-1 / P10b-1)
 
-- **S4(动画/信息卡)只认 `03_assets/artboard/manifest.json` 里的 `appliedAt`**(`rs_artboard --apply` 成功时写入)。不再声明 `05_ir/project.json` 当产物——那是 S3 的,曾让 S3 一跑完 S4 就自动 ✓。无卡片的工程用 `rs_run --mark S4` 显式记录"无事可做";
+- **S4(动画/信息卡)只认 `03_创作素材/artboard/manifest.json` 里的 `appliedAt`**(`rs_artboard --apply` 成功时写入)。不再声明 `05_时间线工程/project.json` 当产物——那是 S3 的,曾让 S3 一跑完 S4 就自动 ✓。无卡片的工程用 `rs_run --mark S4` 显式记录"无事可做";
 - 人工阶段(S0/S4/S11)无真实标记一律判 **missing**,绝不借上游产物自动 done;
-- **交付成片各落独占子目录**:S8 烧录导出 → `06_output/final/final_*.mp4`;S5 品牌变体 → `06_output/branded/成片_*.mp4`(rs_render 的 final 档默认落 `06_output/final/`,rs_brand 经 `--out` 显式指定落点)。从根上消除两阶段 glob 交叠互相打脏;
+- **交付成片各落独占子目录**:S8 烧录导出 → `06_成片输出/final/final_*.mp4`;S5 品牌变体 → `06_成片输出/branded/成片_*.mp4`(rs_render 的 final 档默认落 `06_成片输出/final/`,rs_brand 经 `--out` 显式指定落点)。从根上消除两阶段 glob 交叠互相打脏;
 - **旧工程兼容**:顶层遗留的 `final_*.mp4` / `成片_*.mp4` 不追改历史——`{final_video}` 映射、`rs_verify`/`rs_ingest` 成片清单与 `rs_cleanup` 白名单同时认新子目录与旧顶层落点;首次重跑起产物自动落新目录。
 
 ## 3. 缓存键公式(最容易写错的地方)
@@ -117,17 +117,17 @@ key(stage) = sha1(
 `rs_run.py --auto` 是**从意图编译入口开始的全程无人值守**(rs_intent compile → rs_run --auto),
 不是新状态机:阶段注册表、缓存键、`--from/--only/--dirty` 语义全部不变,它只把「会停下来问人」的
 CHECK 换成「自动决策 + 理由留痕」。与 intake 双模式里 `automation`(用户全权,Agent 临场自选)的
-区别:--auto 连 Agent 的临场裁决也收归脚本口径,每条落 `05_ir/pipeline.json` 的 `decision_log`:
+区别:--auto 连 Agent 的临场裁决也收归脚本口径,每条落 `05_时间线工程/pipeline.json` 的 `decision_log`:
 
 | CHECK | --auto 的裁决 | 留痕 |
 |---|---|---|
-| 断句歧义(`ambiguous`) | 取断句 DP 最优,不问 Agent | `auto:S7:ambiguous-auto`;候选本就在 `06_output/segments_candidates.json` 供事后复核 |
+| 断句歧义(`ambiguous`) | 取断句 DP 最优,不问 Agent | `auto:S7:ambiguous-auto`;候选本就在 `06_成片输出/segments_candidates.json` 供事后复核 |
 | 粗剪 `review` 刀 | **保守保留**(宁可漏删不可错删),`--apply` 照常重算 keep + 时长账,再 remap 出成片空间 wordline | `auto:S2:review-keep` / `auto:S2:auto-apply` / `auto:S2:remap` |
 | 人工阶段 S0 | 注册 cmd 本是机械命令(摄取)→ 照常执行 | `rs_run` 结果行 `manualAuto` |
-| 人工阶段 S4 | 无 `00_brief/cards.json` → 标记无事可做;有 → artboard 三连(gen-cards --force/export/apply) | `auto:S4:no-cards` / `auto:S4:cards-chain` |
-| 人工阶段 S11 | 跑交付对账 + 生成 `06_output/决策说明书.md`;缺封面/占位文案如实留痕不代劳 | `auto:S11:deliverables` |
+| 人工阶段 S4 | 无 `00_制作简报/cards.json` → 标记无事可做;有 → artboard 三连(gen-cards --force/export/apply) | `auto:S4:no-cards` / `auto:S4:cards-chain` |
+| 人工阶段 S11 | 跑交付对账 + 生成 `06_成片输出/决策说明书.md`;缺封面/占位文案如实留痕不代劳 | `auto:S11:deliverables` |
 | S5 无 `variants.json` | 跳过(缺声明宁可漏做不猜),状态保持 missing 如实亮灯 | `auto:S5:skip` |
-| L1 目测 | **降级为抽帧留证**(`rs_bench` 网格图 `06_output/L1未人工确认_抽帧留证.png`),不判定不阻断 | `auto:verify:l1-degrade` / `auto:verify:bench` |
+| L1 目测 | **降级为抽帧留证**(`rs_bench` 网格图 `06_成片输出/L1未人工确认_抽帧留证.png`),不判定不阻断 | `auto:verify:l1-degrade` / `auto:verify:bench` |
 | L0 机械自检 | **硬闸不放松**,不过即非零退出 | `auto:verify:l0` |
 | L2 最终验收 | **始终归用户,auto 不代劳**(不写 firstCheck) | 运行结果 `l2Note` |
 
@@ -148,7 +148,7 @@ P12-1 的「brief 声明即参数源」延伸到画幅与字幕样式:S3/S8 的 
 (`画幅:` / `平台:` / `风格 token:` 行)> 平台预设(`templates/platforms.json`)>
 旧字面缺省(talkshow-bold / 9x16)——未声明任何参数的旧工程命令与从前**逐字节一致**。
 `{final_wordline}` 让有粗剪的工程用 remap 后的成片空间 wordline 出字幕(与 S9 对账同一约定;
-无 remap 产物的旧工程仍解析到 `05_ir/wordline.json`,行为不变)。S3/S7/S8 的缓存键因此新增
+无 remap 产物的旧工程仍解析到 `05_时间线工程/wordline.json`,行为不变)。S3/S7/S8 的缓存键因此新增
 `ratio` 维度:老账首次对账会判一次 stale 重跑,属诚实的参数接管。
 
 ## 5. 改造前后代价对照(这是这一机制的全部意义)
@@ -187,10 +187,10 @@ python skills/cutflow/scripts/rs_run.py --root <工程> --init   # 生成各文�
 
 | 文件 | 从哪起跑 | 改什么时用 |
 |---|---|---|
-| `04_cut/rebuild.py` | S2 | 手工调 CutList |
-| `05_ir/rebuild.py` | S3 | 改 IR / Wordline |
-| `03_assets/artboard/rebuild.py` | S4(前接 artboard 导出+回填,一条龙) | 改 artboard 卡片 |
-| `06_output/rebuild.py` | **S8** | 改字幕(只重烧录导出,**不重新生成字幕**) |
+| `04_粗剪决策/rebuild.py` | S2 | 手工调 CutList |
+| `05_时间线工程/rebuild.py` | S3 | 改 IR / Wordline |
+| `03_创作素材/artboard/rebuild.py` | S4(前接 artboard 导出+回填,一条龙) | 改 artboard 卡片 |
+| `06_成片输出/rebuild.py` | **S8** | 改字幕(只重烧录导出,**不重新生成字幕**) |
 | `rebuild.py`(工程根) | S0 | 拿不准就全量 |
 | `REBUILD.md` | — | 「改了东西跑哪个」速查表 |
 
@@ -198,7 +198,7 @@ python skills/cutflow/scripts/rs_run.py --root <工程> --init   # 生成各文�
 
 ```
 ① 备份   每个「真正写盘的非 cached 阶段」跑前自动备份将被覆盖的产物
-         → _state/backup/<时间戳>/(保留最近 5 次;备不下就中止,绝不无保险覆盖)
+         → _内部状态/backup/<时间戳>/(保留最近 5 次;备不下就中止,绝不无保险覆盖)
 ② 级联   --force 只作用于起点阶段,上游一律走缓存;--dirty 路径逐轮收敛
 ③ 自检   跑到末尾后按 verify_policy 分级自检(首次/画面变过 → L1,否则 L0)
 ```
@@ -217,8 +217,8 @@ python skills/cutflow/scripts/rs_run.py --root <工程> --rollback --at 20260910
 ```
 
 > ⚠️ **易错点**:哪个阶段会覆盖用户的手改内容?
-> - 改 `subtitles.ass` → **S7 会覆盖它**,所以 `06_output/rebuild.py` 从 **S8(烧录导出)** 起跑,只用现有 ass 重新烧录编码;
-> - 改 `project.json` → S3 会覆盖,`05_ir/rebuild.py` 从 S3 起跑前已自动备份。
+> - 改 `subtitles.ass` → **S7 会覆盖它**,所以 `06_成片输出/rebuild.py` 从 **S8(烧录导出)** 起跑,只用现有 ass 重新烧录编码;
+> - 改 `project.json` → S3 会覆盖,`05_时间线工程/rebuild.py` 从 S3 起跑前已自动备份。
 
 ## 8. 门禁与验收
 

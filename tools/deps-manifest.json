@@ -1,0 +1,104 @@
+{
+ "version": 1,
+ "manifestVersion": "0.1.0-seed",
+ "seededAt": "2026-09-25",
+ "_doc": "懒加载依赖静态种子清单(ADR-0049 / 方案 §5.7)。rs_fetchable.py update --check 比对、install 取 pip/weights 源。纪律:①本文件是「种子」不是承诺——所有 sha256 留空 + verify=pending,表示**采用前须一手核实**(版本号、pip 名、下载 URL、权重文件),核实一条转 verified 一条;②发版时更新一次(D4 债,rs_doctor --report 报清单新鲜度);③绝不自动更新,--apply 才动手。backend: py=主解释器(轻依赖);venv-dsp=tools/.venv-dsp(节拍/分离);venv-torch=tools/.venv-torch(视觉重依赖)。sizeMb 为组件整体体积粗估(含权重)。",
+ "modules": {
+  "beatnet": {
+   "capability": "audio.beat",
+   "label": "节拍检测",
+   "version": "pending",
+   "sizeMb": 320,
+   "sha256": "",
+   "verify": "pending",
+   "backend": "venv-dsp",
+   "pip": "beatnet",
+   "weights": "",
+   "notes": "采用前须一手核实:pip 包名与官方仓库(候选 mjhyd/Beat-Transformer)、checkpoint 发行渠道与直链。安装目标 tools/.venv-dsp。"
+  },
+  "madmom": {
+   "capability": "audio.downbeat",
+   "label": "强拍/弱拍网格",
+   "version": "0.16.1",
+   "sizeMb": 210,
+   "sha256": "",
+   "verify": "pending",
+   "backend": "venv-dsp",
+   "pip": "madmom",
+   "weights": "",
+   "notes": "官方仓库 CPJKU/madmom;0.16.1 版本号与模型资源获取方式采用前须一手核实(对 numpy 新版兼容性需验证)。安装目标 tools/.venv-dsp。"
+  },
+  "demucs": {
+   "capability": "audio.stem",
+   "label": "人声/伴奏分离",
+   "version": "4.0.1",
+   "sizeMb": 350,
+   "sha256": "",
+   "verify": "pending",
+   "backend": "venv-dsp",
+   "pip": "demucs",
+   "weights": "https://dl.fbaipublicfiles.com/demucs/htdemucs/third_party/htdemucs_fts.zip",
+   "notes": "官方仓库 facebookresearch/demucs;htdemucs 权重直链采用前须一手核实。安装目标 tools/.venv-dsp。"
+  },
+  "scenedetect": {
+   "capability": "vision.shot",
+   "label": "镜头切分",
+   "version": "0.6.4",
+   "sizeMb": 45,
+   "sha256": "",
+   "verify": "pending",
+   "backend": "py",
+   "pip": "scenedetect",
+   "weights": "",
+   "notes": "官方仓库 Breakthrough/PySceneDetect,纯 Python 无权重;装主解释器(轻依赖)。版本号采用前须一手核实。"
+  },
+  "rvm": {
+   "capability": "vision.matting",
+   "label": "视频抠像(时序记忆)",
+   "version": "pending",
+   "sizeMb": 480,
+   "sha256": "",
+   "verify": "pending",
+   "backend": "venv-torch",
+   "pip": "git+https://github.com/PeterL1n/RobustVideoMatting.git",
+   "weights": "https://github.com/PeterL1n/RobustVideoMatting/releases/download/v1.0.0/rvm_mobilenetv3_fp32.pt",
+   "notes": "官方仓库 PeterL1n/RobustVideoMatting;无正式 pip 发行,git 直装与权重直链采用前须一手核实。质量门禁见 ADR-0050(五项指标)。安装目标 tools/.venv-torch。"
+  },
+  "bytetrack": {
+   "capability": "vision.track",
+   "label": "目标跟踪",
+   "version": "pending",
+   "sizeMb": 20,
+   "sha256": "",
+   "verify": "pending",
+   "backend": "py",
+   "pip": "bytetrack",
+   "weights": "",
+   "notes": "官方仓库 ifzhang/ByteTrack;社区 pip 包名(bytetrack)与官方发行方式不对应,采用前须一手核实(可能走 yolox 生态);模型资源见仓库。装主解释器(轻依赖,仅跟踪逻辑)。"
+  },
+  "opencv": {
+   "capability": "vision.cv",
+   "label": "OpenCV 基础视觉",
+   "version": "4.10.0.84",
+   "sizeMb": 60,
+   "sha256": "",
+   "verify": "pending",
+   "backend": "py",
+   "pip": "opencv-python",
+   "weights": "",
+   "notes": "官方发行 https://pypi.org/project/opencv-python/(import 名 cv2);版本号采用前须一手核实。装主解释器(轻依赖)。"
+  },
+  "clip": {
+   "capability": "text.clip",
+   "label": "CLIP 图文语义",
+   "version": "pending",
+   "sizeMb": 600,
+   "sha256": "",
+   "verify": "pending",
+   "backend": "venv-torch",
+   "pip": "git+https://github.com/openai/CLIP.git",
+   "weights": "https://openaipublic.azureedge.net/clip/models/40d365715913c9da98579312b702a82c18be219cc2a73407c4526f58eba950af/ViT-B-32.pt",
+   "notes": "官方仓库 openai/CLIP;无正式 pip 发行(pip 名 clip 是无关包,绝不可用),git 直装与权重直链采用前须一手核实。安装目标 tools/.venv-torch。"
+  }
+ }
+}

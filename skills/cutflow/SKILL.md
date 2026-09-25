@@ -1,6 +1,6 @@
 ---
 name: cutflow
-description: AI 视频制作总控技能:接收口播视频/文案/剧本分镜/图片,经自带 ASR(字级对齐)→粗剪(CutList)→合成(TTS/artboard/品牌/音效)→剪辑(FFmpeg直出+剪映5.9草稿)→字幕→烧录导出→分级自检→封面与文案,产出成片与平台物料;支持 9:16/16:9 与多 Logo 变体,支持手工改阶段后一键重建。**抠像与背景合成由用户在交付前自行完成**(S0 自动检测未处理绿幕/蓝幕并阻断提醒)。当用户想要:做视频、剪视频、口播视频、教程视频、动画视频、把文案变成视频、给视频加字幕、粗剪去口误去重录、配音、生成剪映草稿、出 AI 视频提示词、生成封面与标题简介 Tag 时使用。
+description: AI 视频制作总控技能:接收口播/混剪/vlog/短剧解说/录屏等多风格视频、文案或分镜,经自带 ASR(字级对齐)→粗剪(CutList)→合成(TTS/artboard/品牌/音效)→剪辑(FFmpeg直出+剪映5.9草稿)→字幕→烧录导出→分级自检→封面文案,产出成片与平台物料;支持 9:16/16:9 与多 Logo 变体,支持自然语言改片(rs_edit)与手工改阶段后一键重建。**抠像默认由用户预处理**(S0 检测绿幕/蓝幕并阻断;显式 --allow-auto-matting 可走 ADR-0050 五项质量门禁,达标才放行)。当用户想要:做视频、剪视频、口播视频、教程视频、混剪卡点、vlog、影视解说、录屏教程、把文案变成视频、给视频加字幕、粗剪去口误、配音、生成剪映草稿、出提示词、生成封面与标题简介 Tag 时使用。
 ---
 
 # CutFlow — AI 视频制作总控
@@ -28,6 +28,7 @@ description: AI 视频制作总控技能:接收口播视频/文案/剧本分镜/
 | 封面抽帧与合成 | **脚本** | `rules/cover.md` |
 | 术语校对、口水词、语义改写 | **Agent** | 脚本做不了 |
 | 提示词语义解析(brief.json/plan.json) | **Agent** | 唯二语义工作之一;校验/补默认/查表/落盘归 `rs_intent` 编译 |
+| 自然语言改片(声明式编辑) | **脚本**(Agent 只写 ops.json) | `rs_edit`;语法 → `rules/edit-op.md` |
 | 断句歧义裁决(`ambiguous`) | **Agent** | 需要语感 |
 | 卡片文案与设计意图 | **Agent** | 需要创意 |
 | 标题 / 简介 / Tag | **Agent**(脚本只校验+截断+生成章节) | `rs_meta` |
@@ -57,11 +58,10 @@ description: AI 视频制作总控技能:接收口播视频/文案/剧本分镜/
 | 封面 | `rules/cover.md` |
 | artboard 图形素材 | `rules/artboard.md` |
 | 剪映草稿双通道(含诚实验收说明) | `rules/jianying.md` + `rules/jianying-verification.md` |
+| 双向编辑闭环与剪映单向出口 | `rules/editing-roundtrip.md` |
 | 工程归档与命名 | `rules/archive.md` |
 | 自评闭环细节 | `rules/selfcheck.md` |
-| 类型节奏/管线分支默认值 | `rules/video-types/<videoType>.md`(**仅一册**) |
-
-> **禁止**:一次读两个以上规则文件(用户明确要求交叉说明时除外)。
+| 类型节奏/管线分支默认值;剪辑手法库(25 条+禁忌,剪辑决策前读) | `rules/video-types/<videoType>.md`(**仅一册**);手法 → `rules/editing-grammar.md` |
 
 ---
 
@@ -77,15 +77,15 @@ S0 素材 ─► S1 转写+字级对齐 ─► S2 粗剪 ─► S3 基础合成 
 
 | 阶段 | 名称 | 主要脚本 | 产物 | 门禁 |
 |---|---|---|---|---|
-| **S0** | 基础素材 | `rs_ingest` + `rs_doctor` | `01_materials/manifest.json` + `brief.md` | 素材可解码;**未处理幕布检测(ADR-0031)** |
-| **S1** | 转写与字级对齐 | `rs_align`(→`tools/fun_asr.py`) | `05_ir/wordline.json` | 覆盖率 ≥99% |
-| **S2** | 粗剪处理 | `rs_cut` | `04_cut/cutlist.json` | remove 刀 guard 全过 |
+| **S0** | 基础素材 | `rs_ingest` + `rs_doctor` | `01_原始素材/manifest.json` + `brief.md` | 素材可解码;**未处理幕布检测(ADR-0031)** |
+| **S1** | 转写与字级对齐 | `rs_align`(→`tools/fun_asr.py`) | `05_时间线工程/wordline.json` | 覆盖率 ≥99% |
+| **S2** | 粗剪处理 | `rs_cut` | `04_粗剪决策/cutlist.json` | remove 刀 guard 全过 |
 | **S3** | 基础合成 | `rs_ir build` + `rs_render` | `seg_*/base/` | IR validate |
 | **S4** | 动画/信息卡 | artboard 桥(`rs_artboard`) | `composed/` | 卡片过安全区 |
-| **S5** | 品牌(Logo 变体) | `rs_brand` | `06_output/成片_*.mp4` | 不压字幕带 |
-| **S6** | 音效 | `rs_sfx` | `05_ir/sfx_draft.json` | ≤2 个 / 15s |
-| **S7** | 字幕 | `rs_subtitle` | `06_output/subtitles.ass` | 回归集全绿、CPS ≤9 |
-| **S8** | **烧录导出** | `rs_render` | `06_output/final_*.mp4` | 用**现有 ass**,不重新生成字幕 |
+| **S5** | 品牌(Logo 变体) | `rs_brand` | `06_成片输出/成片_*.mp4` | 不压字幕带 |
+| **S6** | 音效 | `rs_sfx` | `05_时间线工程/sfx_draft.json` | ≤2 个 / 15s |
+| **S7** | 字幕 | `rs_subtitle` | `06_成片输出/subtitles.ass` | 回归集全绿、CPS ≤9 |
+| **S8** | **烧录导出** | `rs_render` | `06_成片输出/final_*.mp4` | 用**现有 ass**,不重新生成字幕 |
 | **S9** | 自评与对齐断言 | `rs_sync` + `rs_verify` | `sync_report.md` | 偏移中位数 ≤40ms;**成片音频内容闸**;**QC 体检**(黑帧/冻结/VFR/响度,v0.11) |
 | **S10** | 封面与文案 | 抽帧 + `rs_meta` | `封面.png`、`metadata.json` | 平台字数合规 |
 | **S11** | 交付 | `rs_cleanup [--apply]` | 变体成片 + `deliverables.md` | 清单齐全 |
@@ -94,7 +94,7 @@ S0 素材 ─► S1 转写+字级对齐 ─► S2 粗剪 ─► S3 基础合成 
 
 ## 3. Hard Rules(会静默失败,违反必炸)
 
-1. **一切决策只查 brief.md**;automation 模式不打断用户,自行选择并记录理由;`--auto` 无人值守(阶段四)同理且更进一步——从意图编译入口起全程自动、每条裁决写 `05_ir/pipeline.json` 的 decision_log、L1 降级抽帧留证、**L2 验收仍归用户**;它是入口与留痕约定,不是新状态机。
+1. **一切决策只查 brief.md**;automation 模式不打断用户,自行选择并记录理由;`--auto` 无人值守(阶段四)同理且更进一步——从意图编译入口起全程自动、每条裁决写 `05_时间线工程/pipeline.json` 的 decision_log、L1 降级抽帧留证、**L2 验收仍归用户**;它是入口与留痕约定,不是新状态机。
 2. **`wordline.json` 是时间的唯一真相源**。任何模块不得自行算时间,一律调 `rs_align.map_src_to_final()`。**禁止「按字符数比例插值」**。
 3. **粗剪宁可漏删不可错删**。`conf ≥0.90` 才 `remove`,且 guard 三项(静音切点 / 不切断字内音素 / 后留 ≥60ms)必须全过,否则降级 `review`。
 4. **阶段产物走声明式缓存**。缓存键 = 上游 hash + 参数 + **脚本文件 hash**。改一个字幕先 `rs_run --status`,再 `--only/--from`,不要盲目重跑。
@@ -108,7 +108,7 @@ S0 素材 ─► S1 转写+字级对齐 ─► S2 粗剪 ─► S3 基础合成 
 12. 9:16 安全区:底部 25%、顶部 12% 不放字幕/关键信息;**Logo 默认避开字幕带**。
 13. 写剪映草稿前确认剪映未运行;只动 5.9,绝不碰 11.3。
 14. **竖屏(9:16)每卡 10–12 字、CPS ≤9 字/秒、单卡 0.83–7s**;旧工程按当时 `maxChars` 复现,不追改。
-15. 素材/中间件/git:`01_materials` 只读;大文件与 `models/` 不进 git;工程目录 `<YYYYMMDD>-<中文标题>-<类型>`;产物中文命名并带 variantId;测试件用 `dev-` 前缀,交付前 `rs_cleanup` 必删。
+15. 素材/中间件/git:`01_原始素材` 只读;大文件与 `models/` 不进 git;工程目录 `<YYYYMMDD>-<中文标题>-<类型>`;产物中文命名并带 variantId;测试件用 `dev-` 前缀,交付前 `rs_cleanup` 必删。
 16. 感知备选:Agent 自带视觉优先自己看图;OCR/VQA 仅在批量/无视觉/`force_local` 时用。
 17. 开工必读 `brief.videoType`(`talking-head` / `talking-head+animation` / `pure-animation` / `vlog` / `混剪`)对应的 `rules/video-types/` 分册(**仅一册**);它同时定义该类型的**管线分支**(素材是否需预抠像 / 动画密度与贴合 / 声音来源)。videoType 是**开放注册表**:新增类型 = 新增一册 + 一条 `templates/styles/registry.json` 条目,不改引擎;预留扩展位:`screen-recording` / `interview` / `drama` / `film-commentary`(暂不实现)。
 18. **卡拉OK(--karaoke)**:挂字必须在必并/合规校验**之前**,以「显示字形」(含标点,`_clean_card` 剥掉的标点会在 `\kf` 层经 chars 带回)为唯一预算口径;合并事件同步拼 `chars`;任何 ASS Dialogue 文本匹配/计数前必须剥 `{...}` override 标签(rs_sync 已内置)。
@@ -126,41 +126,40 @@ S0 素材 ─► S1 转写+字级对齐 ─► S2 粗剪 ─► S3 基础合成 
 
 | 环节 | 命令 |
 |------|------|
-| 体检 | `rs_doctor.py --report` |
+| 体检 / ASR 部署 | `rs_doctor.py --report`(可选件部署与降级: rules/deps-lazy.md)/ `python tools/fetch_deps.py asr [--onnx\|--pkg\|--seed-models D]` |
 | **意图编译(阶段四,S0 前)** | `rs_intent.py compile --brief <b.json> --plan <p.json> --out <工程>`(`--dry-run` 只打印推断表不落盘;`--prompt <file>` 原文锚定 decision_log) |
 | **素材摄取(S0)** | `rs_ingest.py scan <工程>` / `rs_ingest.py deliverables <工程>` / `rs_ingest.py green-ok <工程> --reason "误判说明"` / `rs_ingest.py decisions <工程>` |
 | **阶段状态 / 增量** | `rs_run.py --status` / `--from S3` / `--only S7` / `--dirty` / `--explain S7` / `--auto` |
 | **一键重建** | `rs_run.py --init`(生成 rebuild.py)/ `--from S8 --force` / `--rollback` |
 | **分级自检** | `rs_verify.py <工程>` / `--level L1` / `--mark-first` |
 | **自带 ASR** | `python tools/fun_asr.py <媒体> [--backend onnx\|pkg]` / `--probe` |
-| **ASR 部署** | `python tools/fetch_deps.py asr [--onnx\|--pkg\|--seed-models D]` |
-| 转写 + 对齐(S1) | `rs_align.py build --media <素材> --out 05_ir/wordline.json`(专名错 → `--terms-file 00_brief/terms.txt` 热词重跑,勿手改字) |
-| wordline 平滑 | `rs_align.py smooth 05_ir/wordline.json --out 05_ir/wordline.final.json`(标点零宽+重叠钳制,纯动画/配音工程用) |
-| 重映射 | `rs_align.py remap 05_ir/wordline.json --cutlist 04_cut/cutlist.applied.json --out ...`(space=final 会拒绝二次重映射;`--force-remap` 强行越过) |
-| 已 remap 工程清幽灵字 | `rs_align.py prune-ghost 05_ir/wordline.final.json --cutlist 04_cut/cutlist.applied.json`(丢被删句残留、重排 i;替代临时脚本) |
-| 只改时长不动字符时间 | `rs_align.py refresh-durations 05_ir/wordline.json --media 01_materials/a.mp4`(ffprobe 实测,时长账自动改平) |
-| 粗剪(S2) | `rs_cut.py 05_ir/wordline.json --detect all --out 04_cut`(`--media 源` 增能量检测+实测片尾保底;`--apply ...` 自动同步 wordline 时长账)| 
-| 按文本裁片 | `rs_cut.py 05_ir/wordline.json --from-text "引文"`(只保留引文区间;引文外走 guard) |
-| CutList→IR | `rs_ir.py build --from-cutlist 04_cut/cutlist.applied.json --slug X --out 05_ir/project.json` |
-| **纯动画组装** | `rs_ir.py build --from-cards 03_assets/artboard/manifest.json --anchors 00_brief/cards.json --wordline 05_ir/wordline.json --voice 03_assets/vo/voice.wav --slug X --ratio 16x9 --out 05_ir/project.json`;口播+动画挂轨(S4,原 _apply_overlay)用 `rs_ir.py add-overlay <ir> --manifest <manifest> --plan <cards.json>`(挂轨+usedIn+manualEdit;同名轨须 `--replace`) |
-| IR 校验 | `rs_ir.py validate 05_ir/project.json` |
-| 渲染 | `rs_render.py 05_ir/project.json --ratio 9x16 --profile final` |
-| 品牌变体 | `rs_brand.py --expand --logos a,b --ratios 9x16,16x9 --out 05_ir/variants.json` |
-| 音效落点 | `rs_sfx.py 05_ir/project.json --auto --wordline 05_ir/wordline.json` |
-| 字幕 | `rs_subtitle.py --from-wordline 05_ir/wordline.json --platform douyin --out 06_output`（`--platform` 取预设；显式 `--style/--ratio/--max-chars` 优先） |
-| **artboard 闭环(S4,原 _gen_cards)** | `rs_artboard.py gen-cards --from 00_brief/cards.json --out 03_assets/artboard/manifest.json`(批量生成;同一份计划喂 add-overlay)/ `rs_artboard.py <manifest> --export` / `--apply <ir>`;主引擎不可用时 `rs_artboard.py export-fallback <manifest>`(浏览器截图兜底) |
-| 对齐自检 | `rs_sync.py --wordline ... --ass 06_output/subtitles.ass --out 06_output --video 成片.mp4 --audio-content --qc` |
-| 抽帧目测 | `rs_bench.py <成片> --ir 05_ir/project.json --out 06_output/bench.png` |
-| 文案 | `rs_meta.py --wordline ... --brief 00_brief/brief.md --platform douyin,bili --out 06_output` |
-| 剪映草稿 | `rs_jy_draft.py 05_ir/project.json --name <名>` |
+| 转写 + 对齐(S1) | `rs_align.py build --media <素材> --out 05_时间线工程/wordline.json`(专名错 → `--terms-file 00_制作简报/terms.txt` 热词重跑,勿手改字) |
+| wordline 平滑 | `rs_align.py smooth 05_时间线工程/wordline.json --out 05_时间线工程/wordline.final.json`(标点零宽+重叠钳制,纯动画/配音工程用) |
+| 重映射 | `rs_align.py remap 05_时间线工程/wordline.json --cutlist 04_粗剪决策/cutlist.applied.json --out ...`(space=final 会拒绝二次重映射;`--force-remap` 强行越过) |
+| 已 remap 工程清幽灵字 | `rs_align.py prune-ghost 05_时间线工程/wordline.final.json --cutlist 04_粗剪决策/cutlist.applied.json`(丢被删句残留、重排 i;替代临时脚本) |
+| 只改时长不动字符时间 | `rs_align.py refresh-durations 05_时间线工程/wordline.json --media 01_原始素材/a.mp4`(ffprobe 实测,时长账自动改平) |
+| 粗剪(S2) | `rs_cut.py 05_时间线工程/wordline.json --detect all --out 04_粗剪决策`(`--media 源` 增能量检测+实测片尾保底;`--apply ...` 自动同步 wordline 时长账)| 
+| 按文本裁片 | `rs_cut.py 05_时间线工程/wordline.json --from-text "引文"`(只保留引文区间;引文外走 guard) |
+| CutList→IR | `rs_ir.py build --from-cutlist 04_粗剪决策/cutlist.applied.json --slug X --out 05_时间线工程/project.json` |
+| **纯动画组装** | `rs_ir.py build --from-cards 03_创作素材/artboard/manifest.json --anchors 00_制作简报/cards.json --wordline 05_时间线工程/wordline.json --voice 03_创作素材/vo/voice.wav --slug X --ratio 16x9 --out 05_时间线工程/project.json`;口播+动画挂轨(S4,原 _apply_overlay)用 `rs_ir.py add-overlay <ir> --manifest <manifest> --plan <cards.json>`(挂轨+usedIn+manualEdit;同名轨须 `--replace`) |
+| IR 校验 | `rs_ir.py validate 05_时间线工程/project.json` |
+| 渲染 | `rs_render.py 05_时间线工程/project.json --ratio 9x16 --profile final` |
+| 品牌变体 | `rs_brand.py --expand --logos a,b --ratios 9x16,16x9 --out 05_时间线工程/variants.json` |
+| 音效落点 | `rs_sfx.py 05_时间线工程/project.json --auto --wordline 05_时间线工程/wordline.json` |
+| 字幕 | `rs_subtitle.py --from-wordline 05_时间线工程/wordline.json --platform douyin --out 06_成片输出`（`--platform` 取预设；显式 `--style/--ratio/--max-chars` 优先） |
+| **artboard 闭环(S4,原 _gen_cards)** | `rs_artboard.py gen-cards --from 00_制作简报/cards.json --out 03_创作素材/artboard/manifest.json`(批量生成;同一份计划喂 add-overlay)/ `rs_artboard.py <manifest> --export` / `--apply <ir>`;主引擎不可用时 `rs_artboard.py export-fallback <manifest>`(浏览器截图兜底) |
+| 对齐自检 | `rs_sync.py --wordline ... --ass 06_成片输出/subtitles.ass --out 06_成片输出 --video 成片.mp4 --audio-content --qc` |
+| 抽帧目测 | `rs_bench.py <成片> --ir 05_时间线工程/project.json --out 06_成片输出/bench.png` |
+| 文案 | `rs_meta.py --wordline ... --brief 00_制作简报/brief.md --platform douyin,bili --out 06_成片输出` |
+| 剪映草稿 | `rs_jy_draft.py 05_时间线工程/project.json --name <名>` |
 | 抽帧 / 感知 | `rs_frames.py` / `rs_sense.py` |
-| 配音 | `rs_tts.py --script 文案.txt --out 03_assets/tts` |
-| **配音强制对齐** | `rs_dub.py align --wordline 05_ir/wordline.json --audio 03_assets/tts/all.wav --write`（TTS 句内估算 → 真实字级） |
+| 配音 | `rs_tts.py --script 文案.txt --out 03_创作素材/tts` |
+| **配音强制对齐** | `rs_dub.py align --wordline 05_时间线工程/wordline.json --audio 03_创作素材/tts/all.wav --write`（TTS 句内估算 → 真实字级） |
 | 清理 | `rs_cleanup.py <工程> [--apply]` |
 
 ### 4.1 CutForge 编辑器桥(四桥 + artboard 桥;人与 AI 在同一条时间线上)
 
-CutForge(github.com/GreenChennai/cutforge)是同伴项目:Op 级可审计编辑器;工程被它打开/编辑后,`05_ir/project.json` 带 `schemaVersion` 与稳定 id(B8 护栏识别)。桥在 `skills/cutflow/scripts/`,错误码与 CutForge 5.4 码表对齐(输入错 `PRECONDITION_FAILED`,缺依赖 `DEP_MISSING`):
+CutForge(github.com/GreenChennai/cutforge)是同伴项目:Op 级可审计编辑器;工程被它打开/编辑后,`05_时间线工程/project.json` 带 `schemaVersion` 与稳定 id(B8 护栏识别)。桥在 `skills/cutflow/scripts/`,错误码与 CutForge 5.4 码表对齐(输入错 `PRECONDITION_FAILED`,缺依赖 `DEP_MISSING`):
 
 | 桥 | 命令 | 用途 |
 |---|---|---|
@@ -179,13 +178,13 @@ MCP 编排工具由 CutForge 侧封装同一批脚本,两侧 CI 互跑桥冒烟;
 
 | 你改了什么 | 运行哪个 |
 |---|---|
-| 字幕 `06_output/subtitles.ass` | `python 06_output/rebuild.py` |
-| IR / Wordline `05_ir/` | `python 05_ir/rebuild.py`;⚠ **手改过 `05_ir/project.json`**(手注单 clip 音频/转场)→ 改跑 `python 06_output/rebuild.py`(S8 只用现有 ass,不碰 IR) |
-| 粗剪决策 action 改动 `04_cut/cutlist.json` | `python <scripts>/rs_cut.py --apply 04_cut/cutlist.json`(重算 keep;**不要**重跑 S2 detect——会冲掉 action 编辑) |
-| artboard 卡片 `03_assets/artboard/` | `python 03_assets/artboard/rebuild.py`(一条龙:只重导源码变了的卡 → 回填 IR → S4 级联) |
+| 字幕 `06_成片输出/subtitles.ass` | `python 06_成片输出/rebuild.py` |
+| IR / Wordline `05_时间线工程/` | `python 05_时间线工程/rebuild.py`;⚠ **手改过 `05_时间线工程/project.json`**(手注单 clip 音频/转场)→ 改跑 `python 06_成片输出/rebuild.py`(S8 只用现有 ass,不碰 IR) |
+| 粗剪决策 action 改动 `04_粗剪决策/cutlist.json` | `python <scripts>/rs_cut.py --apply 04_粗剪决策/cutlist.json`(重算 keep;**不要**重跑 S2 detect——会冲掉 action 编辑) |
+| artboard 卡片 `03_创作素材/artboard/` | `python 03_创作素材/artboard/rebuild.py`(一条龙:只重导源码变了的卡 → 回填 IR → S4 级联) |
 | 拿不准 | `python rebuild.py`(根目录,全量) |
 
-rebuild.py 的实际行为:`--from <Sx> --force` 起跑,**每个真正写盘的阶段跑前自动备份**到 `_state/backup/`(留最近 5 次),末端按策略跑 L0/L1 自检;输入校验由各阶段脚本承担(不合法会停住并指出具体位置);跑砸了 `rs_run.py --rollback` 还原。
+rebuild.py 的实际行为:`--from <Sx> --force` 起跑,**每个真正写盘的阶段跑前自动备份**到 `_内部状态/backup/`(留最近 5 次),末端按策略跑 L0/L1 自检;输入校验由各阶段脚本承担(不合法会停住并指出具体位置);跑砸了 `rs_run.py --rollback` 还原。
 
 ---
 
@@ -194,7 +193,7 @@ rebuild.py 的实际行为:`--from <Sx> --force` 起跑,**每个真正写盘的�
 人在 CutForge 里改完盘面,CutFlow 侧按此链路接住(顺序固定):**`rs_run.py --status`**(outHash
 护栏把带外改写标 stale;有会话摘要则末尾列「rev 区间 + 人工 Op」)→ **`rs_editor.py diff <工程>`**
 (有摘要按 Op 逐条人话;无摘要拿 `.cutforge/bases/` 最新基线对比盘面,如「V2 轨新增 1 个 overlay 卡
-3.2–5.0s」)→ **定向重建**(只动字幕走 `06_output/rebuild.py`;动 IR/卡片走对应 rebuild.py;拿不准
+3.2–5.0s」)→ **定向重建**(只动字幕走 `06_成片输出/rebuild.py`;动 IR/卡片走对应 rebuild.py;拿不准
 `rs_run.py --from S3 --force`,上游走缓存)→ **重跑 S9 自检**(`rs_run.py --verify-full`,画面变过必 L1)。何时用哪条:看「脏没脏」用 --status;要「改了什么」用 diff;要「接着出片」走后两步。
 
 ---
@@ -204,11 +203,11 @@ rebuild.py 的实际行为:`--from <Sx> --force` 起跑,**每个真正写盘的�
 ```json
 {"version":1,"slug":"demo","fps":30,"canvas":{"width":1080,"height":1920},
  "tracks":[
-  {"kind":"video","clips":[{"src":"01_materials/a.mp4","startMs":0,"durationMs":12000,
+  {"kind":"video","clips":[{"src":"01_原始素材/a.mp4","startMs":0,"durationMs":12000,
     "sourceInMs":3000,"reframe":{"anchorY":0.35},"motion":{"in":"fadeIn","inMs":400}}]},
-  {"kind":"audio","clips":[{"src":"06_output/_build/sfx/whoosh.wav","startMs":800,"role":"sfx"}]}],
- "bgm":{"src":"03_assets/bgm.mp3","gainDb":-18,"ducking":true},
- "subtitle":{"ass":"06_output/subtitles.ass","source":"05_ir/wordline.json"},
+  {"kind":"audio","clips":[{"src":"06_成片输出/_build/sfx/whoosh.wav","startMs":800,"role":"sfx"}]}],
+ "bgm":{"src":"03_创作素材/bgm.mp3","gainDb":-18,"ducking":true},
+ "subtitle":{"ass":"06_成片输出/subtitles.ass","source":"05_时间线工程/wordline.json"},
  "outputs":["9x16"]}
 ```
 
@@ -216,19 +215,20 @@ rebuild.py 的实际行为:`--from <Sx> --force` 起跑,**每个真正写盘的�
 
 ---
 
-## 7. 工程目录契约(★ 为 v4/v5 新增)
+## 7. 工程目录契约(目录中文,文件名 ASCII;唯一真相源 rs_paths.py)
 
 ```
 <工程>/
-├── 00_brief/                         brief.md / terms.txt / intent_decisions.json(意图编译产物)
-├── 01_materials/                      只读
-├── 02_sensed/                         转写与校对
-├── 03_assets/                         ★artboard/manifest.json
-├── 04_cut/                            ★cutlist.json / cut_report.md / review/ / ★rebuild.py
-├── 05_ir/                             project.json / ★wordline.json / variants.json / pipeline.json / ★rebuild.py
-├── _state/                            S*.json / ★verify.json / ★backup/<ts>/
-├── 06_output/                         ★final_*.mp4 / subtitles.ass / metadata.* / sync_report.md / ★rebuild.py
-└── ★rebuild.py                        全量重建
+├── 00_制作简报/                         brief.md / terms.txt / intent_decisions.json(意图编译产物)
+├── 01_原始素材/                      只读
+├── 02_转写与校对/                         wordline 校对件 / ASR 原始输出 / 校对 diff
+├── 03_创作素材/                         ★artboard/manifest.json
+├── 04_粗剪决策/                            ★cutlist.json / cut_report.md / review/ / ★rebuild.py
+├── 05_时间线工程/                             project.json / ★wordline.json / variants.json / pipeline.json / ★rebuild.py / 导出/剪映59/
+├── _内部状态/                            S*.json / ★verify.json / ★backup/<ts>/
+├── 06_成片输出/                         ★final_*.mp4 / subtitles.ass / metadata.* / sync_report.md / ★rebuild.py
+├── 成品/                              ★交付容器(只读语义;不编号=非阶段;按需创建,清理永不触碰)
+└── ★rebuild.py                        全量重建(根;旧工程迁移见 tools/migrate_paths.py)
 ```
 
 ---

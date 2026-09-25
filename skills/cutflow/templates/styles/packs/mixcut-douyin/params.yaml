@@ -1,0 +1,16 @@
+# 风格包参数档(ADR-0051):混剪卡点·抖音竖屏。出处标注体例见 _template/params.yaml。
+slug: mixcut-douyin
+label: 混剪卡点·抖音竖屏
+videoType: 混剪
+platform: douyin                       # [内部] templates/platforms.json douyin
+ratio: 9x16                            # [内部] templates/platforms.json douyin.ratio
+
+pacing: music                          # [内部] registry.entries.mixcut-douyin.pacing
+cardMs: [800, 2400]                    # [内部] registry.pacingTiers.music.cardMs;rules/video-types/混剪.md §2(0.8–2.4s,副歌可加密到 0.5s 须显式改)
+visualBeatSec: [1, 2]                  # [内部] registry.pacingTiers.music.visualBeatSec
+bgm: {enabled: true, gainDb: -12, ducking: on_voice_only}   # [内部] 混剪.md §2(BGM 是时间轴骨架,增益 -12dB 全库最高档;ducking 只在保留人声对白处生效)
+transition: {default: hard_cut, allow: [slide, circleopen], snapToBeat: true}   # [经验] 混剪.md §2(硬切为主 + motion-info 模板 slide/circleopen 备选;转场落拍点;禁 0.3s 内连续双转场)
+subtitle: {style: subtitle-white, maxChars: 12, cpsMax: 9, lyricOnly: true}   # [内部] 混剪.md §3(只上歌词钩子/点睛短句,不逐句上歌词)+ registry 同名条目 style
+cards: {density: 多, template: scene}  # [内部] registry.entries.mixcut-douyin.cards
+capabilities: [qc.black-frame, audio.beat, audio.downbeat, audio.stem]   # [内部] registry.videoTypes.混剪.capabilities(M8 补登:rs_beat.py 三描述符已落地)
+artboard: {styles: [ecommerce-promo], templates: ["opener:1", "title:2", "endcard:1"]}   # [经验] 借 ecommerce-promo 大字报高饱和气质做高燃钩子卡;artboard references/styles/ecommerce-promo.md

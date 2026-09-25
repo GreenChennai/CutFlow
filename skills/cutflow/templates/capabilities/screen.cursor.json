@@ -1,0 +1,25 @@
+{
+ "id": "screen.cursor",
+ "label": "光标轨迹追踪",
+ "appliesTo": [
+  "screen-recording"
+ ],
+ "stage": "S2",
+ "detector": "rs_screen.py",
+ "depends": [
+  "vision.cv"
+ ],
+ "degrade": {
+  "to": "none",
+  "trace": "cursorDegraded",
+  "message": "OpenCV 组件未部署:不追光标(方案 §5.5.4 降级档 none),cursorTrace 为空表;需要光标高亮先 rs_fetchable install opencv"
+ },
+ "params": {
+  "cursorTraceWidth": 480,
+  "cursorStride": 3,
+  "cursorJumpMaxPct": 40
+ },
+ "artifact": "cut/screen.json",
+ "verify": "tests/test_m8_infra.py",
+ "notes": "M8 落地(方案 §5.5.4)。READY=opencv 帧差小连通域质心轨迹(源画面百分比坐标);主解释器已装 opencv 时真跑。产物 screen.json 恒产出(waiting 检测只用 ffmpeg+标准库,恒可用),故 degrade none 不会阻断阶段——阻断只在产物无法落盘的故障态。"
+}

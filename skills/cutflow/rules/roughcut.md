@@ -12,12 +12,12 @@
 
 **粗剪是整条管线里性价比最高的一步**:典型口播素材可裁掉 **20–35%** 时长,且后面每一步都变便宜。
 
-## 2. 决策表结构(`04_cut/cutlist.json`)
+## 2. 决策表结构(`04_粗剪决策/cutlist.json`)
 
 ```json
 {
   "version": 1,
-  "source": "01_materials/JJAV2815.MP4",
+  "source": "01_原始素材/JJAV2815.MP4",
   "detector": {"version": "cutflow-1.0", "params": {"silenceDb": -32, "minSilenceMs": 600}},
   "cuts": [
     {"id": "c001", "inMs": 12400, "outMs": 13980, "reason": "retake",
@@ -44,16 +44,18 @@ keep 末段终点 = `max(末字 endMs + 尾余量, ffprobe 实测时长)`,**口�
 
 ### 2.2 时长账自动同步(P27,副文档 07)
 
-**`rs_cut.py` 的 `--apply` 是时长账同步的单一入口**:重算 keep 之后自动把工程 wordline(`05_ir/wordline.json`,或 `--wordline` 显式指定)的三个时长字段改平——`srcDurationMs = cutlist.srcTotalMs`、`removedMs = cutlist.removedMs`、`finalDurationMs = src − removed`——**不再需要手改 wordline 两个字段**。
+**`rs_cut.py` 的 `--apply` 是时长账同步的单一入口**:重算 keep 之后自动把工程 wordline(`05_时间线工程/wordline.json`,或 `--wordline` 显式指定)的三个时长字段改平——`srcDurationMs = cutlist.srcTotalMs`、`removedMs = cutlist.removedMs`、`finalDurationMs = src − removed`——**不再需要手改 wordline 两个字段**。
 
 - **恒等式**(P27-2):`srcDurationMs − removedMs == finalDurationMs`,任一环节写盘后校验;`rs_ir build --from-cutlist` 在 S3 入口把「改 keep 但 wordline 未同步」判为 `DURATION_LEDGER` 硬失败并给出修复命令,不等 `rs_sync` 事后挂红叉;
 - **手改护栏**(B8 同源):wordline 带 `manualEdit` 痕迹时 `--apply` 拒绝自动改写(`WORDLINE_MANUAL_EDIT`),确认放弃手改加 `--force`,或只改时长用 `rs_align.py refresh-durations --media <素材>`。
 
 ## 3. `reason` 是封闭枚举
 
-合法值(封闭枚举,共 9 项):
+合法值(封闭枚举,共 10 项):
 
-`silence` / `breath` / `filler` / `false_start` / `retake` / `stumble` / `repetition` / `off_topic` / `manual`
+`silence` / `breath` / `filler` / `false_start` / `retake` / `stumble` / `repetition` / `off_topic` / `manual` / `waiting`
+
+> M8 新增 `waiting`(录屏教程等待段,方案 §5.5.4 screen.compress):≥2.0s 无视觉变化且无语音 → 加速 2–8× 或删除;见 §4 检测器表。
 
 > `rs_cut.py` 对未知 `reason` 直接报错(退出码 2)。枚举的意义是**可统计、可审计、可回归**:每轮迭代能看「retake 检出率」「filler 误删率」怎么变。
 
@@ -68,6 +70,7 @@ keep 末段终点 = `max(末字 endMs + 尾余量, ffprobe 实测时长)`,**口�
 | **整段重来** | 字级转写 | 连续 ≥ **8 字逐字相同**且再次出现 → 删旧块留新块 | `false_start` |
 | **无语音长段** | 素材音频能量(`silencedetect`)或字间 gap | 无有效语音 ≥ **1.2s**(调整仪容 / 换提词器) | `silence` / `breath` |
 | **元话语** | 字级转写 | 词典:`说错了/重新说/再来一遍/这段不算/重来一遍` | `off_topic`(仅 `review`,不自动删) |
+| **等待段(录屏)** | `rs_screen` 的 `screen.json`(优先)或 `--media` 内联帧差+静音检测 | ≥ **2.0s** 无视觉变化且无语音;区间内有转写字即整段不删(防误删人声) | `waiting` |
 | 跑题段落(可选) | Wordline + Agent 语义 | Agent 读转写判断「说跑题了/自我否定」`--off-topic 起-止` | `off_topic` |
 
 > **v0.7.0 修订(OPTIMIZATION-v7 #3)**:旧实现只比**相邻两句**、间隔 <15s,而"说完一段/调整后再重来"常跨 2–3 句、隔得更久 → 大量漏检;且每次只删紧邻前一次(同一段录三次会残留中间那次)。现在按滑动窗口两两比对,并把连续重录刀**串成一刀**(避免两个旧尝试之间留几十毫秒碎片),出点取「最后一次尝试起点 − 60ms」留出自然起音。
@@ -93,7 +96,7 @@ keep 末段终点 = `max(末字 endMs + 尾余量, ffprobe 实测时长)`,**口�
 | `reason` | 硬过项 | 说明 |
 |---|---|---|
 | `silence` / `breath` / `filler` | 静音区 + 不切断字内音素 + 后留 ≥60ms(全四项) | 不变 |
-| `retake` / `false_start` / `stumble` / `repetition` / `off_topic` / `manual` | **不切断字内音素 + 后留 ≥60ms** | 静音两侧降为**告警项**(不阻断) |
+| `retake` / `false_start` / `stumble` / `repetition` / `off_topic` / `manual` / `waiting` | **不切断字内音素 + 后留 ≥60ms** | 静音两侧降为**告警项**(不阻断);`waiting` 段按判据无语音,inSilence/outSilence 天然满足,防误删靠检测期「区间内有转写字即整段放弃」 |
 
 > **`wordClipped`(不切断字内音素)在任何 `reason` 下都是硬过项,永不放松** —— 这是"宁可漏删,不可错删"的底线。
 > `guard` 同时给出 `ok`(四项全过,保守口径)与 `okByReason`(该 reason 的硬过项);`classify` 用后者,`cut_report.md` 分列「硬过项 / 告警项」。
@@ -119,7 +122,7 @@ keep 末段终点 = `max(末字 endMs + 尾余量, ffprobe 实测时长)`,**口�
 - **guard 加第四条:切点不得侵入 protect 区**(remove 区间与任一 protect 区相交即冲突;触边不算侵入,半开区间判定)。
 - **优先级 protect > 既有 guard 三项**:guard 不过尚可降级 `review`(留稿待人审),protect 冲突**即报错而非降级**(`PROTECT_INTRUDED`,退出码 2)——protect 的语义是"审也不许切",必须显式解决冲突:改刀,或撤区。
 - 双闸:检测/构建期(`build_cutlist`,审 remove+review 候选)与 `--apply`/`finalize`(审真正执行的 remove,防人工改刀绕过)都复验。
-- CLI:`rs_cut.py 05_ir/wordline.json --detect all --out 04_cut --protect 1200-1580,2000-2800`;protect 区随 cutlist 落盘(`cl["protect"]`),可审计、可复验。
+- CLI:`rs_cut.py 05_时间线工程/wordline.json --detect all --out 04_粗剪决策 --protect 1200-1580,2000-2800`;protect 区随 cutlist 落盘(`cl["protect"]`),可审计、可复验。
 - 与专项 07 共存:protect 只**收紧**可删区间,不改 `derive_keep`/时长账/尾余量保底——被保护区天然落在 keep 里。
 
 ## 6. `conf` 三级 → `action` 三态
@@ -132,7 +135,7 @@ keep 末段终点 = `max(末字 endMs + 尾余量, ffprobe 实测时长)`,**口�
 
 > 这三档是「防粗剪不合格」的核心机制。**硬线:宁可漏删,不可错删。** 一条素材的错删是不可恢复的内容损失,漏删只是多花几秒。
 
-## 7. 审查包(`04_cut/review/`)——把「听 20 分钟」变成「听 30 个 3 秒」
+## 7. 审查包(`04_粗剪决策/review/`)——把「听 20 分钟」变成「听 30 个 3 秒」
 
 每个 `review` 刀生成:
 
@@ -144,7 +147,7 @@ keep 末段终点 = `max(末字 endMs + 尾余量, ffprobe 实测时长)`,**口�
 
 Agent(或用户)可以**只听音频**就完成 approve / reject——这是粗剪从「AI 猜」变成「人机协作」的关键形态。
 
-产出汇总 `04_cut/cut_report.md`:
+产出汇总 `04_粗剪决策/cut_report.md`:
 
 ```markdown
 # 粗剪报告 · <工程名>
@@ -159,10 +162,10 @@ Agent(或用户)可以**只听音频**就完成 approve / reject——这是粗�
 **只产 CutList + 渲染 keep 片段序列,绝不整段重编码。** 这既是性能要求,也是「改一刀只重渲受影响片段」的基础。
 
 ```powershell
-rs_cut.py 05_ir/wordline.json --detect all --out 04_cut
-rs_cut.py --review-pack 04_cut/cutlist.json
+rs_cut.py 05_时间线工程/wordline.json --detect all --out 04_粗剪决策
+rs_cut.py --review-pack 04_粗剪决策/cutlist.json
 # 人工批注:把 cutlist.json 复制为 cutlist.final.json,改 action / 删条目
-rs_cut.py --apply 04_cut/cutlist.final.json --render
+rs_cut.py --apply 04_粗剪决策/cutlist.final.json --render
 ```
 
 `--apply` 负责:重算 `keep` → **自动同步 wordline 时长账**(`srcDurationMs/removedMs/finalDurationMs`,P27,见 §2.2)→ 供 `rs_align.py remap` 与 rs_ir.py 的 build --from-cutlist 生成 IR 主轨。

@@ -100,8 +100,8 @@ def test_override_roundtrip(tmp_path):
 
 
 def test_override_from_brief_marker(tmp_path):
-    (tmp_path / "00_brief").mkdir()
-    (tmp_path / "00_brief" / "brief.md").write_text(
+    (tmp_path / "00_制作简报").mkdir()
+    (tmp_path / "00_制作简报" / "brief.md").write_text(
         "# Brief\n- 绿幕检测:误判(已人工确认,非绿幕)\n", encoding="utf-8")
     assert gs.read_override(tmp_path)
 
@@ -114,7 +114,7 @@ def test_detect_media_missing_file(tmp_path):
 # ---------------------------------------------------------------- S0 门禁
 
 def _fake_video(root: Path, name: str = "a.mp4") -> Path:
-    mat = root / "01_materials"
+    mat = root / "01_原始素材"
     mat.mkdir(parents=True, exist_ok=True)
     p = mat / name
     p.write_bytes(b"fake")
@@ -133,8 +133,8 @@ def test_scan_blocks_on_green_without_override(tmp_path, monkeypatch):
     res = rs_ingest.scan(root, "proj", "9x16")
     assert res["ok"] is False and res["code"] == "GREEN_SCREEN_INPUT"
     assert res["flagged"] == ["a.mp4"]
-    assert (root / "01_materials" / "GREENSCREEN.md").is_file()
-    man = json.loads((root / "01_materials" / "manifest.json").read_text(encoding="utf-8"))
+    assert (root / "01_原始素材" / "GREENSCREEN.md").is_file()
+    man = json.loads((root / "01_原始素材" / "manifest.json").read_text(encoding="utf-8"))
     assert man["items"][0]["greenScreen"]["detected"] is True
 
 
@@ -150,7 +150,7 @@ def test_scan_passes_after_user_override(tmp_path, monkeypatch):
     gs.write_override(root, "误判:绿色布景")
     res = rs_ingest.scan(root, "proj", "9x16")
     assert res["ok"] is True and res["code"] == "INGEST_OK"
-    man = json.loads((root / "01_materials" / "manifest.json").read_text(encoding="utf-8"))
+    man = json.loads((root / "01_原始素材" / "manifest.json").read_text(encoding="utf-8"))
     assert man["items"][0]["greenScreen"]["overridden"] is True
 
 
@@ -158,7 +158,7 @@ def test_scan_passes_after_user_override(tmp_path, monkeypatch):
 
 def test_verify_greenscreen_fails_then_passes(tmp_path):
     root = tmp_path / "proj"
-    mat = root / "01_materials"
+    mat = root / "01_原始素材"
     mat.mkdir(parents=True)
     (mat / "manifest.json").write_text(json.dumps({
         "version": 1, "items": [{"file": "a.mp4",
@@ -172,7 +172,7 @@ def test_verify_greenscreen_fails_then_passes(tmp_path):
 
 def test_verify_greenscreen_skips_legacy_manifest(tmp_path):
     root = tmp_path / "proj"
-    mat = root / "01_materials"
+    mat = root / "01_原始素材"
     mat.mkdir(parents=True)
     (mat / "manifest.json").write_text(json.dumps(
         {"version": 1, "items": [{"file": "a.mp4", "probe": "ok"}]}), encoding="utf-8")
@@ -182,7 +182,7 @@ def test_verify_greenscreen_skips_legacy_manifest(tmp_path):
 
 def test_verify_greenscreen_clean_manifest(tmp_path):
     root = tmp_path / "proj"
-    mat = root / "01_materials"
+    mat = root / "01_原始素材"
     mat.mkdir(parents=True)
     (mat / "manifest.json").write_text(json.dumps({"version": 1, "items": [
         {"file": "a.mp4", "greenScreen": {"detected": False}}]}), encoding="utf-8")

@@ -1,7 +1,7 @@
 """S8 三对齐自检:字幕 ↔ Wordline ↔ 成片(rules/align.md §6、rules/subtitles.md §8)。
 
 用法:
-  rs_sync.py --wordline 05_ir/wordline.json --ass 06_output/subtitles.ass --out 06_output
+  rs_sync.py --wordline 05_时间线工程/wordline.json --ass 06_成片输出/subtitles.ass --out 06_成片输出
              [--video 成片.mp4] [--audio-content]
 
 检查项与通过线:
@@ -28,6 +28,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from rs_common import emit, ffmpeg_bin, media_duration_s, p95, run  # noqa: E402
+import rs_paths  # noqa: E402  — 阶段路径唯一真相源(ADR-0046),本文件禁止目录字面量
 
 MEDIAN_MAX, P95_MAX = 40, 80          # ms(起点偏移)
 END_MEDIAN_MAX, END_P95_MAX = 60, 120  # ms(终点偏移;允许可读性延长,故放宽)
@@ -46,6 +47,12 @@ QC_SILENCE_MIN_S = 2.0                # 静音 ≥2s WARN(首尾 1s 白名单;�
 QC_LUFS_RANGE = (-15.0, -13.0)        # 集成响度目标 -14 ±1(Spotify/YouTube 对齐值,非强制规范)
 QC_TP_MAX = -0.9                      # True Peak 上限 -1 dBTP(留 0.1 容差)
 QC_EDGE_S = 0.5                       # 片头/片尾白名单宽度
+
+# ---- 短剧钩子/废帧判据(M8 方案 §5.5.3;drama.hook 描述符 params 与这些常量同源)----
+HOOK_EVERY_SEC = 3.0                  # 3s 一钩子(画面变化密度的理想线,不足记 INFO)
+TWIST_EVERY_SEC = 5.0                 # 5s 一反转:任意两变化间隔超此值 → WARN
+ANCHOR_WINDOW_SEC = 7.0               # 前 7s 必须完成情绪锚定(至少一次画面变化)
+WASTE_FRAME_MIN_S = 1.2               # ≥1.2s 全画面无变化即废帧(短剧禁废帧,硬判)
 
 
 def run_qc(video: Path, cfg: dict | None = None) -> dict:
@@ -71,14 +78,10 @@ def run_qc(video: Path, cfg: dict | None = None) -> dict:
                         f"freezedetect=n=-60dB:d={QC_FREEZE_MIN_S}",
                  "-af", f"silencedetect=n=-30dB:d={QC_SILENCE_MIN_S}",
                  "-f", "null", "-"], timeout=1800)
-        blacks, freezes, silences = [], [], []
+        # 黑/冻解析与废帧检测同源(_parse_freeze_black:新老 ffmpeg 格式都吃)
+        blacks, freezes = _parse_freeze_black(p.stderr or "")
+        silences = []
         for line in (p.stderr or "").splitlines():
-            m = re.search(r"black_start:([\d.]+) black_end:([\d.]+) black_duration:([\d.]+)", line)
-            if m:
-                blacks.append((float(m.group(1)), float(m.group(2))))
-            m = re.search(r"freeze_start:([\d.]+)\s*\|\s*freeze_duration:([\d.]+)", line)
-            if m:
-                freezes.append((float(m.group(1)), float(m.group(1)) + float(m.group(2))))
             m = re.search(r"silence_start:([-\d.]+)", line)
             if m:
                 silences.append([float(m.group(1)), None])
@@ -164,9 +167,124 @@ def ass_time(s: str) -> float:
     return int(h) * 3600 + int(m) * 60 + float(sec)
 
 
-def parse_ass(path: Path) -> list[dict]:
+# ---------------------------------------------------------------- 短剧判据(drama.hook,方案 §5.5.3)
+
+def _parse_freeze_black(stderr: str) -> tuple[list, list]:
+    """ffmpeg 的 blackdetect/freezedetect stderr → (黑帧区间, 冻结区间) 秒列表。
+
+    run_qc 与 detect_waste_frames 共用同一解析(既有产物上接线,口径不漂移)。
+    格式兼容:老版单行 `freeze_start:3.00 | freeze_duration:2.00 | freeze_end:5.00`
+    与新版多行 `freeze_start: 3` / `freeze_duration: 2` / `freeze_end: 5` 都要吃
+    (2026-07 gyan build 实测为多行,旧正则会静默漏检)。
+    """
+    blacks: list[tuple[float, float]] = []
+    freezes: list[tuple[float, float]] = []
+    pend: float | None = None
+    for line in stderr.splitlines():
+        m = re.search(r"black_start:\s*([\d.]+)\s+black_end:\s*([\d.]+)", line)
+        if m:
+            blacks.append((float(m.group(1)), float(m.group(2))))
+        for m in re.finditer(r"freeze_start:\s*([\d.]+)", line):
+            pend = float(m.group(1))
+        for m in re.finditer(r"freeze_duration:\s*([\d.]+)", line):
+            if pend is not None:
+                freezes.append((pend, pend + float(m.group(1))))
+                pend = None
+        for m in re.finditer(r"freeze_end:\s*([\d.]+)", line):
+            if pend is not None:
+                freezes.append((pend, float(m.group(1))))
+                pend = None
+    return blacks, freezes
+
+
+def detect_waste_frames(video: Path, cfg: dict | None = None,
+                        min_s: float | None = None) -> dict:
+    """短剧废帧机械检查(方案 §5.5.3 验收:≥1.2s 全画面无变化即废帧,机械可查)。
+
+    与 run_qc 同源的 freezedetect/blackdetect 滤镜,阈值收紧到 WASTE_FRAME_MIN_S;
+    片头/尾 QC_EDGE_S 白名单外命中即废帧(黑帧必然全画面无变化,一并计入)。
+    检测工具不可用 → skipped 留痕(闸缺席必须显式,ADR-0021),绝不静默放行。
+    """
+    min_s = min_s or WASTE_FRAME_MIN_S
+    try:
+        p = run([ffmpeg_bin(cfg), "-v", "info", "-i", str(video),
+                 "-vf", f"blackdetect=d={min_s}:pix_th=0.10,"
+                        f"freezedetect=n=-60dB:d={min_s}",
+                 "-f", "null", "-"], timeout=1800)
+        blacks, freezes = _parse_freeze_black(p.stderr or "")
+    except Exception as exc:  # noqa: BLE001 — 工具缺席留痕,不抛
+        return {"skipped": f"废帧检测执行失败:{exc}", "minS": min_s}
+    dur = 0.0
+    try:
+        dur = media_duration_s(video, cfg)
+    except Exception:  # noqa: BLE001
+        pass
+    # 合并黑帧/冻结区间(黑 ⊂ 冻结语义重复,取并集)
+    spans = sorted({(round(a, 2), round(b, 2)) for a, b in blacks + freezes if b > a})
+    merged: list[list[float]] = []
+    for a, b in spans:
+        if merged and a <= merged[-1][1] + 0.05:
+            merged[-1][1] = max(merged[-1][1], b)
+        else:
+            merged.append([a, b])
+    if dur > 0:   # 片头尾白名单(淡入淡出/收尾定帧不算废帧)
+        merged = [s for s in merged if s[1] > QC_EDGE_S and s[0] < dur - QC_EDGE_S]
+    return {"spans": merged, "minS": min_s, "rule": f"片内全画面无变化 ≥{min_s}s 即废帧"
+            f"(首尾 {QC_EDGE_S}s 白名单)", "pass": not merged, "durationS": round(dur, 2)}
+
+
+def detect_scene_changes(video: Path, cfg: dict | None = None,
+                         threshold: float = 0.4) -> list[float] | None:
+    """画面变化时刻(秒):select=gt(scene,θ)+showinfo。检测失败 → None(留痕)。"""
+    try:
+        p = run([ffmpeg_bin(cfg), "-v", "info", "-i", str(video),
+                 "-vf", f"select=gt(scene\\,{threshold}),showinfo",
+                 "-an", "-f", "null", "-"], timeout=1800)
+    except Exception:  # noqa: BLE001
+        return None
+    return [float(m.group(1)) for m in re.finditer(r"pts_time:([\d.]+)", p.stderr or "")]
+
+
+def check_hook_density(video: Path, cfg: dict | None = None) -> dict:
+    """短剧「3s 钩子 / 5s 反转 / 前 7s 情绪锚定」密度判据(L0 **WARN 级**提示)。
+
+    机械口径:画面变化(场景切换语义)为钩子/反转的代理信号 ——
+      · 前 7s 内至少一次变化(情绪锚定,ANCHOR_WINDOW_SEC);
+      · 任意相邻变化间隔 ≤5s(反转密度,TWIST_EVERY_SEC);>3s 记 INFO 不足项。
+    变化密度达标 ≠ 叙事真有钩子/反转 —— 方案允许 L1 目测兜底,故本判据**只 WARN
+    不翻转总判定**,留痕进 sync_report 供 Agent/用户对照分册验收清单。
+    """
+    changes = detect_scene_changes(video, cfg)
+    if changes is None:
+        return {"skipped": "场景变化检测不可用(钩子密度降级 L1 目测)"}
+    dur = 0.0
+    try:
+        dur = media_duration_s(video, cfg)
+    except Exception:  # noqa: BLE001
+        pass
+    bounds = [0.0] + sorted(set(round(t, 2) for t in changes))
+    if dur > 0:
+        bounds.append(round(dur, 2))
+    gaps = [[a, b] for a, b in zip(bounds, bounds[1:]) if b > a]
+    gaps_over_twist = [g for g in gaps if g[1] - g[0] > TWIST_EVERY_SEC + 0.05]
+    gaps_over_hook = [g for g in gaps if TWIST_EVERY_SEC + 0.05 >= g[1] - g[0] > HOOK_EVERY_SEC + 0.05]
+    anchor = any(0 < t <= ANCHOR_WINDOW_SEC for t in changes)
+    return {"applied": True, "warnOnly": True,
+            "changes": [round(t, 2) for t in changes[:40]],
+            "changeCount": len(changes),
+            "anchorFirst7s": anchor,
+            "anchorWindowS": ANCHOR_WINDOW_SEC,
+            "maxGapS": round(max((b - a for a, b in gaps), default=0.0), 2),
+            "gapsOverTwist": gaps_over_twist,
+            "gapsOverHook": gaps_over_hook,
+            "rule": f"前 {ANCHOR_WINDOW_SEC:.0f}s ≥1 次画面变化;变化间隔 ≤{TWIST_EVERY_SEC:.0f}s"
+                    f"(3s 钩子理想线;WARN 级,L1 目测兜底)",
+            "pass": anchor and not gaps_over_twist}
+
+
+def parse_ass(path: Path | str) -> list[dict]:
     out = []
-    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+    for line in Path(path).read_text(encoding="utf-8", errors="replace").splitlines():
         if not line.startswith("Dialogue:"):
             continue
         parts = line.split(",", 9)
@@ -539,6 +657,31 @@ def expected_duration_s(wl: dict, cfg: dict | None = None) -> tuple[float, dict]
     return fallback, {"basis": "wordline", "removedMs": removed_ms}
 
 
+def _declared_drama_hook(out_dir: Path) -> bool:
+    """工程是否声明 drama.hook 能力(ADR-0047 数据驱动:能力声明 → 判据启用)。
+
+    从 --out 目录向上找工程根,读 intent_decisions.json 的 resolved.capabilities;
+    独立调用(无工程上下文)→ False,判据缺席不启用(不误伤其他类型)。
+    """
+    here = out_dir.resolve()
+    for root in (here.parent, here.parent.parent):
+        try:
+            brief_name = rs_paths.resolve_name(root, "brief")
+        except Exception:  # noqa: BLE001
+            continue
+        p = root / brief_name / "intent_decisions.json"
+        if not p.is_file():
+            continue
+        try:
+            doc = json.loads(p.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError, UnicodeDecodeError):
+            return False
+        resolved = doc.get("resolved") if isinstance(doc.get("resolved"), dict) else {}
+        caps = resolved.get("capabilities")
+        return isinstance(caps, list) and "drama.hook" in caps
+    return False
+
+
 def write_report(res: dict, path: Path, video_check: dict | None) -> None:
     lines = ["# 三对齐自检报告(sync_report)", "",
              "| 检查 | 结果 | 通过线 | 判定 |", "|---|---|---|---|",
@@ -628,6 +771,32 @@ def write_report(res: dict, path: Path, video_check: dict | None) -> None:
                 else:
                     lines.append(f"- {label}:✗ {c.get('rule')} → {c.get('spans')}")
             lines.append("")
+    dh = res.get("dramaHooks")
+    if dh:
+        lines += ["## 短剧钩子/反转密度(WARN 级,drama.hook;L1 目测兜底)", ""]
+        if dh.get("skipped"):
+            lines += [f"- 跳过:{dh['skipped']}", ""]
+        else:
+            lines += [f"- 画面变化 {dh.get('changeCount', 0)} 处;前 {dh.get('anchorWindowS')}s 锚定:"
+                      f"{'✓' if dh.get('anchorFirst7s') else '⚠ 未检出(目测确认前 7s 情绪锚定)'}",
+                      f"- 最大无变化间隔 {dh.get('maxGapS')}s(≤{TWIST_EVERY_SEC:.0f}s 反转线,"
+                      f"{HOOK_EVERY_SEC:.0f}s 钩子理想线)",
+                      f"- 判定:{'✓' if dh.get('pass') else '⚠ WARN(不翻转总判定;请对照短剧分册目测钩子/反转)'}"]
+            for g in (dh.get("gapsOverTwist") or [])[:6]:
+                lines.append(f"- 反转密度不足:{g[0]:.2f}s → {g[1]:.2f}s 间隔 {g[1] - g[0]:.2f}s")
+            lines.append("")
+    wf = res.get("wasteFrames")
+    if wf:
+        lines += ["## 废帧检查(短剧禁废帧,drama.hook)", ""]
+        if wf.get("skipped"):
+            lines += [f"- 跳过:{wf['skipped']}", ""]
+        else:
+            n_wf = len(wf.get("spans") or [])
+            lines += [f"- 规则:{wf.get('rule')}",
+                      f"- 判定:{'✓ 无废帧' if wf.get('pass') else f'✗ {n_wf} 处废帧'}"]
+            for s in (wf.get("spans") or [])[:8]:
+                lines.append(f"- 废帧:{s[0]:.2f}s → {s[1]:.2f}s(时长 {s[1] - s[0]:.2f}s)")
+            lines.append("")
     lines.append(f"**总判定**:**{'通过' if res['pass'] else '未通过'}**")
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
@@ -640,16 +809,17 @@ def main() -> int:
     ap.add_argument("--video", dest="video", default=None)
     ap.add_argument("--wordline", required=True)
     ap.add_argument("--ass", required=True)
-    ap.add_argument("--out", default="06_output")
+    ap.add_argument("--out", default=rs_paths.p("output"))
     ap.add_argument("--ir", default=None,
-                    help="05_ir/project.json:检查字幕与 artboard 动画卡时间窗是否重叠")
+                    help="05_时间线工程/project.json:检查字幕与 artboard 动画卡时间窗是否重叠")
     ap.add_argument("--strict-cards", dest="strict_cards", action="store_true",
                     help="把「字幕被动画卡压住」也算未通过(默认只告警)")
     ap.add_argument("--legacy-end", dest="legacy_end", action="store_true",
                     help="跳过终点门禁(只告警):给终点本来就偏的历史工程过渡用")
-    ap.add_argument("--frame-ms", dest="frame_ms", type=float, default=OVERLAP_TOL_MS,
-                    help="卡片时间重叠判定容差 ms(默认 34 ≈ 1 帧 @30fps;60fps 素材请给 17;"
-                         "帧取整伪影放行,真实重叠仍 FAIL)")
+    ap.add_argument("--frame-ms", dest="frame_ms", type=float, default=None,
+                    help="卡片时间重叠判定容差 ms(缺省按 fps 自适应:1000/fps,"
+                         "fps 取 --ir 的 project.json;IR 不可得时回退 34 ≈ 1 帧 @30fps;"
+                         "W6 清账:rs_verify v0.19)")
     ap.add_argument("--audio-content", dest="audio_content", action="store_true",
                     help="B10 音频内容闸:对成片音轨跑自带 ASR 与 wordline 对账"
                          "(片头句=1 次 / 相似度 / 无重复段;需 --video,结果缓存)")
@@ -670,8 +840,18 @@ def main() -> int:
     if not events:
         return emit(False, "NO_EVENTS", "ASS 中没有 Dialogue 事件", exit_code=2)
 
+    # W6 清账(方案 §1.7 #3):容差按 fps 自适应 = 1000/fps(fps 来自 IR);IR 缺席回退常量。
+    tol_ms = a.frame_ms
+    if tol_ms is None:
+        fps_auto = 0.0
+        if a.ir and Path(a.ir).is_file():
+            try:
+                fps_auto = float(json.loads(Path(a.ir).read_text(encoding="utf-8")).get("fps") or 0)
+            except (json.JSONDecodeError, OSError):
+                fps_auto = 0.0
+        tol_ms = round(1000.0 / fps_auto, 2) if fps_auto > 1 else OVERLAP_TOL_MS
     rows = check_offsets(events, wl)
-    res = summarize(rows, events, legacy_end=a.legacy_end, overlap_tol_ms=a.frame_ms)
+    res = summarize(rows, events, legacy_end=a.legacy_end, overlap_tol_ms=tol_ms)
     res["cardOverlaps"] = []
     if a.ir:
         try:
@@ -728,6 +908,25 @@ def main() -> int:
                 res["pass"] = False
         else:
             res["qc"] = {"pass": True, "skipped": f"成片不存在:{video_path_qc}"}
+
+    # 短剧钩子/废帧判据(drama.hook 能力声明才启用,ADR-0047 数据驱动;方案 §5.5.3)
+    if _declared_drama_hook(Path(a.out)):
+        if not a.video:
+            res["dramaHooks"] = {"skipped": "钩子密度/废帧判据需要 --video(降级 L1 目测)"}
+            res["wasteFrames"] = {"skipped": "废帧检测需要 --video(降级 L1 目测)"}
+        else:
+            video_drama = Path(a.video)
+            if video_drama.is_file():
+                # 钩子密度:L0 只给 WARN 级提示(方案允许 L1 目测兜底),不翻转总判定
+                hooks = check_hook_density(video_drama)
+                res["dramaHooks"] = hooks
+                # 废帧:≥1.2s 全画面无变化,机械可查 → 硬判(短剧禁废帧)
+                res["wasteFrames"] = detect_waste_frames(video_drama)
+                if not (res["wasteFrames"].get("skipped")
+                        or res["wasteFrames"].get("pass", True)):
+                    res["pass"] = False
+            else:
+                res["dramaHooks"] = {"skipped": f"成片不存在:{video_drama}(降级 L1 目测)"}
 
     write_report(res, outdir / "sync_report.md", video_check)
     (outdir / "sync_rows.json").write_text(json.dumps({"rows": rows, "summary": res,

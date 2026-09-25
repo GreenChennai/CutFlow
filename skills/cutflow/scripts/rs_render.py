@@ -13,6 +13,11 @@ v0.6.0 新增(rules/incremental.md §3):
   · v0.14(ADR-0031):抠像/背景合成已移除 —— 用户须先自行抠像+合成背景再交付;
     本渲染器只做剪辑(转场/punch-in/字幕/音效/品牌)。
   · --explain 逐段/逐步报告命中情况(不执行);--clear-cache 清 seg 缓存。
+
+M8 vlog 新增:消费 05_时间线工程/reframe_plan.json(rs_reframe plan 产出)——
+命中 plan 的主轨 clip 走「crop 裁切窗 → scale 目标画幅」的横转竖自动重构:
+裁切窗比例恒等于目标画幅比(不等即报错,绝不拉伸);轨迹多关键帧按时间线性插值;
+violations 非空回退 static-center 并留痕;IR clip.reframe 手动锚点优先于 plan。
 """
 from __future__ import annotations
 
@@ -29,12 +34,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 from rs_common import (RATIOS, die, emit, ffmpeg_bin, ffprobe_json, load_config,  # noqa: E402
                        media_duration_s, ratio_for_canvas, run)
+import rs_paths  # noqa: E402  — 阶段路径唯一真相源(ADR-0046),本文件禁止目录字面量
 
 RATIO = dict(RATIOS)             # 画幅唯一真相源在 rs_common(新增画幅只改那里)
 LOUDNORM_BUS = "loudnorm=I=-14:TP=-1.0:LRA=11"
 LOUDNORM_VOICE = "loudnorm=I=-16:TP=-1.5:LRA=11"
 LOUDNESS_TARGET = {"I": -14.0, "TP": -1.0, "LRA": 11.0}   # 硬规则 11;出处 ITERATION-GUIDE §8.2
-CACHE_VER = "v7"                 # 渲染语义变更时 +1,防旧缓存幽灵命中(v0.14:移除抠像/背景合成)
+CACHE_VER = "v9"                 # 渲染语义变更时 +1,防旧缓存幽灵命中(v8:M8 消费 reframe_plan;v9:M9 matte 预合成)
 SEG_CACHE_KEEP = 400             # segcache 最大保留文件数(超出按 mtime 淘汰)
 
 
@@ -47,6 +53,244 @@ def cover_crop(iw: int, ih: int, cw: int, ch: int, anchor_y: float = 0.5) -> str
     """放大到覆盖画布,再按 anchorY 纵向裁切(重构图)。"""
     return (f"scale={cw}:{ch}:force_original_aspect_ratio=increase,"
             f"crop={cw}:{ch}:(iw-{cw})/2:(ih-{ch})*{anchor_y}")
+
+
+# ---------------- matte 预合成(M9,ADR-0050:带 matte 的 clip 先前景/背景合成再进段渲染) ----------------
+
+def matte_precompose(clip: dict, src: Path, pr: dict, build: Path, base_dir: Path,
+                     fps: float, cfg: dict, warnings: list[str]) -> Path | None:
+    """clip.matte → 前景(alphamerge alpha 序列)铺到背景(cover)上的中间 mp4。
+
+    返回中间产物路径(替换段渲染的 src,分辨率与源一致,下游 crop/转场/混音零改动);
+    alpha 序列缺失或帧数不足以覆盖源 → WARN 留痕并返回 None(按未抠像渲染,不臆测)。
+    """
+    m = clip.get("matte") or {}
+    adir = Path(m.get("alphaDir") or "")
+    if adir and not adir.is_absolute():
+        adir = base_dir / adir
+    if not m.get("alphaDir") or not adir.is_dir():
+        warnings.append(f"segment:matte.alphaDir 缺失({adir})→ 该段按未抠像渲染")
+        return None
+    bg = m.get("bg") or {}
+    bg_src = Path(bg.get("src") or "")
+    if bg_src and not bg_src.is_absolute():
+        bg_src = base_dir / bg_src
+    if not bg_src or not bg_src.is_file():
+        warnings.append("segment:matte.bg 缺失或不存在 → 该段按未抠像渲染")
+        return None
+    alphas = sorted(adir.glob("alpha_*.png"))
+    try:
+        dur_s = float(media_duration_s(src, cfg))
+    except Exception:  # noqa: BLE001 — 探测失败按 2 帧下限兜底
+        dur_s = 0.0
+    need = max(int(dur_s * fps) + 1, 2)
+    if len(alphas) < need:
+        warnings.append(f"segment:matte alpha 帧数不足({len(alphas)}<{need})→ 该段按未抠像渲染")
+        return None
+    out_dir = build / "matte"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out = out_dir / f"{src.stem}_matted.mp4"
+    out_tmp = out.with_suffix(".part.mp4")
+    src_w, src_h = pr.get("width"), pr.get("height")
+    if not src_w or not src_h:
+        warnings.append("segment:matte 源尺寸探测失败 → 该段按未抠像渲染")
+        return None
+    vf = (f"[1:v]scale={src_w}:{src_h}:force_original_aspect_ratio=increase,"
+          f"crop={src_w}:{src_h}[bg];"
+          f"[0:v][2:v]alphamerge[fg];[bg][fg]overlay=0:0:shortest=1")
+    cmd = [ffmpeg_bin(cfg), "-y", "-v", "error",
+           "-i", str(src),
+           "-i", str(bg_src),
+           "-framerate", f"{fps:g}", "-start_number", "0", "-i", str(adir / "alpha_%05d.png"),
+           "-filter_complex", vf,
+           "-pix_fmt", "yuv420p", str(out_tmp)]
+    p = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8",
+                       errors="replace", timeout=3600)
+    if p.returncode != 0:
+        warnings.append(f"segment:matte 预合成失败:{p.stderr[-200:]} → 按未抠像渲染")
+        return None
+    out_tmp.replace(out)
+    return out
+
+
+# ---------------- reframe_plan 消费(M8 vlog:vision.track / vision.reframe 渲染端) ----------------
+#
+# rs_reframe plan 产出 05_时间线工程/reframe_plan.json(坐标一律源像素,窗比恒等于目标比)。
+# 渲染端职责(方案 §5.5.2 横转竖硬约束):
+#   · 命中 plan 的 clip 走「crop 裁切窗 → scale 目标画幅」——窗比 ≠ 目标比直接报错,绝不拉伸;
+#   · mode=track 且轨迹 ≥2 关键帧 → 按时间线性插值平移(滑窗中位数平滑/限速已在 plan 侧做完);
+#   · violations 非空(REFRAME_CLIP_SUBJECT 主体被切破)→ 回退 static-center 并警告留痕;
+#   · IR clip.reframe 手动锚点优先于 plan(人工改锚走 rs_edit clip.reframe);
+#   · plan 缺失/坏档/过期 → 旧 cover_crop 档,M8 之前的行为完全不变。
+
+REFRAME_RATIO_EPS = 2.0     # 窗比容差:按窗长边计的像素级取整容差(真正的比例错配远超此值)
+
+
+def load_reframe_plan(base_dir: Path) -> dict:
+    """读工程根下 05_时间线工程/reframe_plan.json;缺失/坏档 → {}(全走旧档,不臆测)。"""
+    if not base_dir:
+        return {}
+    p = rs_paths.resolve(base_dir, "timeline") / "reframe_plan.json"
+    if not p.is_file():
+        return {}
+    try:
+        doc = json.loads(p.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError):
+        return {}
+    return doc if isinstance(doc, dict) and doc.get("clips") else {}
+
+
+def plan_entry_for(plan: dict, clip: dict) -> dict | None:
+    """IR clip → plan 条目:clipId 精确匹配优先(同素材多 clip 轨迹各异),src 兜底。"""
+    cid, src = str(clip.get("id") or ""), str(clip.get("src") or "")
+    for e in plan.get("clips") or []:
+        if cid and e.get("clipId") == cid:
+            return e
+    for e in plan.get("clips") or []:
+        if src and e.get("src") == src:
+            return e
+    return None
+
+
+def _plan_digest(entry: dict) -> str:
+    """plan 条目内容摘要 —— 进 seg 缓存键:plan 一改,该 clip 必重渲。"""
+    return hashlib.sha1(json.dumps(entry, sort_keys=True, ensure_ascii=False)
+                        .encode("utf-8")).hexdigest()[:16]
+
+
+def _snap_crop_window(win: dict, src_w: int, src_h: int, cw: int, ch: int
+                      ) -> tuple[int, int, int, int]:
+    """浮点裁切窗 → 偶数整数窗 (w,h,x0,y0),并强制「窗比=目标比」(裁切不拉伸):
+
+    · 先校验 plan 窗比:与目标比的偏差折算超过半像素级容差 → REFRAME_RATIO 报错不拉伸
+      (继承 artboard 桥「尺寸不符报错不拉伸」精神,方案 §5.5.2 硬约束);
+    · 再取偶对齐(宽按目标比从高重推,与浮点窗差 ≤1 源像素,缩放后为亚像素级偏差);
+    · 窗越出源边界 → REFRAME_PLAN_INVALID 报错(渲染绝不静默平移/收缩裁切窗)。
+    """
+    w0 = max(2, int(round(float(win.get("w", 0)))))
+    h0 = max(2, int(round(float(win.get("h", 0)))))
+    if abs(w0 / h0 - cw / ch) * max(w0, h0) > REFRAME_RATIO_EPS:
+        die(4, "REFRAME_RATIO",
+            f"reframe 裁切窗 {w0}x{h0} 比例 ≠ 目标画幅 {cw}x{ch} —— 裁切不拉伸是硬约束,"
+            "请重跑 rs_reframe plan(裁切窗比例必须恒等于目标画幅比)")
+    if (float(win.get("x0", 0)) < -REFRAME_RATIO_EPS
+            or float(win.get("y0", 0)) < -REFRAME_RATIO_EPS
+            or float(win.get("x0", 0)) + w0 > src_w + REFRAME_RATIO_EPS
+            or float(win.get("y0", 0)) + h0 > src_h + REFRAME_RATIO_EPS):
+        die(4, "REFRAME_PLAN_INVALID",
+            f"reframe 裁切窗({win.get('x0')},{win.get('y0')},{w0}x{h0})越出源边界 "
+            f"{src_w}x{src_h};请重跑 rs_reframe plan(渲染不静默平移裁切窗)")
+    w, h = w0, h0
+    w = max(2, 2 * int(round(h * cw / ch / 2.0)))        # 宽随高按目标比取偶
+    if w > src_w:                                         # 源比目标比更窄:以源宽为限,高随之重推
+        w = max(2, src_w - src_w % 2)
+        h = max(2, 2 * int(round(w * ch / cw / 2.0)))
+    if h > src_h:
+        h = max(2, src_h - src_h % 2)
+        w = max(2, 2 * int(round(h * cw / ch / 2.0)))
+    if abs(w / h - cw / ch) * max(w, h) > REFRAME_RATIO_EPS:
+        die(4, "REFRAME_RATIO",
+            f"reframe 裁切窗 {w}x{h} 取偶后比例仍 ≠ 目标画幅 {cw}x{ch}(源 {src_w}x{src_h}"
+            "放不下目标比)—— 裁切不拉伸是硬约束,请改用与目标画幅同比的素材")
+    x0 = int(round(min(max(float(win.get("x0", 0)) + (float(win.get("w", w)) - w) / 2.0, 0.0),
+                        max(src_w - w, 0.0))))
+    y0 = int(round(min(max(float(win.get("y0", 0)) + (float(win.get("h", h)) - h) / 2.0, 0.0),
+                        max(src_h - h, 0.0))))
+    if x0 + w > src_w or y0 + h > src_h:
+        die(4, "REFRAME_PLAN_INVALID",
+            f"reframe 裁切窗越界:窗({x0},{y0},{w}x{h}) 源({src_w}x{src_h});请重跑 rs_reframe plan")
+    return w, h, x0, y0
+
+
+def _piecewise_expr(knots: list[tuple[float, float]]) -> str:
+    """[(t_s, v)] 升序 → ffmpeg 时变表达式:分段线性(渲染侧线性插值),t 越界夹紧到首/末值。
+
+    逗号统一转义,可直接作为 crop 的 x/y 位置表达式嵌入 -vf(filtergraph 里 t=帧时间秒)。
+    """
+    knots = sorted((float(t), float(v)) for t, v in knots)
+    dedup: list[tuple[float, float]] = []
+    for t, v in knots:                                   # 同刻度重复关键帧保留后者
+        if dedup and t <= dedup[-1][0]:
+            dedup[-1] = (t, v)
+        else:
+            dedup.append((t, v))
+    if not dedup:
+        return "0"
+    if len(dedup) == 1:
+        return f"{dedup[0][1]:.2f}"
+    expr = f"{dedup[0][1]:.2f}"                          # t 早于首个关键帧 → 夹紧首值
+    for (t0, v0), (t1, v1) in zip(dedup, dedup[1:]):     # 首段在最内层、末段最外层
+        dt = t1 - t0
+        if dt <= 0:
+            continue
+        seg = (f"{v0:.2f}+({v1:.2f}-{v0:.2f})"
+               f"*min(max((t-{t0:.3f})/{dt:.6f},0),1)")
+        expr = f"if(gte(t,{t0:.3f}),{seg},{expr})"
+    return expr.replace(",", "\\,")
+
+
+def _resolve_reframe(clip: dict, i: int, pr: dict, cw: int, ch: int, fps: float,
+                     plan: dict, warnings: list[str]
+                     ) -> tuple[list[str] | None, str, str]:
+    """IR clip × reframe_plan → (段级 crop/scale 滤镜链 | None, 缓存键摘要, 应用档位)。
+
+    返回 (None, "", "") = 不消费 plan(无条目/手动锚点/方案过期)→ 旧 cover_crop 档。
+    应用档位:track(轨迹插值)/ static-center(plan 静态窗或回退)。
+    """
+    entry = plan_entry_for(plan, clip)
+    if not entry or not isinstance(entry.get("cropWindow"), dict):
+        return None, "", ""
+    if clip.get("reframe"):
+        warnings.append(f"seg[{i}]:clip.reframe 手动锚点生效,跳过 reframe_plan(人工优先于自动)")
+        return None, "", ""
+    src_w = int(pr.get("width") or entry.get("srcWidth") or 0)
+    src_h = int(pr.get("height") or entry.get("srcHeight") or 0)
+    if src_w <= 0 or src_h <= 0:
+        return None, "", ""
+    if (entry.get("srcWidth") and int(entry["srcWidth"]) != src_w) or \
+       (entry.get("srcHeight") and int(entry["srcHeight"]) != src_h):
+        warnings.append(f"seg[{i}]:reframe_plan 源画幅与实际不符"
+                        f"(plan {entry.get('srcWidth')}x{entry.get('srcHeight')} vs "
+                        f"{src_w}x{src_h}),疑过期 → 旧档 cover_crop;建议重跑 rs_reframe plan")
+        return None, "", ""
+    w, h, x0, y0 = _snap_crop_window(entry["cropWindow"], src_w, src_h, cw, ch)
+    digest = _plan_digest(entry)
+    static_vf = [f"crop={w}:{h}:{x0}:{y0}", f"scale={cw}:{ch}"]
+    if entry.get("violations"):
+        # REFRAME_CLIP_SUBJECT 留痕:violations 非空 → 不消费轨迹,回退 static-center
+        # (rs_reframe 侧降级时 cropWindow 已改写为居中窗;外来 track 方案同样按此窗渲染)。
+        v0 = entry["violations"][0]
+        code = v0.get("code", "REFRAME_CLIP_SUBJECT") if isinstance(v0, dict) \
+            else "REFRAME_CLIP_SUBJECT"
+        warnings.append(f"seg[{i}]:reframe violations 非空({code})"
+                        "→ 回退 static-center 渲染(留痕)")
+        return static_vf, digest, "static-center"
+    traj = [k for k in (entry.get("trajectory") or [])
+            if isinstance(k, dict) and {"tMs", "anchorX", "anchorY"} <= set(k)]
+    if str(entry.get("mode")) == "track" and len(traj) >= 2:
+        plan_ms = float(entry.get("durationMs") or 0)
+        clip_ms = float(clip.get("durationMs") or 0)
+        if plan_ms <= 0 or abs(plan_ms - clip_ms) > 1500.0 / max(fps, 1.0):
+            warnings.append(f"seg[{i}]:reframe_plan 轨迹时长({plan_ms:.0f}ms)与 IR clip"
+                            f"({clip_ms:.0f}ms)不符,疑过期 → 按裁切窗 static 渲染;"
+                            "建议重跑 rs_reframe plan")
+            return static_vf, digest, "static-center"
+        scales = {round(float(k.get("scale", 1.0)), 4) for k in traj}
+        if len(scales) > 1:
+            # 渲染侧轨迹只做平移插值(裁切窗恒定);变焦轨迹不属于 plan 现有产出,如实降级留痕。
+            warnings.append(f"seg[{i}]:reframe 轨迹含变焦(渲染端按恒定裁切窗实现)"
+                            "→ 取首关键帧 static 渲染")
+            return static_vf, digest, "static-center"
+        # 关键帧锚点 → 裁切窗左上角(贴边夹紧,与 plan 侧 crop_window 同口径),按时间线性插值
+        kx = [(max(float(k["tMs"]), 0.0) / 1000.0,
+               min(max(float(k["anchorX"]) - w / 2.0, 0.0), max(src_w - w, 0.0)))
+              for k in traj]
+        ky = [(max(float(k["tMs"]), 0.0) / 1000.0,
+               min(max(float(k["anchorY"]) - h / 2.0, 0.0), max(src_h - h, 0.0)))
+              for k in traj]
+        return [f"crop={w}:{h}:x={_piecewise_expr(kx)}:y={_piecewise_expr(ky)}",
+                f"scale={cw}:{ch}"], digest, "track"
+    return static_vf, digest, "static-center"
 
 
 def clip_path(clip: dict, base_dir: Path):
@@ -108,7 +352,7 @@ def seg_key(clip: dict, doc: dict, cw: int, ch: int, fp: str) -> str:
         "fps": doc["fps"], "canvas": [cw, ch], "media": fp,
         "clip": {k: clip.get(k) for k in
                  ("src", "durationMs", "sourceInMs", "speed", "loop", "volume",
-                  "reframe", "motion", "tailMs", "punchIn", "freezeMs")},
+                  "reframe", "motion", "tailMs", "punchIn", "freezeMs", "_planKey")},
     }
     return hashlib.sha1(json.dumps(payload, sort_keys=True, ensure_ascii=False)
                         .encode("utf-8")).hexdigest()
@@ -161,6 +405,7 @@ def step_segment(doc: dict, ratio: str, build: Path, base_dir: Path, cfg: dict,
     for r in tr_reasons:
         warnings.append(f"segment:{r}")
     cache_dir = build / "segcache"
+    plan_doc = load_reframe_plan(base_dir)   # M8 vlog:reframe_plan 缺失/坏档 = 全走旧 cover_crop 档
     seg_files: list[Path] = []
     seg_keys: list[str] = []
     reports: list[dict] = []
@@ -169,12 +414,26 @@ def step_segment(doc: dict, ratio: str, build: Path, base_dir: Path, cfg: dict,
         clip = {**clip, "tailMs": round(tails[i] * 1000)}   # 入键:尾帧变化必须换缓存键
         pr = probe_clip(clip, base_dir, cfg)
         src = Path(pr["path"])
+        # M9(ADR-0050):带 matte 的 clip 先前景/背景预合成;中间产物替换 src,
+        # 指纹随之变化 → 段缓存键自动换挡(旧缓存不幽灵命中)。
+        if clip.get("matte") and pr["type"] == "video":
+            matted = matte_precompose(clip, src, pr, build, base_dir, fps, cfg, warnings)
+            if matted is not None:
+                pr = {**pr, "path": str(matted)}
+                src = matted
         fp = media_fingerprint(src)
+        # M8 vlog:reframe_plan 命中判定(纯解析,不碰 ffmpeg;ratio 错配在这里即报错)
+        plan_vf, plan_key, plan_tag = ((None, "", "") if pr["type"] == "image"
+                                       else _resolve_reframe(clip, i, pr, cw, ch, fps,
+                                                             plan_doc, warnings))
+        if plan_key:
+            clip["_planKey"] = plan_key          # plan 内容进段缓存键:方案一改该段必重渲
         key = seg_key(clip, doc, cw, ch, fp)
         seg_keys.append(key)
         cached = cache_dir / f"{key}.mp4"
         hit = use_cache and cached.is_file()
-        reports.append({"i": i, "key": key[:10], "hit": hit, "path": str(cached)})
+        reports.append({"i": i, "key": key[:10], "hit": hit, "path": str(cached),
+                        "reframe": plan_tag})   # M8:该段 reframe 应用档位(traceability)
         if hit:
             seg_files.append(cached)
             continue
@@ -207,7 +466,10 @@ def step_segment(doc: dict, ratio: str, build: Path, base_dir: Path, cfg: dict,
             read_s = min(take_s, freeze_ms / 1000.0) if freeze_ms > 0 else take_s
             cmd += loop + ["-ss", f"{q_in_ms / 1000:.3f}", "-t", f"{read_s:.3f}",
                            "-i", pr["path"]]
-            vf = [cover_crop(pr.get("width") or cw, pr.get("height") or ch, cw, ch, anchor)]
+            # M8 vlog:plan 命中 → crop 裁切窗(窗比=目标比,绝不拉伸)+ scale;
+            # 未命中/手动锚点 → 旧 cover_crop 档(行为与 M8 之前一致)。
+            vf = plan_vf or [cover_crop(pr.get("width") or cw, pr.get("height") or ch,
+                                        cw, ch, anchor)]
             if freeze_ms > 0:
                 stop_s = max(0.0, take_s - read_s) + 0.5     # 补足请求时长 + 帧取整余量
                 vf.append(f"tpad=stop_mode=clone:stop_duration={stop_s:.3f}")
@@ -261,7 +523,8 @@ def step_segment(doc: dict, ratio: str, build: Path, base_dir: Path, cfg: dict,
         tmp.replace(cached)
         prune_seg_cache(cache_dir)
         print(f"  seg[{i+1}/{len(base_clips)}] {out_ms/1000:.2f}s"
-              f"{' 缓存命中' if hit else ''}", file=sys.stderr)
+              f"{' 缓存命中' if hit else ''}"
+              f"{f' [reframe:{plan_tag}]' if plan_tag else ''}", file=sys.stderr)
     return seg_files, reports, seg_keys
 
 
@@ -669,9 +932,9 @@ def render(doc: dict, project_path: Path, ratio: str, profile: str, *,
     cfg = load_config()
     # dev-jj2815 实测:IR 用相对路径传入时,seg/输出路径全为相对,concat demuxer
     # 以 concat.txt 所在目录为基准再拼一次 → 路径双重拼接打不开。入口即绝对化。
-    base_dir = project_path.parent.parent.resolve()  # 05_ir/ → 工程根
+    base_dir = project_path.parent.parent.resolve()  # 05_时间线工程/ → 工程根
     doc["_base_dir"] = str(base_dir)
-    build = base_dir / "06_output" / "_build" / ratio
+    build = base_dir / rs_paths.resolve_name(base_dir, "output") / "_build" / ratio
     build.mkdir(parents=True, exist_ok=True)
     keys_path = build / "step_keys.json"
     prev: dict = {}
@@ -771,16 +1034,17 @@ def render(doc: dict, project_path: Path, ratio: str, profile: str, *,
 
     name = f"final_{doc.get('slug', 'out')}_{ratio.replace('x', '')}.mp4" if profile == "final" \
         else f"{profile}_{doc.get('slug', 'out')}_{ratio.replace('x', '')}.mp4"
-    # P10b-1:final 档(交付成片)默认落 06_output/final/ 独占子目录,与品牌变体
-    #(06_output/branded/)彻底隔离,消除顶层 glob 交叠互相打脏的历史;
-    # preview/draft 是探针/中间档,留在 06_output 顶层(归 rs_cleanup 清理)。
+    # P10b-1:final 档(交付成片)默认落 06_成片输出/final/ 独占子目录,与品牌变体
+    #(06_成片输出/branded/)彻底隔离,消除顶层 glob 交叠互相打脏的历史;
+    # preview/draft 是探针/中间档,留在 06_成片输出 顶层(归 rs_cleanup 清理)。
     # rs_brand 变体渲染传 --out 显式指定落点(变体 IR 的 base_dir 是 branded/,不适用上规)。
     if out_override:
         ov = Path(out_override)
         out = ov if ov.is_absolute() else Path.cwd() / ov
     else:
-        out_dir = (base_dir / "06_output" / "final") if profile == "final" \
-            else (base_dir / "06_output")
+        out_name = rs_paths.resolve_name(base_dir, "output")
+        out_dir = (base_dir / out_name / "final") if profile == "final" \
+            else (base_dir / out_name)
         out = out_dir / name
     # v0.11 R1:final 档双 pass loudnorm —— 先音频-only 测量(秒级),实测值回填编码。
     # 测量值是 subtitled 的纯函数(已在 k_sub 里),键只需记"是否双 pass"。
@@ -841,7 +1105,7 @@ def main() -> int:
     ap.add_argument("--ass", default=None, help="覆盖 IR 的字幕 ass 路径(每比例各一个 ass)")
     ap.add_argument("--out", default="",
                     help="显式输出文件路径(P10b-1:rs_brand 变体渲染用;缺省按 profile "
-                         "落 06_output[/final]/)")
+                         f"落 {rs_paths.p('output')}[/final]/)")
     ap.add_argument("--explain", action="store_true",
                     help="只报告 seg/步骤缓存命中情况,不执行渲染")
     ap.add_argument("--clear-cache", action="store_true", help="清除该工程的 seg 缓存后渲染")

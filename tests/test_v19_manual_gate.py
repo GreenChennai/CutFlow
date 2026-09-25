@@ -56,9 +56,9 @@ def _capture(fn, *args, **kw):
 
 def _mk_project(tmp_path: Path) -> Path:
     root = tmp_path / "proj"
-    for d in ("00_brief", "01_materials", "03_assets", "04_cut", "05_ir", "06_output", "_state"):
+    for d in ("00_制作简报", "01_原始素材", "03_创作素材", "04_粗剪决策", "05_时间线工程", "06_成片输出", "_内部状态"):
         (root / d).mkdir(parents=True)
-    (root / "01_materials" / "a.mp4").write_bytes(b"fake")
+    (root / "01_原始素材" / "a.mp4").write_bytes(b"fake")
     return root
 
 
@@ -83,8 +83,8 @@ def test_p17_cover_constant_is_single_source():
 
 def test_p17_cleanup_keeps_chinese_cover(tmp_path):
     root = tmp_path / "proj"
-    (root / "06_output").mkdir(parents=True)
-    (root / "06_output" / "封面.png").write_bytes(b"png")
+    (root / "06_成片输出").mkdir(parents=True)
+    (root / "06_成片输出" / "封面.png").write_bytes(b"png")
     delete, keep = rs_cleanup.classify(root)
     assert not delete and any(p.name == "封面.png" for p in keep)
 
@@ -92,7 +92,7 @@ def test_p17_cleanup_keeps_chinese_cover(tmp_path):
 # ================================================================ P18-1 deliverables 真对账
 
 def _complete_project(root: Path) -> None:
-    out = root / "06_output"
+    out = root / "06_成片输出"
     (out / "final" / "final_a_916.mp4").parent.mkdir(parents=True, exist_ok=True)
     (out / "final" / "final_a_916.mp4").write_bytes(b"v")
     (out / "branded" / "成片_9x16_logoA_final.mp4").parent.mkdir(parents=True, exist_ok=True)
@@ -102,7 +102,7 @@ def _complete_project(root: Path) -> None:
     (out / "metadata.json").write_text(json.dumps(
         {"version": 1, "platforms": {"douyin": {"title": "t"}, "bili": {"title": "b"}}},
         ensure_ascii=False), encoding="utf-8")
-    (root / "05_ir" / "variants.json").write_text(json.dumps(
+    (root / "05_时间线工程" / "variants.json").write_text(json.dumps(
         {"matrix": [{"id": "logoA_9x16", "logo": "logoA", "ratio": "9x16"}]}, ensure_ascii=False),
         encoding="utf-8")
 
@@ -110,7 +110,7 @@ def _complete_project(root: Path) -> None:
 def test_p18_missing_cover_and_srt_must_fail(tmp_path, monkeypatch):
     """§4.2 验收判据:缺封面/缺字幕时 deliverables 非零。"""
     root = _mk_project(tmp_path)
-    (root / "06_output" / "final_a.mp4").write_bytes(b"v")
+    (root / "06_成片输出" / "final_a.mp4").write_bytes(b"v")
     res = rs_ingest.build_deliverables(root)
     assert res["ok"] is False and res["code"] == "DELIVERABLES_INCOMPLETE"
     missing = " ".join(res["missing"])
@@ -120,7 +120,7 @@ def test_p18_missing_cover_and_srt_must_fail(tmp_path, monkeypatch):
     monkeypatch.setattr(sys, "argv", ["rs_ingest.py", "deliverables", str(root)])
     code, out, env = _capture(rs_ingest.main)
     assert code == 4 and env["ok"] is False
-    d = (root / "06_output" / "deliverables.md").read_text(encoding="utf-8")
+    d = (root / "06_成片输出" / "deliverables.md").read_text(encoding="utf-8")
     assert "缺失项" in d and "- ⚠" in d, "清单必须点名缺失项"
 
 
@@ -136,7 +136,7 @@ def test_p18_variant_matrix_reconciled_against_files(tmp_path):
     """变体成片 ↔ variants.json 矩阵逐条对账:缺一条即不齐,并点名变体 id。"""
     root = _mk_project(tmp_path)
     _complete_project(root)
-    vj = root / "05_ir" / "variants.json"
+    vj = root / "05_时间线工程" / "variants.json"
     doc = json.loads(vj.read_text(encoding="utf-8"))
     doc["matrix"].append({"id": "logoB_16x9", "logo": "logoB", "ratio": "16x9"})
     vj.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
@@ -235,11 +235,11 @@ def test_p21_doctor_bridge_probes_are_fatal():
 def _ir_without_ids() -> dict:
     return {"version": 1, "tracks": [
         {"kind": "video", "name": "main", "clips": [
-            {"src": "01_materials/a.mp4", "startMs": 0, "durationMs": 12000, "sourceInMs": 3000},
-            {"src": "01_materials/a.mp4", "startMs": 12000, "durationMs": 8000, "sourceInMs": 15000},
+            {"src": "01_原始素材/a.mp4", "startMs": 0, "durationMs": 12000, "sourceInMs": 3000},
+            {"src": "01_原始素材/a.mp4", "startMs": 12000, "durationMs": 8000, "sourceInMs": 15000},
         ]},
         {"kind": "video", "name": "overlay", "clips": [
-            {"src": "03_assets/artboard/c1/export/c1.png", "startMs": 3200, "durationMs": 1800},
+            {"src": "03_创作素材/artboard/c1/export/c1.png", "startMs": 3200, "durationMs": 1800},
         ]},
     ]}
 
@@ -319,7 +319,9 @@ def test_p23_bridge_failure_codes_subset_of_cutforge_table():
 
 _ARTBOARD_REGISTERED = {"NO_MANIFEST", "NO_IR", "NO_ARTBOARD", "NO_ACTION", "APPLY_ISSUES",
                         "DEP_MISSING",  # DEP_MISSING 来自 --probe(P21-1)
-                        "NO_PLAN", "BAD_PLAN", "CARD_EXISTS"}  # T1-1 gen-cards(副文档 05)
+                        "NO_PLAN", "BAD_PLAN", "CARD_EXISTS",  # T1-1 gen-cards(副文档 05)
+                        # M7 gen-frames:计划无场景卡 / --kind 非法 / 安全区机检未过 / MP4 导出失败
+                        "NO_FRAMES", "BAD_KIND", "SAFE_CHECK_FAILED", "EXPORT_FAILED"}
 
 
 def test_p23_artboard_codes_registered_no_drift():
@@ -396,8 +398,8 @@ def test_p25_stage_failure_records_failed_blocks_downstream(tmp_path):
     """failed 状态「实现它」:S0 跑失败 → 落盘 failed → --status 可见 → 下游 blocked →
     --dirty 本轮只选失败上游,不拿坏账硬跑下游。"""
     root = _mk_project(tmp_path)
-    (root / "01_materials" / "a.mp4").unlink()
-    (root / "01_materials").rmdir()                     # 让 S0 真实失败(NO_MATERIALS)
+    (root / "01_原始素材" / "a.mp4").unlink()
+    (root / "01_原始素材").rmdir()                     # 让 S0 真实失败(NO_MATERIALS)
     ok, msg = rs_run.run_stage(root, _stage("S0"), {})
     assert ok is False
     rec = rs_run.read_state(root, "S0")
@@ -413,13 +415,13 @@ def test_p25_stage_failure_records_failed_blocks_downstream(tmp_path):
     picked = [s["id"] for s in rs_run.select(root, rs_run.S13, None)]
     assert "S0" in picked and "S1" not in picked
     # pipeline.json 汇总账同样如实
-    agg = json.loads((root / "05_ir" / "pipeline.json").read_text(encoding="utf-8"))
+    agg = json.loads((root / "05_时间线工程" / "pipeline.json").read_text(encoding="utf-8"))
     assert agg["stages"]["S0"]["status"] == "failed"
 
 
 def test_p25_failed_clears_after_successful_rerun(tmp_path):
     root = _mk_project(tmp_path)
-    (root / "06_output" / "subtitles.ass").write_text("[Events]", encoding="utf-8")
+    (root / "06_成片输出" / "subtitles.ass").write_text("[Events]", encoding="utf-8")
     rs_run.write_state(root, "S7", {"status": "failed", "error": "上次炸了"})
     assert rs_run.evaluate(root, _stage("S7"))["status"] == "failed"
     parts = rs_run.stage_parts(root, _stage("S7"), rs_run.params_of(root), {})
@@ -467,7 +469,7 @@ def test_rt2_status_silent_without_summary(tmp_path):
 
 def test_rt3_diff_prefers_session_summary(tmp_path, capsys):
     root = _mk_project(tmp_path)
-    (root / "05_ir" / "project.json").write_text("{}", encoding="utf-8")
+    (root / "05_时间线工程" / "project.json").write_text("{}", encoding="utf-8")
     _write_summary(root, [
         {"opKind": "set", "target": {"file": "project.json",
                                      "path": "/tracks/0/clips/1/durationMs"},
@@ -482,7 +484,7 @@ def test_rt3_diff_falls_back_to_base_snapshot(tmp_path):
     """无摘要时拿 .cutforge/bases/ 最新 rev 快照对比 —— 人话差异 + 机器可读 JSON。"""
     root = _mk_project(tmp_path)
     proj = _ir_without_ids()
-    (root / "05_ir" / "project.json").write_text(
+    (root / "05_时间线工程" / "project.json").write_text(
         json.dumps(proj, ensure_ascii=False), encoding="utf-8")
     bases = root / ".cutforge" / "bases"
     bases.mkdir(parents=True)
@@ -502,7 +504,7 @@ def test_rt3_diff_reports_removed_and_changed(tmp_path):
     new = json.loads(json.dumps(old))
     removed = new["tracks"][0]["clips"].pop(0)          # V1 第1段被删
     new["tracks"][0]["clips"][0]["durationMs"] = 9999   # 第(原2)段被改时长
-    (root / "05_ir" / "project.json").write_text(json.dumps(new, ensure_ascii=False), encoding="utf-8")
+    (root / "05_时间线工程" / "project.json").write_text(json.dumps(new, ensure_ascii=False), encoding="utf-8")
     bases = root / ".cutforge" / "bases"
     bases.mkdir(parents=True)
     (bases / "12.json").write_text(json.dumps(old, ensure_ascii=False), encoding="utf-8")
@@ -516,7 +518,7 @@ def test_rt3_diff_reports_removed_and_changed(tmp_path):
 
 def test_rt3_diff_without_sources_is_clean_not_crash(tmp_path):
     root = _mk_project(tmp_path)
-    (root / "05_ir" / "project.json").write_text("{}", encoding="utf-8")
+    (root / "05_时间线工程" / "project.json").write_text("{}", encoding="utf-8")
     code, _, doc = _capture(rs_editor.cmd_diff, root)
     assert code == 0 and doc["code"] == "NO_BASELINE"
 

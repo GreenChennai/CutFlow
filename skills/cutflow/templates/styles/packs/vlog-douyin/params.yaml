@@ -1,0 +1,16 @@
+# 风格包参数档(ADR-0051):Vlog 旅拍·抖音竖屏。出处标注体例见 _template/params.yaml。
+slug: vlog-douyin
+label: Vlog 旅拍·抖音竖屏
+videoType: vlog
+platform: douyin                       # [内部] templates/platforms.json douyin
+ratio: 9x16                            # [内部] templates/platforms.json douyin.ratio
+
+pacing: normal                         # [内部] registry.entries.vlog-douyin.pacing
+cardMs: [1500, 5000]                   # [内部] registry.pacingTiers.normal.cardMs;rules/video-types/vlog.md §2(1.5–5s,一镜一事件)
+visualBeatSec: [2, 5]                  # [内部] registry.pacingTiers.normal.visualBeatSec;vlog.md §2(2–5s,场景切换即节拍)
+bgm: {enabled: true, gainDb: -18, ducking: on_voice_only}   # [内部] vlog.md §2(BGM 开 -18dB 是情绪骨架;人声段 ducking 已由 rs_render 固化)
+transition: {default: hard_cut, allow: [fade], snapToBeat: false}   # [内部] vlog.md §2(硬切为主,场景大切换用 fade;禁花哨转场连用)
+subtitle: {style: talkshow-bold, maxChars: 12, cpsMax: 9, lyricOnly: false}   # [内部] vlog.md §3(只上人声对白,环境音/纯 BGM 段不出字幕)+ platforms.douyin.maxChars=12
+cards: {density: 无, template: info}   # [内部] vlog.md §3(默认无卡;地名/时间戳角标与订阅引导除外)+ registry.entries.vlog-douyin.cards
+capabilities: [cut.dead-air, qc.black-frame, vision.shot, vision.track, vision.reframe]   # [内部] registry.videoTypes.vlog.capabilities(M8 补登:rs_shot/rs_reframe 描述符已落地)
+artboard: {styles: [xhs-cover], templates: ["opener:1", "endcard:1"]}   # [经验] 借 xhs-cover 暖底贴纸手账感做旅拍片头;artboard references/styles/xhs-cover.md

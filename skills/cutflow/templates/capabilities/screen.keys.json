@@ -1,0 +1,23 @@
+{
+ "id": "screen.keys",
+ "label": "按键/快捷键提示卡",
+ "appliesTo": [
+  "screen-recording"
+ ],
+ "stage": "S4",
+ "detector": "rs_screen.py",
+ "depends": [
+  "vision.cv"
+ ],
+ "degrade": {
+  "to": "none",
+  "trace": "keysDegraded",
+  "message": "OpenCV 组件未部署:无键位卡检测;快捷键讲解请人工补 artboard 卡"
+ },
+ "params": {
+  "keyCardMinMs": 400
+ },
+ "artifact": "cut/screen.json",
+ "verify": "tests/test_m8_infra.py",
+ "notes": "M8 落地(方案 §5.5.4)。M8 第一波口径:浮层卡视觉特征因录制工具而异,检测算法待录屏样本标定——READY 档也如实返回空表(tiers.keys 留痕),不伪造检测结论;标定后在 rs_screen.ready_key_hints 补真实现。"
+}

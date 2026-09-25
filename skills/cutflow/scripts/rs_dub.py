@@ -3,8 +3,8 @@
 一句话:把"句级 + 句内估算"的 TTS 时间轴,换成**真实字级时间戳**。
 
 用法:
-  rs_dub.py align --wordline 05_ir/wordline.json --audio 03_assets/tts/all.wav [--out 06_output] [--write]
-  rs_dub.py align --wordline 05_ir/wordline.json --from-asr 02_sensed/tts_asr.json [--write]
+  rs_dub.py align --wordline 05_时间线工程/wordline.json --audio 03_创作素材/tts/all.wav [--out 06_成片输出] [--write]
+  rs_dub.py align --wordline 05_时间线工程/wordline.json --from-asr 02_转写与校对/tts_asr.json [--write]
 
 原理(与 ADR-0011 一致,不是新时间源):
   · 用自带 ASR 对**配音音频**转写,拿到真实字级时间戳(参考轴);
@@ -22,6 +22,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 import rs_align  # noqa: E402
 import rs_common  # noqa: E402
+import rs_paths  # noqa: E402  — 阶段路径唯一真相源(ADR-0046),本文件禁止目录字面量
 from rs_common import emit, p95  # noqa: E402
 
 DRIFT_WARN_MS = 300          # 首字漂移超过此值 → 该句标 needs_review
@@ -87,7 +88,7 @@ def main() -> int:
     ap.add_argument("--audio", help="配音音频(整条);由自带 ASR 转写取真实字级时间戳")
     ap.add_argument("--from-asr", dest="from_asr", help="已有的 ASR 结果 json(离线/已验证)")
     ap.add_argument("--backend", default="auto", choices=["auto", "pkg", "onnx", "server"])
-    ap.add_argument("--out", default="06_output")
+    ap.add_argument("--out", default=rs_paths.p("output"))
     ap.add_argument("--write", action="store_true", help="把真实字级时间戳写回 --wordline")
     a = ap.parse_args()
 

@@ -1,0 +1,17 @@
+{
+  "id": "vision.greenscreen",
+  "label": "绿幕/蓝幕检测",
+  "appliesTo": ["talking-head", "talking-head+animation"],
+  "stage": "S0",
+  "detector": "rs_greenscreen.py",
+  "depends": [],
+  "degrade": {
+    "to": "manual-check",
+    "trace": "greenscreenDegraded",
+    "message": "幕布检测组件未部署，已跳过自动检测；交付前须人工确认素材无未处理的绿幕/蓝幕"
+  },
+  "params": {"samples": 6, "borderFrac": 0.45, "overallFrac": 0.18, "maxCv": 0.4},
+  "artifact": "materials/manifest.json",
+  "verify": "tests/test_v14.py",
+  "notes": "检测已在 S0 落地：rs_ingest scan 内联调用 rs_greenscreen.detect_media，结果写进 manifest.json 各素材的 greenScreen 字段（ADR-0031）；本描述符把它登记为可插拔能力，使引擎能按类型声明挂载与降级留痕（ADR-0047）。params 与 rs_greenscreen 常量同源（BORDER_FRAC/OVERALL_FRAC/MAX_CV、CLI --samples 缺省 6）。detector 为 S0 自有脚本，挂载器不重复执行、只校验产物。"
+}

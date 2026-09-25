@@ -16,12 +16,12 @@
 
 **结论:只要存在多于一个时间源,「对上」只能靠巧合。** Wordline 就是把这个数量压回 1。
 
-## 2. 数据结构(`05_ir/wordline.json`)
+## 2. 数据结构(`05_时间线工程/wordline.json`)
 
 ```json
 {
   "version": 1,
-  "source": "01_materials/JJAV2815.MP4",
+  "source": "01_原始素材/JJAV2815.MP4",
   "space": "final",
   "fps": 30,
   "sampleRate": 16000,

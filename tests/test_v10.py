@@ -218,19 +218,19 @@ def test_schema_json_valid_and_new_fields():
 # ---------------------------------------------------------------- P0 附带修复:S1 first_material
 
 def test_first_material_skips_manifest_and_images(tmp_path):
-    """01_materials 里的 S0 产物(manifest.json/MANIFEST.md)与图片不得当 ASR 输入;
+    """01_原始素材 里的 S0 产物(manifest.json/MANIFEST.md)与图片不得当 ASR 输入;
     Windows 大小写不敏感排序会把 manifest.json 排到最前(店群工程 S1 必崩根因)。"""
     import rs_run
-    mat = tmp_path / "01_materials"
+    mat = tmp_path / "01_原始素材"
     mat.mkdir()
     for name in ("manifest.json", "MANIFEST.md", "背景.jpg", "视频.MP4"):
         (mat / name).write_bytes(b"x")
-    mats = rs_run.expand(tmp_path, ["01_materials/*"])
+    mats = rs_run.expand(tmp_path, ["01_原始素材/*"])
     picked = rs_run.pick_asr_media(mats)
     assert picked is not None and picked.name == "视频.MP4"
     st = next(s for s in rs_run.spec() if s["id"] == "S1")
     cmd = rs_run.build_cmd(tmp_path, st)
-    assert cmd[-3] == "01_materials\视频.MP4" or cmd[-3].endswith("视频.MP4")
+    assert cmd[-3] == "01_原始素材\视频.MP4" or cmd[-3].endswith("视频.MP4")
 
 
 @pytest.mark.skipif(not Path(FFMPEG).is_file(), reason="ffmpeg 不可用")
@@ -254,7 +254,7 @@ def test_s9_uses_final_space_wordline(tmp_path):
     """S9 对账必须用成片空间的 wordline.final.json(remap 产物,rs_verify 同一约定);
     wordline.json 是源空间,拿它对账时长必差一个粗剪裁剪量(店群工程 S9 假失败实测)。"""
     import rs_run
-    ir = tmp_path / "05_ir"
+    ir = tmp_path / "05_时间线工程"
     ir.mkdir()
     (ir / "wordline.final.json").write_text("{}", encoding="utf-8")
     st = next(s for s in rs_run.spec() if s["id"] == "S9")

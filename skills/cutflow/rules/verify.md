@@ -21,7 +21,7 @@
 | IR 可解析且校验通过 | `rs_ir.validate` 无错误 |
 | Wordline 存在且单调 | `startMs` 单调不减、无 `endMs ≤ startMs` |
 | 粗剪 guard 全过 | 所有 `action=remove` 的刀 guard.ok = true;keep 完整覆盖源时长 |
-| **素材无未处理幕布**(v0.14,ADR-0031) | `01_materials/manifest.json` 无未放行的绿幕/蓝幕命中;命中且无 `green-ok` 放行说明 = 硬失败 |
+| **素材无未处理幕布**(v0.14,ADR-0031) | `01_原始素材/manifest.json` 无未放行的绿幕/蓝幕命中;命中且无 `green-ok` 放行说明 = 硬失败 |
 | 字幕合规 | 每卡字数 ≤ 上限、CPS ≤ 9、单卡时长 ≤ 7s、卡间不重叠 |
 | 字幕↔Wordline 对齐 | 偏移中位数 ≤ 40ms,95 分位 ≤ 80ms |
 | 产物存在 | 至少一个成片 |
@@ -33,7 +33,7 @@ python skills/cutflow/scripts/rs_verify.py <工程根> --level L1 # L0 + 待目�
 python skills/cutflow/scripts/rs_verify.py <工程根> --status   # 只看状态
 ```
 
-## 3. 状态文件 `_state/verify.json`
+## 3. 状态文件 `_内部状态/verify.json`
 
 ```json
 {"version": 1,
@@ -84,7 +84,7 @@ Agent 看到清单后:跑抽帧命令 → 自己看图 → 给出结论。**脚�
     → 通过 → rs_verify --mark-first --result pass
 
 后续编辑:
-  改字幕 → 06_output/rebuild.py → 只跑 L0(秒级)
+  改字幕 → 06_成片输出/rebuild.py → 只跑 L0(秒级)
     → 输出里写明 "verifyLevel: L0"
     → 用户自己看一遍(不需要 Agent 参与)
 

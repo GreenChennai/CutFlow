@@ -1,0 +1,24 @@
+{
+ "id": "vision.track",
+ "label": "主体跟踪",
+ "appliesTo": [
+  "vlog"
+ ],
+ "stage": "S3",
+ "detector": "rs_reframe.py",
+ "depends": [
+  "vision.track"
+ ],
+ "degrade": {
+  "to": "static-center",
+  "trace": "trackDegraded",
+  "message": "目标跟踪组件未部署,已降级为静态中心锚点(static-center):跟随变固定,主体偏移画面中心的镜头可能被裁切窗切边"
+ },
+ "params": {
+  "smoothWindow": 15,
+  "maxShiftPxPerSec": 240.0
+ },
+ "artifact": "timeline/reframe_plan.json",
+ "verify": "tests/test_m8_infra.py",
+ "notes": "M8 落地(方案 §5.5.2)。READY=bytetrack 逐帧主体盒→滑窗中位数平滑+限速(防镜头跟着人乱甩);硬约束 REFRAME_CLIP_SUBJECT:主体包围盒必须完整在裁切窗内,违反即整 clip 降级 static-center 并留痕。与 vision.reframe 共用 reframe_plan.json。"
+}

@@ -89,17 +89,17 @@ def test_vendor_notice_and_license_kept():
 
 def _mk_project(tmp_path: Path, with_ass: bool = True) -> Path:
     root = tmp_path / "proj"
-    (root / "05_ir").mkdir(parents=True)
-    (root / "06_output").mkdir(parents=True)
+    (root / "05_时间线工程").mkdir(parents=True)
+    (root / "06_成片输出").mkdir(parents=True)
     wl = rs_align.build_wordline(
         [{"start": 0.0, "end": 3.0, "text": "大家好,今天我们来讲桌面运维。"},
          {"start": 3.4, "end": 6.2, "text": "先看蓝屏,蓝屏是最常见的问题。"}], "a.mp4")
-    (root / "05_ir" / "wordline.json").write_text(json.dumps(wl, ensure_ascii=False),
+    (root / "05_时间线工程" / "wordline.json").write_text(json.dumps(wl, ensure_ascii=False),
                                                   encoding="utf-8")
     if with_ass:
         events, _ = rsub.events_from_wordline(wl, 12)
-        (root / "06_output").mkdir(exist_ok=True)
-        rsub.write_ass(events, root / "06_output" / "subtitles.ass", "subtitle-white",
+        (root / "06_成片输出").mkdir(exist_ok=True)
+        rsub.write_ass(events, root / "06_成片输出" / "subtitles.ass", "subtitle-white",
                        "9x16", "1080x1920")
     return root
 
@@ -153,8 +153,8 @@ def test_picture_change_forces_l1(tmp_path):
     st = rs_verify.load_verify(root)
     st["firstCheck"] = {"done": True}
     rs_verify.save_verify(root, st)
-    # 画面阶段"曾经做过、现在失效"→ 必须提示 L1(单一真相在 _state/S*.json)
-    state = root / "_state"
+    # 画面阶段"曾经做过、现在失效"→ 必须提示 L1(单一真相在 _内部状态/S*.json)
+    state = root / "_内部状态"
     state.mkdir(parents=True, exist_ok=True)
     (state / "S4.json").write_text(json.dumps(
         {"status": "done", "key": "old", "parts": {"inputs": {"a": "1"}, "tool": {},
@@ -199,24 +199,24 @@ def test_skill_md_size_discipline():
 def test_init_rebuild_generates_scripts(tmp_path):
     root = _mk_project(tmp_path)
     made = rs_run.init_rebuild(root)
-    assert "06_output/rebuild.py" in made and "05_ir/rebuild.py" in made
+    assert "06_成片输出/rebuild.py" in made and "05_时间线工程/rebuild.py" in made
     assert (root / "REBUILD.md").is_file()
-    # 06_output 的脚本必须从"烧录导出"段起跑,否则会冲掉手改字幕
-    body = (root / "06_output" / "rebuild.py").read_text(encoding="utf-8")
+    # 06_成片输出 的脚本必须从"烧录导出"段起跑,否则会冲掉手改字幕
+    body = (root / "06_成片输出" / "rebuild.py").read_text(encoding="utf-8")
     assert '"--from", "S8"' in body and "--force" in body
 
 
 def test_artboard_rebuild_is_specialized(tmp_path):
     root = _mk_project(tmp_path)
-    (root / "03_assets" / "artboard").mkdir(parents=True)
+    (root / "03_创作素材" / "artboard").mkdir(parents=True)
     rs_run.init_rebuild(root)
-    body = (root / "03_assets" / "artboard" / "rebuild.py").read_text(encoding="utf-8")
+    body = (root / "03_创作素材" / "artboard" / "rebuild.py").read_text(encoding="utf-8")
     assert "rs_artboard.py" in body and "--export" in body and "--apply" in body
 
 
 def test_backup_and_rollback_roundtrip(tmp_path):
     root = _mk_project(tmp_path)
-    ass = root / "06_output" / "subtitles.ass"
+    ass = root / "06_成片输出" / "subtitles.ass"
     original = ass.read_text(encoding="utf-8")
     st = next(s for s in rs_run.spec() if s["id"] == "S7")
     bp = rs_run.backup_paths(root, st)
@@ -230,7 +230,7 @@ def test_backup_and_rollback_roundtrip(tmp_path):
 def test_backup_prunes_to_keep_limit(tmp_path):
     root = _mk_project(tmp_path)
     st = next(s for s in rs_run.spec() if s["id"] == "S7")
-    bdir = root / "_state" / "backup"
+    bdir = root / "_内部状态" / "backup"
     for i in range(8):
         d = bdir / f"2026010{i}-000000"
         d.mkdir(parents=True)
@@ -271,15 +271,15 @@ def test_artboard_scan_finds_cards(tmp_path):
 
 def test_artboard_apply_rejects_size_mismatch(tmp_path):
     root = _mk_project(tmp_path)
-    out = root / "03_assets" / "artboard" / "c1" / "export" / "c1.png"
+    out = root / "03_创作素材" / "artboard" / "c1" / "export" / "c1.png"
     out.parent.mkdir(parents=True)
     out.write_bytes(b"png")
-    doc = {"version": 1, "items": [{"id": "c1", "project": "03_assets/artboard/c1/src",
-                                    "output": "03_assets/artboard/c1/export/c1.png",
+    doc = {"version": 1, "items": [{"id": "c1", "project": "03_创作素材/artboard/c1/src",
+                                    "output": "03_创作素材/artboard/c1/export/c1.png",
                                     "kind": "png", "size": [1920, 1080]}]}
     ir = {"canvas": {"width": 1080, "height": 1920},
           "tracks": [{"kind": "video", "clips": [
-              {"src": "03_assets/artboard/c1/export/c1.png", "startMs": 0, "durationMs": 2000}]}]}
+              {"src": "03_创作素材/artboard/c1/export/c1.png", "startMs": 0, "durationMs": 2000}]}]}
     _, issues, _, _ = rs_artboard.apply_to_ir(doc, ir, root)
     assert any("尺寸" in i for i in issues), issues
 

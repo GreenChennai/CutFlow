@@ -1,0 +1,15 @@
+# 风格包卡片映射(ADR-0051 体例见 _template/cards.yaml):混剪卡点 → artboard 借格。
+slug: mixcut-douyin
+artboard:
+  styles: [ecommerce-promo]                            # [内部] artboard references/styles/ecommerce-promo.md(大字报促销,高饱和强对比)
+  cases: ["assets/cases/ecommerce-promo-case.html"]    # [内部] artboard assets/cases/ecommerce-promo-case.html
+templates:
+  opener: 1        # 片头钩子卡:最强素材 + 一句话噱头(前 2 拍)
+  title: 2         # 标题卡:章节花字/情绪短句
+  section: 0
+  stat: 0
+  compare: 0
+  endcard: 1       # 片尾卡:定格收尾 + 关注引导
+durationMsHint:
+  opener: 4200
+  endcard: 4800

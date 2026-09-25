@@ -8,12 +8,12 @@
 
 ## 2. 输入与输出
 
-**输入**:`05_ir/wordline.json`(正文与时间)、`00_brief/brief.md`(类型/平台/受众/术语表)、`04_cut/cut_report.md`(知道了删了什么,避免标题承诺内容没有的东西)。
+**输入**:`05_时间线工程/wordline.json`(正文与时间)、`00_制作简报/brief.md`(类型/平台/受众/术语表)、`04_粗剪决策/cut_report.md`(知道了删了什么,避免标题承诺内容没有的东西)。
 
 **输出**:
 
-- `06_output/metadata.json`(机器用,可直接投喂发布工具)
-- `06_output/metadata.md`(人读,复制粘贴用)
+- `06_成片输出/metadata.json`(机器用,可直接投喂发布工具)
+- `06_成片输出/metadata.md`(人读,复制粘贴用)
 
 ```json
 {
@@ -65,8 +65,8 @@ B站章节格式:
 ## 5. 用法
 
 ```powershell
-python skills/cutflow/scripts/rs_meta.py --wordline 05_ir/wordline.json `
-    --brief 00_brief/brief.md --platform douyin,bili --out 06_output
+python skills/cutflow/scripts/rs_meta.py --wordline 05_时间线工程/wordline.json `
+    --brief 00_制作简报/brief.md --platform douyin,bili --out 06_成片输出
 ```
 
 - 只要 `--platform` 里包含 `bili`,就会带 `chapters`;

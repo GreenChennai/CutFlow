@@ -149,18 +149,18 @@ DP 求最优后返回 **top-3 候选**(按 score 排序)供 Agent 挑选;若最�
 
 ```
 # 首选:从 Wordline 取时(字级精确)
-rs_subtitle.py --from-wordline 05_ir/wordline.json --style talkshow-bold --ratio 9x16 --out 06_output
+rs_subtitle.py --from-wordline 05_时间线工程/wordline.json --style talkshow-bold --ratio 9x16 --out 06_成片输出
 
 # 兼容:纯文案 TTS(时间 = 合成实长,ffprobe 实测)
-rs_subtitle.py --from-tts 03_assets/tts/manifest.json --style tutorial-clean --ratio 9x16 --out 06_output
+rs_subtitle.py --from-tts 03_创作素材/tts/manifest.json --style tutorial-clean --ratio 9x16 --out 06_成片输出
 
 # 兼容:无 Wordline 的降级路径(句级时间 + 停顿锚点,会在报告里标注 degraded)
-rs_subtitle.py --from-transcript 02_sensed/transcript_corrected.json --style subtitle-white --ratio 16x9 --out 06_output
+rs_subtitle.py --from-transcript 02_转写与校对/transcript_corrected.json --style subtitle-white --ratio 16x9 --out 06_成片输出
 ```
 
 - `--from-transcript` 必须用 **Agent 校对后的** `transcript_corrected`(原始 ASR 错字是抖音红线);
 - `--segment dp`(默认)/ `--segment length`(回退旧长度驱动,仅用于复现旧工程);
-- `--top 3` 输出候选方案到 `06_output/segments_candidates.json`,供 Agent 决断 `ambiguous` 卡。
+- `--top 3` 输出候选方案到 `06_成片输出/segments_candidates.json`,供 Agent 决断 `ambiguous` 卡。
 
 ## 7. 风格
 
@@ -203,7 +203,7 @@ rs_subtitle.py --from-transcript 02_sensed/transcript_corrected.json --style sub
 
 ### 10.1 复核流程
 
-1. `rs_subtitle.py --from-wordline … --out 06_output/<proj>` 产出 **`cards.json`**(每卡含 `charSpan` = wordline 内容字全局索引 `[a,b)`、`startMs/endMs`、`text`);
+1. `rs_subtitle.py --from-wordline … --out 06_成片输出/<proj>` 产出 **`cards.json`**(每卡含 `charSpan` = wordline 内容字全局索引 `[a,b)`、`startMs/endMs`、`text`);
 2. Agent 读 `cards.json`,按 §10.2 检查清单逐卡审;
 3. 发现问题 → 写 **`subtitles_override.json`**(§10.3),**只动 span,绝不手写时间**;
 4. 回灌:`rs_subtitle.py --from-wordline … --override subtitles_override.json --out …`——按 span 从 wordline 字级锚重建卡片,重跑必并/延长/间距/帧对齐与硬约束校验,`meta.audit` 记录每张卡的最终 span/文本/时间。

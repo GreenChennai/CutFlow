@@ -35,6 +35,13 @@ SKILL_MD = REPO_ROOT / "skills" / "cutflow" / "SKILL.md"
 # 目录不收编的对象:无 CLI 的公共库;生成器自身(它不是剪辑能力,是目录的保养工具)
 EXCLUDED = {"rs_common.py"}
 
+# 库工具登记(ADR-0046):无 argparse 的公共库以 library=true 进目录,
+# 不占命令配额(commands/args 为空)。登记只在此表 —— 禁手改 capabilities.json。
+LIBRARIES = {
+    "rs_paths.py": "阶段路径唯一真相源(ADR-0046):STAGE_DIRS/p/resolve/check/ensure;"
+                   "全仓禁止目录字面量,取路径只有查表一族入口",
+}
+
 # 解析器装配重放只认这几种方法调用(手册脚本的实际写法超不出这个集合;
 # 与 tests/check_manual_cmds.py 共用 —— 那边 import 本模块的 build_parser)
 _REPLAY_ATTRS = {"add_argument", "add_parser", "add_subparsers"}
@@ -269,6 +276,10 @@ def build_catalog() -> dict:
             tool["commands"] = [{"name": script.name, "sub": None,
                                  "probe": _probe_argv(parser, None, sub_dest)}]
         tools.append(tool)
+    # 库工具(LIBRARIES 静态表):无 CLI,只登记用途,排序稳定
+    for name, purpose in sorted(LIBRARIES.items()):
+        tools.append({"script": name, "purpose": purpose, "library": True,
+                      "stage": [], "outputs": [], "gate": "", "args": [], "commands": []})
     return {
         "version": 1,
         "_doc": "能力目录(T2-1,单一真相源):python skills/cutflow/scripts/rs_caps.py generate "

@@ -1,8 +1,8 @@
 """S9 文案生成:标题 / 简介 / Tag(rules/meta.md)。
 
 用法:
-  rs_meta.py --wordline 05_ir/wordline.json --brief 00_brief/brief.md `
-      --platform douyin,bili --out 06_output [--title "..." --desc "..." --tags a,b,c]
+  rs_meta.py --wordline 05_时间线工程/wordline.json --brief 00_制作简报/brief.md `
+      --platform douyin,bili --out 06_成片输出 [--title "..." --desc "..." --tags a,b,c]
 
 分工:**标题/简介由 Agent 撰写**(本项目不接外部 LLM API);本脚本负责
 ① 校验与截断 ② 从 markers/句子生成 B站章节时间戳 ③ 落盘 metadata.json + metadata.md。

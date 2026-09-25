@@ -31,7 +31,7 @@
 3. 列举
 4. 氛围类
 
-被丢弃的候选写入 `06_output/sfx_dropped.md`,可人工捞回——**不静默丢弃**。
+被丢弃的候选写入 `06_成片输出/sfx_dropped.md`,可人工捞回——**不静默丢弃**。
 
 ## 4. 音量与混音
 
@@ -43,10 +43,10 @@
 
 ```powershell
 # 出草案(不改 IR,只产建议表)
-python skills/cutflow/scripts/rs_sfx.py 05_ir/project.json --auto --out 05_ir/sfx_draft.json
+python skills/cutflow/scripts/rs_sfx.py 05_时间线工程/project.json --auto --out 05_时间线工程/sfx_draft.json
 
 # 人工审完后合并进 IR 的 audio.clips[] (role: sfx)
-python skills/cutflow/scripts/rs_sfx.py 05_ir/project.json --apply 05_ir/sfx_draft.json
+python skills/cutflow/scripts/rs_sfx.py 05_时间线工程/project.json --apply 05_时间线工程/sfx_draft.json
 ```
 
 草案结构:

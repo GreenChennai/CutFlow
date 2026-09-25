@@ -1,0 +1,17 @@
+{
+  "id": "cut.dead-air",
+  "label": "空场检测（有画面无语音的等待段）",
+  "appliesTo": ["talking-head", "talking-head+animation", "vlog"],
+  "stage": "S2",
+  "detector": "rs_cut.py",
+  "depends": [],
+  "degrade": {
+    "to": "manual-review",
+    "trace": "deadAirDegraded",
+    "message": "空场自动检测未部署，粗剪刀口缺 dead_air 类候选；须人工过刀补查调整仪容/换提词器等等待段"
+  },
+  "params": {"minMs": 1200, "db": -35.0},
+  "artifact": "cut/cutlist.json",
+  "verify": "tests/test_v7.py",
+  "notes": "waiting 类检测已存在：rs_cut.detect_dead_air（S2 --detect all 内含；DEAD_AIR_MIN_MS=1200、silencedetect db=-35），命中即产「疑似调整仪容/换提词器」候选刀。detector 为 S2 自有脚本，挂载器不重复执行、只校验产物。纯动画/混剪不声明：音乐驱动或卡片画面下「无语音」不是废段。"
+}

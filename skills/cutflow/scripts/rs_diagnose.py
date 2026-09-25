@@ -3,7 +3,7 @@ r"""成片内容诊断(ADR-0032):从成片出发的独立证据链,对照工程�
 用法:
   rs_diagnose.py <成片.mp4> [--project <工程根>] [--ass <subtitles.ass>]
                  [--cutlist <cutlist.applied.json>] [--budget 900]
-                 [--no-d2] [--json] [--out 06_output]
+                 [--no-d2] [--json] [--out 06_成片输出]
 
 为什么需要它(docs/REVIEW-20260916-假正常诊断根因.md):
   现有全部机器闸都是「对照中间产物」的闸——错误发生在管线内部时,错误同时
@@ -36,6 +36,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from rs_common import emit, ffmpeg_bin, ffprobe_json, run  # noqa: E402
+import rs_paths  # noqa: E402  — 阶段路径唯一真相源(ADR-0046),本文件禁止目录字面量
 
 DIAG_VERSION = "diag-1.0"
 
@@ -551,18 +552,19 @@ def diagnose(video: Path, project: Path | None, ass_path: Path | None,
     # 工程 IR 推断:纯动画 → D2 跳过;ASS/cutlist/wordline 自动定位
     is_pure_animation = False
     if project:
-        ir = project / "05_ir" / "project.json"
+        ir = rs_paths.project_json(project)
         if ir.is_file():
             try:
                 doc = json.loads(ir.read_text(encoding="utf-8"))
                 is_pure_animation = (doc.get("videoType") or "").startswith("pure")
             except (json.JSONDecodeError, OSError):
                 pass
-        ass_path = ass_path or (project / "06_output" / "subtitles.ass")
+        ass_path = ass_path or (rs_paths.resolve(project, "output") / "subtitles.ass")
         cutlist_path = cutlist_path or _first_existing(
-            project / "04_cut" / "cutlist.applied.json", project / "04_cut" / "cutlist.json")
+            rs_paths.resolve(project, "cut") / "cutlist.applied.json",
+            rs_paths.resolve(project, "cut") / "cutlist.json")
         wl_path = wl_path or _first_existing(
-            project / "05_ir" / "wordline.final.json", project / "05_ir" / "wordline.json")
+            rs_paths.wordline_json(project, final=True), rs_paths.wordline_json(project))
 
     checks: list[dict] = []
     asr_segments_cache = None
@@ -770,7 +772,7 @@ def main() -> int:
                     help="诊断耗时预算秒(默认 900;超时输出阶段性结论)")
     ap.add_argument("--no-d2", dest="no_d2", action="store_true",
                     help="跳过音画同步检测(无人物画面/纯动画)")
-    ap.add_argument("--out", default="06_output")
+    ap.add_argument("--out", default=rs_paths.p("output"))
     ap.add_argument("--json", action="store_true")
     a = ap.parse_args()
     video = Path(a.video)

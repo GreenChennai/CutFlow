@@ -1,15 +1,19 @@
 """S2 粗剪:三路检测器 → CutList(可读可改可审查的决策表,ADR-0012)。
 
 用法:
-  rs_cut.py 05_ir/wordline.json --detect all --out 04_cut
-  rs_cut.py 05_ir/wordline.json --review-pack 04_cut/cutlist.json
-  rs_cut.py --apply 04_cut/cutlist.final.json
+  rs_cut.py 05_时间线工程/wordline.json --detect all --out 04_粗剪决策
+  rs_cut.py 05_时间线工程/wordline.json --detect waiting --out 04_粗剪决策
+  rs_cut.py 05_时间线工程/wordline.json --review-pack 04_粗剪决策/cutlist.json
+  rs_cut.py --apply 04_粗剪决策/cutlist.final.json
 
 设计铁律:**宁可漏删,不可错删。**
   conf ≥ 0.90 → remove(仍须过 guard 三重校验)
   0.60–0.90  → review(进审查包)
   < 0.60     → keep(不动)
 guard = 切点在静音区 / 不切断字内音素 / 后留 ≥60ms;任一不过 → 降级 review。
+waiting 检测器(录屏教程,M8):≥2.0s 无视觉变化且无语音的等待段 → reason=waiting,
+  区间优先消费 rs_screen 的 screen.json(--screen 或自动发现),无产物则内联
+  帧差+静音检测;区间内有转写字(人声)即整段不删。
 
 副文档 07(P26/P27):
   · keep 末段终点保底 = max(末字 endMs + 尾余量, ffprobe 实测时长)——口播结尾
@@ -32,16 +36,26 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 import rs_common  # noqa: E402
 from rs_common import emit, guard_passed  # noqa: E402
+import rs_paths  # noqa: E402  — 阶段路径唯一真相源(ADR-0046),本文件禁止目录字面量
 
-DETECTOR_VERSION = "cutflow-1.1"
+DETECTOR_VERSION = "cutflow-1.2"
 REASONS = {"silence", "breath", "filler", "false_start", "retake",
-           "stumble", "repetition", "off_topic", "manual"}
+           "stumble", "repetition", "off_topic", "manual", "waiting"}
 CONF_REMOVE, CONF_REVIEW = 0.90, 0.60
 SILENCE_MIN_MS = 600          # 静音判定:VAD 间隔 ≥600ms
 DEAD_AIR_MIN_MS = 1200        # "有画面无语音"长段(调整仪容/换提词器)
 TAIL_KEEP_MS = 60             # 切点后释放余量(Descript "Avoid harsh cuts")
 NEAR_SILENCE_MS = 120         # 切点前后多远内有静音算"落在静音区"
 RHETORIC_ORIG_MS, RHETORIC_AFTER_MS = 700, 200
+
+# ---- M8 录屏等待段(方案 §5.5.4 screen.compress / §5.9 手法 25)----
+# 「≥2.0s 无视觉变化且无语音 → 加速 2–8× 或删除」。waiting 段按判据无语音,
+# guard 的 inSilence/outSilence 天然满足;防误删靠**检测期双重过滤**(screen.json
+# 的静音判据 + 转写字重叠即整段放弃),guard 硬过项只留 wordClipped + tailKeep
+# (wordClipped 仍是任何 reason 都不放松的底线)。
+WAITING_MIN_MS = 2000                    # waiting 下限(与 rs_screen.WAITING_MIN_MS 同值)
+WAITING_MARGIN_IN_MS = 120               # 入点留白(detect_dead_air 同款,防起音被削)
+WAITING_MARGIN_OUT_MS = 120              # 出点留白(给 tailKeep 自然余量)
 
 # guard 按 reason 分档(OPTIMIZATION-v7 #3):
 #   「重录/整段重来」的切点本就紧邻语音,要求它落在静音区 = 永远无法 remove;
@@ -54,6 +68,7 @@ GUARD_REQUIRED: dict[str, tuple[str, ...]] = {
     "repetition": ("wordClipped", "tailKeep"),
     "off_topic": ("wordClipped", "tailKeep"),
     "manual": ("wordClipped", "tailKeep"),
+    "waiting": ("wordClipped", "tailKeep"),
     "silence": GUARD_ALL, "breath": GUARD_ALL, "filler": GUARD_ALL,
 }
 # 应被剪掉的"元话语":口播人员要求重来的话,不该出现在成片里(review 候选,不自动删)
@@ -611,10 +626,73 @@ def detect_hesitate(wl: dict, media: str | None = None,
     return _dedupe(out)
 
 
+# ---------------------------------------------------------------- waiting(录屏等待段,M8)
+
+def _load_waiting_spans(screen: str | None, wl_path: str | None,
+                        media: str | None) -> tuple[list[dict], str]:
+    """waiting 区间来源(方案 §5.5.4 screen.compress):
+
+    ① --screen 显式指定 / ② 工程推导(<wordline>/../04_粗剪决策/screen.json,
+    rs_screen analyze 的产物,零重复计算)→ ③ 都没有且给了 --media → 内联
+    帧差+静音检测(lazy import rs_screen 复用同一引擎 —— rs_screen 顶层已
+    import rs_cut,此处反向 import 必须延迟到函数内才无环)。
+    返回 (spans, 来源留痕);找不到任何来源返回 ([], "")。
+    """
+    cand: Path | None = Path(screen) if screen else None
+    if cand is None and wl_path:
+        root = Path(wl_path).resolve().parent.parent
+        cand = rs_paths.resolve(root, "cut") / "screen.json"
+    if cand is not None and cand.is_file():
+        try:
+            doc = json.loads(cand.read_text(encoding="utf-8"))
+            return [w for w in (doc.get("waiting") or []) if w.get("endMs")], \
+                f"screen.json:{cand.name}"
+        except (json.JSONDecodeError, OSError, UnicodeDecodeError):
+            pass                                 # 坏产物 → 落到内联检测
+    if media and Path(media).is_file():
+        try:
+            import rs_screen                     # noqa: PLC0415 — 延迟导入防循环(rs_screen → rs_cut)
+            spans, _total = rs_screen.waiting_spans(Path(media), rs_common.load_config())
+            return spans, "inline:frame-diff+silencedetect"
+        except Exception:                        # noqa: BLE001 — 引擎不可用:宁可漏检不报错
+            return [], ""
+    return [], ""
+
+
+def detect_waiting(wl: dict, media: str | None = None, wl_path: str | None = None,
+                   screen: str | None = None, min_ms: int = WAITING_MIN_MS) -> list[dict]:
+    """录屏等待段:「≥min_ms 无视觉变化且无语音」→ 加速 2–8× 或删除的粗剪决策刀。
+
+    - 区间优先取 rs_screen 的 screen.json(同一毫秒时间轴:源素材绝对 ms);
+    - 刀口出入各留 WAITING_MARGIN_*_MS(120ms),给 guard 的 tailKeep 自然余量;
+    - 防误删(宁可漏删不可错删):区间内出现**任何一个转写字**(ASR 认定有人声)
+      即整段放弃 —— frame-diff 静止 ≠ 可删,画中人不动但解说不停是教程常态;
+      screen.json 的静音判据(-35dB silencedetect)是第一道,这里是第二道。
+    """
+    chars = wl.get("chars", [])
+    spans, source = _load_waiting_spans(screen, wl_path, media)
+    out: list[dict] = []
+    for w in spans:
+        if int(w.get("ms") or (int(w["endMs"]) - int(w["startMs"]))) < min_ms:
+            continue
+        in_ms = int(w["startMs"]) + WAITING_MARGIN_IN_MS
+        out_ms = int(w["endMs"]) - WAITING_MARGIN_OUT_MS
+        if out_ms - in_ms < 200:
+            continue
+        if any(int(c["endMs"]) > in_ms and int(c["startMs"]) < out_ms for c in chars):
+            continue                             # 区间内有人声(转写字)→ 整段不删
+        out.append({"inMs": in_ms, "outMs": out_ms, "reason": "waiting",
+                    "conf": 0.95,
+                    "note": f"等待段(无视觉变化且无语音 {w['ms']}ms,来源 {source});"
+                            f"建议加速 2–8× 或删除"})
+    return _dedupe(out)
+
+
 DETECTORS = {"silence": detect_silence, "dead_air": detect_dead_air,
              "filler": detect_filler, "repetition": detect_repetition,
              "retake": detect_retake, "retake_block": detect_retake_block,
-             "self_negative": detect_self_negative, "hesitate": detect_hesitate}
+             "self_negative": detect_self_negative, "hesitate": detect_hesitate,
+             "waiting": detect_waiting}
 
 
 # ---------------------------------------------------------------- 融合
@@ -753,12 +831,13 @@ def derive_keep(remove_cuts: list[dict], total: int) -> list[list[int]]:
 
 
 def self_wordline_default(cutlist_path: Path) -> Path | None:
-    """P27-1:由 cutlist 路径推断工程 wordline(<root>/04_cut/cutlist.json → <root>/05_ir/wordline.json)。
+    """P27-1:由 cutlist 路径推断工程 wordline(<root>/04_粗剪决策/cutlist.json
+    → <root>/05_时间线工程/wordline.json)。
 
-    cutlist 不在标准工程布局里(无父父目录或无 05_ir)时返回 None,调用方跳过同步。
+    cutlist 不在标准工程布局里(父目录不是阶段目录)时返回 None,调用方跳过同步。
     """
     root = cutlist_path.parent.parent
-    cand = root / "05_ir" / "wordline.json"
+    cand = rs_paths.resolve(root, "timeline") / "wordline.json"
     return cand if cand.parent.is_dir() else None
 
 
@@ -928,12 +1007,12 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("wordline", nargs="?")
     ap.add_argument("--detect", default="all")
-    ap.add_argument("--out", default="04_cut")
+    ap.add_argument("--out", default=rs_paths.p("cut"))
     ap.add_argument("--review-pack", dest="review_pack")
     ap.add_argument("--apply")
     ap.add_argument("--wordline", dest="wordline_path", default=None,
                     help="P27-1:--apply 时要同步时长账的 wordline 路径"
-                         "(缺省自动发现 <cutlist>/../05_ir/wordline.json)")
+                         "(缺省自动发现 <cutlist>/../05_时间线工程/wordline.json)")
     ap.add_argument("--force", dest="force", action="store_true",
                     help="P27-1:wordline 带手工编辑痕迹(manualEdit)时仍强制同步")
     ap.add_argument("--tail-reserve-ms", dest="tail_reserve_ms", type=int, default=TAIL_RESERVE_MS,
@@ -947,7 +1026,11 @@ def main() -> int:
     ap.add_argument("--off-topic", dest="off_topic", default="",
                     help="Agent 判定的跑题段落,格式 '起-止,起-止'(chars 下标)")
     ap.add_argument("--min-silence-ms", type=int, default=SILENCE_MIN_MS)
-    ap.add_argument("--media", help="源素材路径(给 dead_air 做音频能量探测;不给则退回字间 gap)")
+    ap.add_argument("--media", help="源素材路径(给 dead_air 做音频能量探测;不给则退回字间 gap;"
+                                    "waiting 内联检测也需要它)")
+    ap.add_argument("--screen", dest="screen", default="",
+                    help="waiting 检测:rs_screen 产物 screen.json 路径(缺省自动发现"
+                         "<工程根>/04_粗剪决策/screen.json;无产物且给了 --media 则内联帧差+静音检测)")
     ap.add_argument("--retake-ratio", dest="retake_ratio", type=float, default=0.80,
                     help="重录相似度阈值(口播 0.80;怕误删的类型可提到 0.86)")
     ap.add_argument("--from-text", dest="from_text", default="",
@@ -1074,6 +1157,8 @@ def main() -> int:
             return emit(False, "BAD_DETECTOR", f"未知检测器:{name}(可选 {list(DETECTORS)})", exit_code=2)
         if name == "dead_air":
             got = fn(wl, media=a.media)
+        elif name == "waiting":
+            got = fn(wl, media=a.media, wl_path=a.wordline, screen=a.screen)
         elif name == "retake":
             got = fn(wl, min_ratio=a.retake_ratio)
         else:
@@ -1096,6 +1181,7 @@ def main() -> int:
               "retakeRatio": a.retake_ratio, "confRemove": CONF_REMOVE,
               "confReview": CONF_REVIEW,
               "tailReserveMs": a.tail_reserve_ms,
+              "waitingMinMs": WAITING_MIN_MS,
               "recordedIsMeasured": wl.get("durationProvenance") == "ffprobe",
               "protect": protects}
     # P26-3:给了 --media 就顺手 ffprobe 实测,keep 末段终点保底以实测为唯一真相

@@ -1,0 +1,23 @@
+{
+ "id": "audio.stem",
+ "label": "人声/伴奏分离",
+ "appliesTo": [
+  "混剪"
+ ],
+ "stage": "S2",
+ "detector": "rs_beat.py",
+ "depends": [
+  "audio.stem"
+ ],
+ "degrade": {
+  "to": "none",
+  "trace": "stemDegraded",
+  "message": "人声/伴奏分离组件未部署:按方案 §5.5.1 直接对混音检测(stems.available=false 留痕);产物 beats.json 仍产出"
+ },
+ "params": {
+  "onsetMinGapMs": 200
+ },
+ "artifact": "cut/beats.json",
+ "verify": "tests/test_m8_infra.py",
+ "notes": "M8 落地(方案 §5.5.1)。--stems 显式请求;READY=demucs(venv-dsp);缺组件按方案『none(直接对混音检测)』处置,tiers.stems 记 available=false——beats.json 照常产出,故挂载器不会因组件缺失阻断阶段。"
+}

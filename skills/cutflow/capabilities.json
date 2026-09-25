@@ -9,7 +9,7 @@
     "S1"
    ],
    "outputs": [
-    "05_ir/wordline.json"
+    "05_时间线工程/wordline.json"
    ],
    "gate": "覆盖率 ≥99%",
    "args": [
@@ -91,6 +91,8 @@
    "gate": "卡片过安全区",
    "args": [
     "--from",
+    "--kind",
+    "--pack",
     "--root=.",
     "--scan",
     "--out",
@@ -136,6 +138,28 @@
    ]
   },
   {
+   "script": "rs_beat.py",
+   "purpose": "节拍检测(M8 混剪能力 audio.beat / audio.downbeat / audio.stem 的 detector,ADR-0047)。",
+   "stage": [],
+   "outputs": [],
+   "gate": "",
+   "args": [
+    "--out",
+    "--downbeat",
+    "--stems",
+    "--force"
+   ],
+   "commands": [
+    {
+     "name": "rs_beat.py detect",
+     "sub": "detect",
+     "probe": [
+      "detect"
+     ]
+    }
+   ]
+  },
+  {
    "script": "rs_bench.py",
    "purpose": "自评抽帧:渲染产物 → 关键点网格图(首2s/尾2s/剪点±1.5s/随机3点),供 Agent 目测。",
    "stage": [],
@@ -166,7 +190,7 @@
     "S5"
    ],
    "outputs": [
-    "06_output/branded/成片_*.mp4"
+    "06_成片输出/branded/成片_*.mp4"
    ],
    "gate": "不压字幕带",
    "args": [
@@ -179,13 +203,33 @@
     "--out",
     "--profile=final",
     "--plan",
-    "--logo-src=03_assets/branding/logos/{id}.png"
+    "--logo-src=03_创作素材/branding/logos/{id}.png"
    ],
    "commands": [
     {
      "name": "rs_brand.py",
      "sub": null,
      "probe": []
+    }
+   ]
+  },
+  {
+   "script": "rs_broll.py",
+   "purpose": "B-roll 素材语义检索(M8 能力 text.broll 的 detector,ADR-0047)。",
+   "stage": [],
+   "outputs": [],
+   "gate": "",
+   "args": [
+    "--query",
+    "--top=8"
+   ],
+   "commands": [
+    {
+     "name": "rs_broll.py match",
+     "sub": "match",
+     "probe": [
+      "match"
+     ]
     }
    ]
   },
@@ -242,12 +286,12 @@
     "S2"
    ],
    "outputs": [
-    "04_cut/cutlist.json"
+    "04_粗剪决策/cutlist.json"
    ],
    "gate": "remove 刀 guard 全过",
    "args": [
     "--detect=all",
-    "--out=04_cut",
+    "--out=04_粗剪决策",
     "--review-pack",
     "--apply",
     "--wordline",
@@ -258,6 +302,7 @@
     "--off-topic",
     "--min-silence-ms=600",
     "--media",
+    "--screen",
     "--retake-ratio=0.8",
     "--from-text",
     "--from-text-file"
@@ -284,7 +329,7 @@
     "--wordline",
     "--budget=900.0",
     "--no-d2",
-    "--out=06_output",
+    "--out=06_成片输出",
     "--json"
    ],
    "commands": [
@@ -325,7 +370,7 @@
     "--audio",
     "--from-asr",
     "--backend=auto|pkg|onnx|server",
-    "--out=06_output",
+    "--out=06_成片输出",
     "--write"
    ],
    "commands": [
@@ -336,6 +381,62 @@
       "align",
       "--wordline",
       "P"
+     ]
+    }
+   ]
+  },
+  {
+   "script": "rs_edit.py",
+   "purpose": "声明式编辑层(ADR-0048):自然语言改片的确定性通道——context 投影 / ops-validate 校验 / apply 原子应用 / undo 逆写 / diff 对比。",
+   "stage": [],
+   "outputs": [],
+   "gate": "",
+   "args": [
+    "--json",
+    "--scope=clip|project|subtitle|audio",
+    "--budget=12KB",
+    "--ops",
+    "--dry-run",
+    "--actor=agent|user",
+    "--base-rev",
+    "--force",
+    "--last",
+    "--rev"
+   ],
+   "commands": [
+    {
+     "name": "rs_edit.py context",
+     "sub": "context",
+     "probe": [
+      "context"
+     ]
+    },
+    {
+     "name": "rs_edit.py ops-validate",
+     "sub": "ops-validate",
+     "probe": [
+      "ops-validate"
+     ]
+    },
+    {
+     "name": "rs_edit.py apply",
+     "sub": "apply",
+     "probe": [
+      "apply"
+     ]
+    },
+    {
+     "name": "rs_edit.py undo",
+     "sub": "undo",
+     "probe": [
+      "undo"
+     ]
+    },
+    {
+     "name": "rs_edit.py diff",
+     "sub": "diff",
+     "probe": [
+      "diff"
      ]
     }
    ]
@@ -388,6 +489,51 @@
    ]
   },
   {
+   "script": "rs_fetchable.py",
+   "purpose": "懒加载依赖体系(ADR-0049):能力→组件映射与三态管理,初始零环境用到才下载。",
+   "stage": [],
+   "outputs": [],
+   "gate": "",
+   "args": [
+    "--json",
+    "--check",
+    "--apply",
+    "--no-fetch",
+    "--auto",
+    "--allow-fetch"
+   ],
+   "commands": [
+    {
+     "name": "rs_fetchable.py state",
+     "sub": "state",
+     "probe": [
+      "state"
+     ]
+    },
+    {
+     "name": "rs_fetchable.py install",
+     "sub": "install",
+     "probe": [
+      "install"
+     ]
+    },
+    {
+     "name": "rs_fetchable.py update",
+     "sub": "update",
+     "probe": [
+      "update"
+     ]
+    },
+    {
+     "name": "rs_fetchable.py rollback",
+     "sub": "rollback",
+     "probe": [
+      "rollback"
+     ]
+    }
+   ]
+  },
+  {
    "script": "rs_frames.py",
    "purpose": "视频抽帧:均匀采样 + 网格拼图,供 Agent 目测(内容理解/构图锚点/自评)。",
    "stage": [],
@@ -433,8 +579,12 @@
   {
    "script": "rs_greenscreen.py",
    "purpose": "绿幕/蓝幕检测(ADR-0031)。",
-   "stage": [],
-   "outputs": [],
+   "stage": [
+    "S0"
+   ],
+   "outputs": [
+    "01_原始素材/manifest.json"
+   ],
    "gate": "",
    "args": [
     "<target>(必需)",
@@ -468,14 +618,16 @@
     "S0"
    ],
    "outputs": [
-    "01_materials/manifest.json"
+    "01_原始素材/manifest.json"
    ],
    "gate": "素材可解码;**未处理幕布检测(ADR-0031)**",
    "args": [
     "<root>(必需)",
     "--slug",
     "--ratio=9x16|3x4|16x9",
-    "--reason"
+    "--reason",
+    "--publish",
+    "--allow-auto-matting"
    ],
    "commands": [
     {
@@ -509,6 +661,14 @@
       "decisions",
       "P"
      ]
+    },
+    {
+     "name": "rs_ingest.py copyright",
+     "sub": "copyright",
+     "probe": [
+      "copyright",
+      "P"
+     ]
     }
    ]
   },
@@ -519,22 +679,27 @@
    "outputs": [],
    "gate": "",
    "args": [
-    "--brief(必需)",
-    "--plan(必需)",
+    "--brief",
+    "--plan",
     "--prompt",
     "--out=.",
-    "--dry-run"
+    "--dry-run",
+    "--template",
+    "--auto-fill"
    ],
    "commands": [
     {
      "name": "rs_intent.py compile",
      "sub": "compile",
      "probe": [
-      "compile",
-      "--brief",
-      "P",
-      "--plan",
-      "P"
+      "compile"
+     ]
+    },
+    {
+     "name": "rs_intent.py template",
+     "sub": "template",
+     "probe": [
+      "template"
      ]
     }
    ]
@@ -546,10 +711,14 @@
     "S3"
    ],
    "outputs": [
-    "05_ir/project.json"
+    "05_时间线工程/project.json"
    ],
    "gate": "IR validate",
    "args": [
+    "--clip",
+    "--quality",
+    "--alpha-dir",
+    "--matte-bg",
     "--from-cutlist",
     "--from-cards",
     "--anchors",
@@ -592,6 +761,13 @@
      "probe": [
       "add-overlay"
      ]
+    },
+    {
+     "name": "rs_ir.py add-matte",
+     "sub": "add-matte",
+     "probe": [
+      "add-matte"
+     ]
     }
    ]
   },
@@ -619,13 +795,50 @@
    ]
   },
   {
+   "script": "rs_matting.py",
+   "purpose": "rs_matting.py —— 抠像重建与五项质量门禁(ADR-0050,部分取代 ADR-0031)。",
+   "stage": [],
+   "outputs": [],
+   "gate": "",
+   "args": [
+    "--source",
+    "--engine=rvm|rembg",
+    "--bg",
+    "--gpu=auto|on|off",
+    "--max-frames=48"
+   ],
+   "commands": [
+    {
+     "name": "rs_matting.py gate",
+     "sub": "gate",
+     "probe": [
+      "gate"
+     ]
+    },
+    {
+     "name": "rs_matting.py extract",
+     "sub": "extract",
+     "probe": [
+      "extract"
+     ]
+    },
+    {
+     "name": "rs_matting.py check",
+     "sub": "check",
+     "probe": [
+      "check"
+     ]
+    }
+   ]
+  },
+  {
    "script": "rs_meta.py",
    "purpose": "S9 文案生成:标题 / 简介 / Tag(rules/meta.md)。",
    "stage": [
     "S10"
    ],
    "outputs": [
-    "06_output/metadata.json"
+    "06_成片输出/metadata.json"
    ],
    "gate": "平台字数合规",
    "args": [
@@ -723,6 +936,26 @@
    ]
   },
   {
+   "script": "rs_reframe.py",
+   "purpose": "横转竖自动重构(M8 vlog 能力 vision.track / vision.reframe 的 detector,ADR-0047)。",
+   "stage": [],
+   "outputs": [],
+   "gate": "",
+   "args": [
+    "--ratio=9x16|3x4|16x9",
+    "--force"
+   ],
+   "commands": [
+    {
+     "name": "rs_reframe.py plan",
+     "sub": "plan",
+     "probe": [
+      "plan"
+     ]
+    }
+   ]
+  },
+  {
    "script": "rs_render.py",
    "purpose": "FFmpeg 渲染器:IR → 七步管线 → 成片。",
    "stage": [
@@ -730,8 +963,8 @@
     "S8"
    ],
    "outputs": [
-    "05_ir/project.json",
-    "06_output/final/final_*.mp4"
+    "05_时间线工程/project.json",
+    "06_成片输出/final/final_*.mp4"
    ],
    "gate": "IR validate;用**现有 ass**,不重新生成字幕",
    "args": [
@@ -786,6 +1019,31 @@
    ]
   },
   {
+   "script": "rs_screen.py",
+   "purpose": "录屏分析(M8 能力 screen.cursor / screen.zoom / screen.keys / screen.redact 的 detector,",
+   "stage": [],
+   "outputs": [],
+   "gate": "",
+   "args": [
+    "--out",
+    "--cursor",
+    "--zoom",
+    "--keys",
+    "--redact",
+    "--waiting",
+    "--force"
+   ],
+   "commands": [
+    {
+     "name": "rs_screen.py analyze",
+     "sub": "analyze",
+     "probe": [
+      "analyze"
+     ]
+    }
+   ]
+  },
+  {
    "script": "rs_sense.py",
    "purpose": "图片感知:OCR(文字)+ VQA(语义)合并输出。用法:python rs_sense.py <图片> --out <目录>\"\"\"",
    "stage": [],
@@ -816,7 +1074,7 @@
     "S6"
    ],
    "outputs": [
-    "05_ir/sfx_draft.json"
+    "05_时间线工程/sfx_draft.json"
    ],
    "gate": "≤2 个 / 15s",
    "args": [
@@ -825,7 +1083,7 @@
     "--apply",
     "--write",
     "--wordline",
-    "--out=05_ir/sfx_draft.json"
+    "--out=05_时间线工程/sfx_draft.json"
    ],
    "commands": [
     {
@@ -838,13 +1096,69 @@
    ]
   },
   {
+   "script": "rs_shot.py",
+   "purpose": "镜头切分(M8 vlog 能力 vision.shot 的 detector,ADR-0047)。",
+   "stage": [],
+   "outputs": [],
+   "gate": "",
+   "args": [
+    "--out",
+    "--deep",
+    "--force"
+   ],
+   "commands": [
+    {
+     "name": "rs_shot.py detect",
+     "sub": "detect",
+     "probe": [
+      "detect"
+     ]
+    }
+   ]
+  },
+  {
+   "script": "rs_stylepack.py",
+   "purpose": "风格包加载/校验/脚手架(ADR-0051:CutFlow ↔ artboard 共用 slug 命名空间)。",
+   "stage": [],
+   "outputs": [],
+   "gate": "",
+   "args": [
+    "--label",
+    "--video-type",
+    "--artboard-slug"
+   ],
+   "commands": [
+    {
+     "name": "rs_stylepack.py check",
+     "sub": "check",
+     "probe": [
+      "check"
+     ]
+    },
+    {
+     "name": "rs_stylepack.py show",
+     "sub": "show",
+     "probe": [
+      "show"
+     ]
+    },
+    {
+     "name": "rs_stylepack.py new",
+     "sub": "new",
+     "probe": [
+      "new"
+     ]
+    }
+   ]
+  },
+  {
    "script": "rs_subtitle.py",
    "purpose": "字幕:时间轴来源(Wordline / TTS manifest / transcript)→ SRT + ASS(DP 卡切分 + 风格模板)。",
    "stage": [
     "S7"
    ],
    "outputs": [
-    "06_output/subtitles.ass"
+    "06_成片输出/subtitles.ass"
    ],
    "gate": "回归集全绿、CPS ≤9",
    "args": [
@@ -862,6 +1176,7 @@
     "--segment=dp|length",
     "--no-optimize",
     "--karaoke",
+    "--dual-style",
     "--allow-degraded",
     "--override",
     "--fps=30.0",
@@ -885,18 +1200,19 @@
     "S9"
    ],
    "outputs": [
-    "06_output/sync_report.md"
+    "06_成片输出/sync_report.md",
+    "06_成片输出/sync_rows.json"
    ],
    "gate": "偏移中位数 ≤40ms;**成片音频内容闸**;**QC 体检**(黑帧/冻结/VFR/响度,v0.11)",
    "args": [
     "--video",
     "--wordline(必需)",
     "--ass(必需)",
-    "--out=06_output",
+    "--out=06_成片输出",
     "--ir",
     "--strict-cards",
     "--legacy-end",
-    "--frame-ms=34.0",
+    "--frame-ms",
     "--audio-content",
     "--audio-sim-min=0.9",
     "--no-audio-cache",
@@ -949,11 +1265,14 @@
    "args": [
     "--level=L0|L1",
     "--content",
-    "--out=06_output",
+    "--out=06_成片输出",
     "--status",
     "--mark-first",
     "--result=pass|fail",
     "--content-budget=900.0",
+    "--copyright-max-single",
+    "--copyright-max-total",
+    "--copyright-min-commentary",
     "--json"
    ],
    "commands": [
@@ -963,6 +1282,16 @@
      "probe": []
     }
    ]
+  },
+  {
+   "script": "rs_paths.py",
+   "purpose": "阶段路径唯一真相源(ADR-0046):STAGE_DIRS/p/resolve/check/ensure;全仓禁止目录字面量,取路径只有查表一族入口",
+   "library": true,
+   "stage": [],
+   "outputs": [],
+   "gate": "",
+   "args": [],
+   "commands": []
   }
  ]
 }

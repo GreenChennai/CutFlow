@@ -6,30 +6,87 @@
   "  · platform  → templates/platforms.json 的 platforms 键(画幅/安全区/每卡字数/CPS/字号由它供给);",
   "  · style     → templates/styles/<style>.yaml 的文件名(字幕样式 token/配色/转场语法档/bgm_gain_db 由它供给);",
   "  · videoTypes.<id>.doc → rules/video-types/ 分册文件(节奏策略与该型验收清单);",
+  "  · videoTypes.<id>.capabilities → templates/capabilities/ 的能力描述符 id(引擎算法能力声明,ADR-0047);",
   "  · pacing    → 本文件 pacingTiers 键(卡时长目标区间 / BGM 有无与增益 / 视觉节拍)。",
   "新增一个风格 = 新增一条 entries 条目 +(必要时)一册 video-types 文档,不改引擎(N5/验收判据 5)。",
-  "消费者:skills/cutflow/scripts/rs_intent.py compile(校验/补默认/查表/落 00_brief 产物);禁止手改条目外的第三处默认。"
+  "新增一个类型 = 新增 videoTypes 条目(含 capabilities)+(必要时)能力描述符 + 一册 video-types 分册,引擎零改动(ADR-0047 验收)。",
+  "消费者:skills/cutflow/scripts/rs_intent.py compile(校验/补默认/查表/落 00_brief 产物);禁止手改条目外的第三处默认。",
+  "ADR-0051 风格包统一命名空间:entries[].pack → templates/styles/packs/<slug>/params.yaml(参数真身);",
+  "  · pack 命中:rs_intent compile 把 params.yaml 的 pacing/cardMs/visualBeatSec/bgm/subtitle/cards/transition/artboard",
+  "    逐字段并入 resolved 并在 decision_log 留痕(why 携带 params.yaml 的 [内部]/[经验] 出处注释);",
+  "  · pack 缺失:按本条目原路径回退 + WARN stylePackMissing,行为与 ADR-0051 落地前一致;",
+  "  · 三处同名对拍:tests/test_stylepack.py / rs_stylepack.py check(pack↔registry↔artboard 引用真实存在,双向)。",
+  "videoTypes 的 drama / screen-recording 为 M6 预登记(M8 手法库正式扩册);M8 已补登:",
+  "  drama(含影视解说,方案 §5.5.3)= text.broll / sub.pair / drama.hook;screen-recording(§5.5.4)= screen.*。",
+  "  film-commentary(影视解说)暂无独立 videoTypes 键(编译经 templates/prompts/film-commentary.md",
+  "  按 talking-head 回退),其双 Style 字幕与版权门禁能力随 drama 登记;版权判据在 rs_verify L0。",
+  "  诚实纪律不变:未落地的能力不得提前登记。"
  ],
  "videoTypes": {
   "talking-head": {
    "label": "纯口播",
-   "doc": "rules/video-types/纯口播.md"
+   "doc": "rules/video-types/纯口播.md",
+   "capabilities": [
+    "vision.greenscreen",
+    "cut.dead-air",
+    "qc.black-frame"
+   ]
   },
   "talking-head+animation": {
    "label": "口播+动画",
-   "doc": "rules/video-types/口播+动画.md"
+   "doc": "rules/video-types/口播+动画.md",
+   "capabilities": [
+    "vision.greenscreen",
+    "cut.dead-air",
+    "qc.black-frame"
+   ]
   },
   "pure-animation": {
    "label": "纯动画",
-   "doc": "rules/video-types/纯动画.md"
+   "doc": "rules/video-types/纯动画.md",
+   "capabilities": [
+    "qc.black-frame"
+   ]
   },
   "vlog": {
    "label": "Vlog 生活记录",
-   "doc": "rules/video-types/vlog.md"
+   "doc": "rules/video-types/vlog.md",
+   "capabilities": [
+    "cut.dead-air",
+    "qc.black-frame",
+    "vision.shot",
+    "vision.track",
+    "vision.reframe"
+   ]
   },
   "混剪": {
    "label": "混剪卡点",
-   "doc": "rules/video-types/混剪.md"
+   "doc": "rules/video-types/混剪.md",
+   "capabilities": [
+    "qc.black-frame",
+    "audio.beat",
+    "audio.downbeat",
+    "audio.stem"
+   ]
+  },
+  "drama": {
+   "label": "短剧",
+   "doc": "rules/video-types/短剧.md",
+   "capabilities": [
+    "text.broll",
+    "sub.pair",
+    "drama.hook"
+   ]
+  },
+  "screen-recording": {
+   "label": "录屏教程",
+   "doc": "rules/video-types/录屏教程.md",
+   "capabilities": [
+    "screen.cursor",
+    "screen.zoom",
+    "screen.keys",
+    "screen.redact"
+   ]
   }
  },
  "pacingTiers": {
@@ -144,7 +201,8 @@
     "bgm",
     "durationTarget",
     "density"
-   ]
+   ],
+   "pack": "knowledge-talkshow-douyin"
   },
   {
    "id": "tutorial-bilibili",
@@ -183,7 +241,8 @@
     "bgm",
     "durationTarget",
     "density"
-   ]
+   ],
+   "pack": "tutorial-bilibili"
   },
   {
    "id": "knowledge-cards-douyin",
@@ -315,7 +374,8 @@
     "bgm",
     "durationTarget",
     "density"
-   ]
+   ],
+   "pack": "vlog-douyin"
   },
   {
    "id": "mixcut-douyin",
@@ -359,7 +419,8 @@
     "bgm",
     "durationTarget",
     "density"
-   ]
+   ],
+   "pack": "mixcut-douyin"
   },
   {
    "id": "knowledge-xiaohongshu",
@@ -385,6 +446,93 @@
      "3:4",
      "三比四",
      "图文感"
+    ]
+   },
+   "overrides": [
+    "platform",
+    "ratio",
+    "style",
+    "pacing",
+    "maxChars",
+    "cpsMax",
+    "bgm",
+    "durationTarget",
+    "density"
+   ]
+  },
+  {
+   "id": "drama-vertical",
+   "label": "短剧·高燃竖屏",
+   "videoTypes": [
+    "drama"
+   ],
+   "defaultFor": [
+    "drama"
+   ],
+   "platform": "douyin",
+   "ratio": "9x16",
+   "style": "subtitle-white",
+   "styleTemplate": "motion-info",
+   "pacing": "fast",
+   "cards": {
+    "template": "scene",
+    "density": "少"
+   },
+   "bgmLibrary": {
+    "enabled": true,
+    "gainDb": -18
+   },
+   "pack": "drama-vertical",
+   "match": {
+    "keywords": [
+     "短剧",
+     "剧情",
+     "反转",
+     "霸总",
+     "爽剧",
+     "竖屏剧"
+    ]
+   },
+   "overrides": [
+    "platform",
+    "ratio",
+    "style",
+    "pacing",
+    "maxChars",
+    "cpsMax",
+    "bgm",
+    "durationTarget",
+    "density"
+   ]
+  },
+  {
+   "id": "screen-tutorial",
+   "label": "录屏教程·B站横屏",
+   "videoTypes": [
+    "screen-recording"
+   ],
+   "defaultFor": [
+    "screen-recording"
+   ],
+   "platform": "bilibili",
+   "ratio": "16x9",
+   "style": "tutorial-clean",
+   "styleTemplate": "tutorial-clean",
+   "pacing": "slow",
+   "cards": {
+    "template": "chapter",
+    "density": "少"
+   },
+   "bgmLibrary": null,
+   "pack": "screen-tutorial",
+   "match": {
+    "keywords": [
+     "录屏",
+     "软件教程",
+     "操作演示",
+     "屏幕录制",
+     "操作步骤",
+     "screencast"
     ]
    },
    "overrides": [

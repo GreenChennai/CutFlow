@@ -1,0 +1,16 @@
+# 风格包卡片映射(ADR-0051 体例见 _template/cards.yaml):录屏教程 → artboard 借格。
+slug: screen-tutorial
+artboard:
+  styles: [data-longform]                            # [内部] artboard references/styles/data-longform.md(报告型,步骤与图表语言)
+  cases: ["assets/cases/data-longform-case.html"]    # [内部] artboard assets/cases/data-longform-case.html
+templates:
+  opener: 1        # 片头卡:学完能得到什么 + 适用人群
+  title: 1         # 标题卡:正题
+  section: 3       # 章节卡:第 N 步(操作分段导航)
+  stat: 0
+  compare: 0
+  endcard: 1       # 片尾卡:合集/图文教程引导
+durationMsHint:
+  opener: 4200
+  section: 4000
+  endcard: 4800

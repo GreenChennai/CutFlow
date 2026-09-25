@@ -1,0 +1,16 @@
+# 风格包卡片映射(ADR-0051 体例见 _template/cards.yaml):短剧高燃 → artboard 借格。
+slug: drama-vertical
+artboard:
+  styles: [ecommerce-promo]                            # [内部] artboard references/styles/ecommerce-promo.md(大字报强对比,情绪外放)
+  cases: ["assets/cases/ecommerce-promo-case.html"]    # [内部] artboard assets/cases/ecommerce-promo-case.html
+templates:
+  opener: 1        # 片头卡:冲突前置钩子(前 3 秒给冲突不给背景)
+  title: 2         # 标题卡:集数/情绪词花字(如"第 3 集·反转")
+  section: 0
+  stat: 0
+  compare: 0
+  endcard: 1       # 片尾卡:下集预告钩子(悬念句,不剧透)
+durationMsHint:
+  opener: 4200
+  title: 6000
+  endcard: 4800

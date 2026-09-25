@@ -1,0 +1,17 @@
+{
+  "id": "qc.black-frame",
+  "label": "成片黑帧/冻结检测",
+  "appliesTo": ["talking-head", "talking-head+animation", "pure-animation", "vlog", "混剪"],
+  "stage": "S9",
+  "detector": "rs_sync.py",
+  "depends": [],
+  "degrade": {
+    "to": "manual-review",
+    "trace": "blackFrameDegraded",
+    "message": "成片黑帧检测未部署，S9 体检缺 black/freeze 判据；交付前须人工目测片尾与转场处"
+  },
+  "params": {"blackMinSec": 0.3, "freezeMinSec": 2.5, "pixTh": 0.1, "edgeWhitelistSec": 0.5},
+  "artifact": "output/sync_rows.json",
+  "verify": "tests/test_v12.py",
+  "notes": "R1 成片体检已存在：rs_sync --qc 用 ffmpeg blackdetect/freezedetect（QC_BLACK_MIN_S=0.3、QC_FREEZE_MIN_S=2.5、首尾 0.5s 白名单），结果写进 06_成片输出/sync_rows.json 的 summary.qc。detector 为 S9 自有脚本，挂载器不重复执行、只校验产物。全部类型声明：凡有成片就该有黑帧体检。"
+}

@@ -131,7 +131,7 @@ def test_finalize_events_sane_times():
 def test_cleanup_keeps_deliverables(tmp_path):
     """B4:final_*.mp4 / subtitles.ass / metadata.* / 报告 / cards.json 必留;
     只删探针件与 _build。"""
-    out = tmp_path / "06_output"
+    out = tmp_path / "06_成片输出"
     out.mkdir()
     for name in ("final_口播_916.mp4", "subtitles.ass", "master.srt", "metadata.json",
                  "metadata.txt", "sync_report.md", "verify_report.md", "cards.json",
@@ -249,7 +249,7 @@ def test_override_text_not_in_wordline_raises():
 
 def test_rs_ir_build_refuses_manual_edits(tmp_path):
     """B8:现存 IR 含手注 chroma/background/manualEdit 时,build 拒绝覆盖。"""
-    out = tmp_path / "05_ir" / "project.json"
+    out = tmp_path / "05_时间线工程" / "project.json"
     out.parent.mkdir(parents=True)
     out.write_text(json.dumps({"version": 1, "slug": "t", "tracks": [
         {"kind": "video", "clips": [{"src": "a.mp4", "startMs": 0, "durationMs": 100,
@@ -265,10 +265,13 @@ def test_rs_ir_build_refuses_manual_edits(tmp_path):
 
 
 def test_rebuild_template_warns_ir_trap():
-    """B8:05_ir/rebuild.py 的生成模板必须写明手改 IR 的正确出路。"""
+    """B8:05_时间线工程/rebuild.py 的生成模板必须写明手改 IR 的正确出路。
+
+    ADR-0046 后模板按逻辑键登记,目录名由 init_rebuild 按工程解析后填入。"""
     import rs_run
-    assert "06_output/rebuild.py" in rs_run.REBUILD_EXTRA_NOTES.get("05_ir", "")
-    assert "05_ir" in rs_run.REBUILD_EXTRA_NOTES
+    assert "{output}/rebuild.py" in rs_run.REBUILD_EXTRA_NOTES.get("timeline", "")
+    assert "{timeline}/project.json" in rs_run.REBUILD_EXTRA_NOTES.get("timeline", "")
+    assert "{cut}/cutlist.json" in rs_run.REBUILD_EXTRA_NOTES.get("cut", "")
 
 
 # ---------------------------------------------------------------- B9 L0 中间态
@@ -278,7 +281,7 @@ def test_l0_missing_subtitles_is_skipped(tmp_path):
     r = rs_verify.check_subtitles(tmp_path)
     assert r.get("skipped") and r["ok"] is True, r
     # 有 ass 但坏内容仍要 FAIL
-    out = tmp_path / "06_output"
+    out = tmp_path / "06_成片输出"
     out.mkdir()
     (out / "subtitles.ass").write_text("[Events]\n", encoding="utf-8")
     r2 = rs_verify.check_subtitles(tmp_path)

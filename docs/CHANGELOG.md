@@ -1,5 +1,113 @@
 # Changelog
 
+## v0.19.0 (2026-09-25) — 多风格迭代:多风格引擎级落地 + 自然语言改片 + 懒加载 + 成品区分离
+
+依据:《CutFlow-多风格迭代方案-v1.md》(桌面,2183 行)M0–M10;ADR-0045~0052。测试基线 457 → 全绿
+(v0.19 全量见 `docs/BASELINE-v0.19.md` 与本轮终验)。**不含任何 commit/push,提交时机归用户。**
+
+### M0 冻结与基线
+
+- ADR-0045~0052 八篇进 `docs/adr/`(中文化/路径真相源/能力注册表/编辑层/懒加载/抠像重建/风格包/成品边界);
+  基线报告 `docs/BASELINE-v0.19.md`(CutFlow 457 绿 / cutforge 112 绿 / 两仓 HEAD)。
+
+### M1 阶段目录全量中文化 + 路径唯一真相源(ADR-0045/0046)
+
+- 新增 `rs_paths.py`(STAGE_DIRS/LEGACY_ALIASES/resolve 新名优先旧名兜底 WARN;library:true 入能力目录);
+  22 个脚本 457 处字面量清零,`tests/test_paths_gate.py` 机械把守;
+- 废弃目录 `04_ai_prompts`、`02_sensed/frames` 停止创建;新增 `05_时间线工程/导出/剪映59/`;
+- 迁移工具 `tools/migrate_paths.py`(七步:预检/备份/改名/内引用改写/junction 别名/报告/自检;
+  `--dry-run/--rollback/--keep-alias`;幂等),`tests/test_migrate.py`;
+- **cutforge 同步 0.4.0→0.5.0**:`crates/cutforge-io/src/paths.rs` 常量真相源、scaffold/stage/watcher/backup
+  双布局兼容、`apps/web` 经 `/session.projectRel` 取工程、`docs/FLOW.md` 契约重写、兼容矩阵进 README。
+
+### M2 成品/半成品分离(ADR-0052)
+
+- `rs_ingest.py deliverables --publish`:`成品/`(成片/字幕/封面/文案/说明书/对账.md/半成品入口.md),
+  拷贝非移动、覆盖前备份、幂等、只读区硬断言(5 类工程文件+草稿+rebuild.py 不得入成品区);
+  `tests/test_deliverables.py` 24 用例;
+- `rs_verify` L0 新增**安全区硬校验**(清欠账 #A6:声明平台的 safeArea 判定,字幕底沿/贴片矩形);
+- 剪映草稿落点迁 `05_时间线工程/导出/剪映59/`、降为**单向出口**;新增 `rules/editing-roundtrip.md`。
+
+### M3 可插拔能力注册表(ADR-0047)
+
+- `templates/capabilities/*.json` 能力描述符 + `rs_run` 通用挂载器(detector→artifact→degrade 留痕);
+  `rs_intent` 产出 `resolved.capabilities` 进 decision_log(source=registry);
+- 门禁 `tests/test_capabilities.py`:描述符真实性/params↔detector 常量逐值对拍/**引擎无 videoType 分支**;
+  **扩展成本实证**:注册 `interview` 三处数据、`rs_run.py` diff 为空。
+
+### M4 声明式编辑层(ADR-0048)
+
+- 新增 `rs_edit.py`(context/ops-validate/apply/undo/diff):24 op(21 全量支持 + 3 支 U7 显式不承诺:
+  keyframe.set/subtitle.highlight/style.pacing;schema 外字段绝不静默写入);
+- 七步 apply:工程锁→baseRev 前置→幂等短路→冲突即停(CF-*)→原子写+OpLog(actor=agent/user 同一条日志)→
+  脏传播+最小重建建议;`--dry-run` 人话差异表;性能实测 context 14ms/4.9KB、apply 0.1ms/op;
+- 门禁 `tests/test_edit_op.py`(幂等/确定性/寻址/白名单/undo/冲突/全链路演示)+ `tests/test_perf_budget.py`;
+  语法手册 `rules/edit-op.md`。
+
+### M5 懒加载依赖体系(ADR-0049)
+
+- 新增 `rs_fetchable.py`:八组件 CAPABILITY_DEPS(beatnet/madmom/demucs/scenedetect/rvm/bytetrack/opencv/clip)、
+  三态协议 `state()/degrade_record()/ensure_ready()`、`--no-fetch` 网络闸(绝不触网)、`--auto` 默认降级不阻塞;
+- `tools/deps-manifest.json` 种子清单(sha256 pending 标注「采用前须一手核实」);`tools/fetch_deps.py` 兼容委托;
+- `rs_doctor --report` 新增「能力部署清单」(零环境非 fatal,报「基础档可用」);`rules/deps-lazy.md`
+  (含 `WPI_FFMPEG` 环境变量清单)。
+
+### M6 风格包统一命名空间(ADR-0051)+ 提示词模板库
+
+- `templates/styles/packs/` 六包(knowledge-talkshow-douyin/tutorial-bilibili/mixcut-douyin/vlog-douyin/
+  drama-vertical/screen-tutorial),每包 params.yaml(逐值标 [内部]/[经验] 出处)+cards.yaml+frames.css+README(禁则≥5 条);
+  `_template/` 六步新风格脚手架;`rs_stylepack.py`(check/show/new);
+- `rs_intent` pack 参数进 resolved + decision_log;`template list/show/match/compile --template`
+  (预填值 source=template 第四来源);`templates/prompts/` 7 场景模板 + `_custom.md`;
+- 门禁 `tests/test_stylepack.py`:三处同名对拍(与 artboard 引用互认)。
+
+### M7 artboard 片头尾产品化
+
+- `rs_artboard.py gen-frames`:六类卡(opener/outro/title/section/stat/compare)五段式时间轴、
+  全 finite 禁 infinite、入场/出场分两层嵌套、check_overflow 安全区机检联动、Kiln 主引擎探测 +
+  export-fallback 兜底;六类样片真实 Kiln 导出(1080×1920@25fps);
+- `docs/capability-matrix.md` 双后端能力对齐矩阵(清「双后端对齐矩阵」欠账);`rules/artboard.md` 扩册。
+
+### M8 手法库 + 四型引擎级落地
+
+- 新增 `rs_beat.py`(onset-energy 降级档)/`rs_shot.py`(frame-diff)/`rs_reframe.py`(static-center,
+  REFRAME_CLIP_SUBJECT 保护)/`rs_broll.py`(keyword-match)/`rs_screen.py`(cursor/zoom/keys/redact/waiting);
+  11 条描述符登记;registry capabilities 补登(混剪/vlog/screen-recording/drama);
+- `rules/editing-grammar.md` **25 条手法逐条可执行 + 7 条禁忌**(全部标【规范】【研究】【经验】【内部】出处分级);
+- 内置 BGM 小曲库(自产合成 4 条,无版权约束)+ `--bgm auto`(按节奏档选曲,source=library 留痕);
+- **vlog**:`rs_render` 消费 reframe_plan(裁切不拉伸、轨迹线性插值、人工锚点优先、CACHE_VER v8);
+  **混剪**:beats.json→`rs_edit beat.snap`(60ms 硬窗,禁强制吸附)+ 三型 e2e 合成素材验收
+  (`tests/test_mixcut_e2e.py` 120BPM 真值对拍);**短剧/影视解说**:`rs_subtitle --dual-style`(解说/引号对白)、
+  `rs_ingest copyright` 登记 + `rs_verify` L0 版权门禁(单部≤30%/总引用≤70%/解说轨≥25%,L1 项不假绿)、
+  `rs_sync` 钩子密度(WARN)+废帧(硬判);**录屏**:`rs_cut --detect waiting`(reason 枚举扩 waiting,
+  guard 防误删人声段),压缩率 ≥30% 机械验收;四型分册扩册(混剪/vlog/短剧/录屏教程/影视解说)。
+
+### M9 抠像重建与质量门禁(ADR-0050,部分取代 ADR-0031)
+
+- 新增 `rs_matting.py`:`gate/extract/check` + 工程模式;五项客观指标(temporalIoU≥0.985/jitterRate≤2%/
+  haloRatio≤1.5%/detailRetention≥0.75/transparencySpread>0 + 吞吐档),PASS/WARN/FAIL 三态;
+  引擎缺失 → blocked + MATTE_ENGINE_MISSING(RVM 主选,venv-torch 懒加载;**默认不启用**);
+- S0 分流:`rs_ingest scan --allow-auto-matting`——检测到幕布不再只有"用户预处理"一条路,可显式走
+  质量门禁(达标才放行,留痕 autoMattingApplied);`rs_ir add-matte` 把 pass/warn 判定写入 IR matte 块
+  (fail 拒绝写入);`rs_render` matte 预合成(alphamerge+overlay,CACHE_VER v9);
+  `rs_verify` L0 新增抠像判据;`rs_jy_draft` matte 降级标注(degradedCapabilities);
+  `project.schema.json` 双仓同步 matte 块;`tests/test_matting.py` 14 用例。
+
+### M10 收敛与清账
+
+- `docs/BACKLOG.md` §1.7 的 18 条欠账逐条处置(清/顺延/关门)附当前证据;
+- W6 落地:`rs_sync` 重叠容差按 fps 自适应(1000/fps,IR 读取,`--frame-ms` 显式覆盖优先);
+- README/CONTEXT/CHANGELOG 全面同步;cutforge 0.5.0 兼容矩阵;能力目录再生成(39 工具)。
+
+### 偏离与诚实声明
+
+- `subtitle.highlight`(欠账 #12)显式不承诺:schema 无高亮字段(U7),拒绝静默写 schema 外字段;
+- rs_bench 采样去重(#16)顺延:M4/M8 实际工作量让位于四型端到端;真实素材端到端(#1)以
+  **ffmpeg 合成素材**完成机械验收(用户睡嘱全权委托),真实素材复验建议醒后执行;
+- BeatNet/madmom/RVM/CLIP 等重模型**未实际下载**(懒加载三态协议 mock 验收,`deps-manifest.json`
+  sha256 标 pending,采用前须一手核实——方案 §9.1 U2/U4/U7);
+- 抠像阈值(MATTE_*)为 ADR-0050 建议初值,实测定档(方案原注)。
+
 ## v0.18.1 (2026-09-20) — 附录落地:术语表 9 词条 + ADR-0040~0044(纯文档迭代,无工程改动)
 
 来源:《08-附录-术语表与ADR台账》建议稿落仓库;ADR 状态由"建议"转"已采纳"。

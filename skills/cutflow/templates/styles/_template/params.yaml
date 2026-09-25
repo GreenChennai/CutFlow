@@ -1,0 +1,20 @@
+# 风格包参数档(ADR-0051)—— 新增风格六步之第 2 步:复制本目录为 packs/<slug>/ 后照抄改值。
+# 体例:每个值行内标 [内部](有出处:registry / rules 分册 / platforms 预设)或 [经验](从业者共识缺省)。
+# 门禁:rs_stylepack.py check 三处同名对拍(slug / registry / artboard 引用),复制后必须先改 slug。
+slug: TEMPLATE                       # ← 必改:与包目录同名;<领域>-<调性> 小写连字符
+label: 模板·未命名风格                # ← 必改:中文名·平台/画幅后缀(如 短剧·高燃竖屏)
+videoType: TEMPLATE                  # ← 必改:registry.videoTypes 键(talking-head/vlog/混剪/drama/screen-recording…)
+platform: douyin                     # [内部] templates/platforms.json 的 platforms 键
+ratio: 9x16                          # [内部] templates/platforms.json <platform>.ratio
+
+pacing: normal                       # [内部] registry.pacingTiers 键(fast/normal/slow/music)
+cardMs: [1500, 5000]                 # [内部] registry.pacingTiers.<pacing>.cardMs
+visualBeatSec: [2, 5]                # [内部] registry.pacingTiers.<pacing>.visualBeatSec
+bgm: {enabled: false, gainDb: -18, ducking: none}   # [内部] registry.pacingTiers.<pacing>.bgm/bgmGainDb;ducking ∈ none/on_voice_only
+transition: {default: hard_cut, allow: [fade], snapToBeat: false}   # [经验] 转场三级语法见 rules/editing-grammar.md
+subtitle: {style: subtitle-white, maxChars: 12, cpsMax: 9, lyricOnly: false}
+#         ↑ [内部] style=registry.entries[].style(须有 styles/*.yaml 背书);maxChars=platforms.json <platform>.maxChars;cpsMax=全库 CPS≤9 红线
+cards: {density: 少, template: info}   # [内部] registry.entries[].cards(density ∈ 无/少/多)
+capabilities: []                     # [内部] templates/capabilities/ 已登记描述符;未登记不声明(诚实纪律,M8 补)
+artboard: {styles: [ARTBOARD-SLUG], templates: ["opener:1", "endcard:1"]}
+#          ↑ [内部] 一次借 1–2 个真实 artboard 风格 slug(references/styles/<slug>.md);templates 为「卡片:数量」

@@ -13,6 +13,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 import segmentation  # noqa: E402  — 纯标准库,提供统一的标点口径(PUNCT_WS)
+import rs_paths  # noqa: E402  — 阶段路径唯一真相源(ADR-0046);目录名禁止字面量
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 CONFIG_PATH = REPO_ROOT / "config.json"
@@ -249,10 +250,12 @@ def resolve_voice(voice: str, cfg: dict | None = None) -> Path:
 
 
 def ensure_workdir(slug: str) -> Path:
-    """视频工程工作目录固定结构(见 PLAN.md §10)。"""
+    """视频工程工作目录固定结构(目录契约唯一真相源 rs_paths,ADR-0045)。
+
+    新工程产中文新结构;旧结构工程 resolve 兜底落回旧名(不造新旧混存);
+    废弃目录(rs_paths.RETIRED 两项)不再创建。
+    """
     cfg = load_config()
     root = Path(cfg["workdir_root"]) / slug
-    for sub in ("00_brief", "01_materials", "02_sensed/frames", "03_assets",
-                "04_ai_prompts", "05_ir", "06_output"):
-        (root / sub).mkdir(parents=True, exist_ok=True)
+    rs_paths.ensure(root)
     return root

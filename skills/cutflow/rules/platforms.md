@@ -38,16 +38,16 @@
 
 ```powershell
 # 一条命令出平台版字幕(比例/画布/字数/风格都从预设取)
-rs_subtitle.py --from-wordline 05_ir/wordline.json --platform xiaohongshu --out 06_output
+rs_subtitle.py --from-wordline 05_时间线工程/wordline.json --platform xiaohongshu --out 06_成片输出
 
 # 显式参数优先于预设(临时试一版)
-rs_subtitle.py --from-wordline 05_ir/wordline.json --platform douyin --max-chars 10 --out 06_output
+rs_subtitle.py --from-wordline 05_时间线工程/wordline.json --platform douyin --max-chars 10 --out 06_成片输出
 ```
 
 **优先级**:显式 `--style / --ratio / --canvas / --max-chars` > `--platform` 预设 > 内置默认。
 未知平台名 → **直接报错**(`BAD_PLATFORM`),不静默退回默认 —— 否则会静默出一版错规格的片子。
 
-变体矩阵支持多比例:`rs_brand.py --expand --logos brandA --ratios 9x16,3x4,16x9 --out 05_ir/variants.json`。
+变体矩阵支持多比例:`rs_brand.py --expand --logos brandA --ratios 9x16,3x4,16x9 --out 05_时间线工程/variants.json`。
 
 ## 5. 门禁与验收
 

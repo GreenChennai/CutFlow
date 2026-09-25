@@ -144,8 +144,8 @@ def test_compile_deterministic_byte_identical(tmp_path):
                  "--out", str(out), cwd=tmp_path)
         assert p.returncode == 0 and _last_json(p)["code"] == "INTENT_COMPILED", p.stderr
     for name in ("brief.md", "terms.txt", "intent_decisions.json"):
-        a = (tmp_path / "proj1" / "00_brief" / name).read_bytes()
-        b = (tmp_path / "proj2" / "00_brief" / name).read_bytes()
+        a = (tmp_path / "proj1" / "00_制作简报" / name).read_bytes()
+        b = (tmp_path / "proj2" / "00_制作简报" / name).read_bytes()
         assert a == b, f"{name} 两次编译不一致(编译含非确定成分)"
 
 
@@ -166,7 +166,7 @@ def test_compile_styleref_matches_registry_entry(tmp_path):
     assert _run("rs_intent.py", "compile", "--brief", str(inp / "brief.json"),
                 "--plan", str(inp / "plan.json"), "--out", str(out),
                 cwd=tmp_path).returncode == 0
-    doc = json.loads((out / "00_brief" / "intent_decisions.json").read_text(encoding="utf-8"))
+    doc = json.loads((out / "00_制作简报" / "intent_decisions.json").read_text(encoding="utf-8"))
     r = doc["resolved"]
     assert r["styleEntry"] == "knowledge-talkshow-douyin"
     assert (r["platform"], r["ratio"], r["subStyle"], r["pacing"], r["maxChars"]) == \
@@ -190,7 +190,7 @@ def test_compile_explicit_fields_win_and_are_marked_user(tmp_path):
     out = tmp_path / "proj"
     assert _run("rs_intent.py", "compile", "--brief", str(inp / "brief.json"),
                 "--plan", str(inp / "plan.json"), "--out", str(out), cwd=tmp_path).returncode == 0
-    doc = json.loads((out / "00_brief" / "intent_decisions.json").read_text(encoding="utf-8"))
+    doc = json.loads((out / "00_制作简报" / "intent_decisions.json").read_text(encoding="utf-8"))
     r = doc["resolved"]
     assert r["platform"] == "xiaohongshu" and r["maxChars"] == 15, "平台预设字数应随平台走"
     assert r["ratio"] == "9x16", "显式画幅优先于平台预设(与 rs_subtitle --ratio 优先级一致)"
@@ -244,14 +244,14 @@ def test_compile_writes_brief_machine_params(tmp_path):
     s7 = rs_run.build_cmd(out2, next(s for s in rs_run.spec() if s["id"] == "S7"))
     assert "--style" in s7 and s7[s7.index("--style") + 1] == "tutorial-clean"
     assert "--ratio" in s7 and s7[s7.index("--ratio") + 1] == "16x9"
-    terms = (out / "00_brief" / "terms.txt").read_text(encoding="utf-8").split()
+    terms = (out / "00_制作简报" / "terms.txt").read_text(encoding="utf-8").split()
     assert terms == ["蓝屏", "内存条", "桌面运维"]
 
 
 def test_default_project_commands_unchanged(tmp_path):
     """零漂移:未声明参数的旧工程,S3/S7/S8 命令与阶段四之前的字面完全一致。"""
     root = tmp_path / "proj"
-    (root / "00_brief").mkdir(parents=True)
+    (root / "00_制作简报").mkdir(parents=True)
     assert rs_run._sub_style_and_ratio(root) == ("talkshow-bold", "9x16")
     s3 = rs_run.build_cmd(root, next(s for s in rs_run.spec() if s["id"] == "S3"))
     assert s3[s3.index("--ratio") + 1] == "9x16"
@@ -301,7 +301,7 @@ def test_vlog_and_mixcut_registered(tmp_path):
         assert _run("rs_intent.py", "compile", "--brief", str(inp / "brief.json"),
                     "--plan", str(inp / "plan.json"), "--out", str(out),
                     cwd=tmp_path).returncode == 0
-        doc = json.loads((out / "00_brief" / "intent_decisions.json").read_text(encoding="utf-8"))
+        doc = json.loads((out / "00_制作简报" / "intent_decisions.json").read_text(encoding="utf-8"))
         assert doc["resolved"]["styleEntry"] == entry_id
         assert (SKILL_BASE / REGISTRY["videoTypes"][vt]["doc"]).is_file()
 
@@ -319,9 +319,9 @@ def _capture(fn, *args, **kw):
 
 def _mk_project(tmp_path: Path) -> Path:
     root = tmp_path / "proj"
-    for d in ("00_brief", "01_materials", "04_cut", "05_ir", "06_output", "_state"):
+    for d in ("00_制作简报", "01_原始素材", "04_粗剪决策", "05_时间线工程", "06_成片输出", "_内部状态"):
         (root / d).mkdir(parents=True, exist_ok=True)
-    (root / "01_materials" / "a.mp4").write_bytes(b"fake")
+    (root / "01_原始素材" / "a.mp4").write_bytes(b"fake")
     return root
 
 
@@ -345,7 +345,7 @@ def test_log_decision_idempotent_and_preserved_by_write_state(tmp_path):
     assert len(log) == 2 and log[0]["why"] == "重复并入", "同 id 覆盖不堆积"
     rs_run.write_state(root, "S6", {"status": "done"})
     assert rs_run.load_decision_log(root) == log, "write_state 全量重写聚合时必须保全 decision_log"
-    doc = json.loads((root / "05_ir" / "pipeline.json").read_text(encoding="utf-8"))
+    doc = json.loads((root / "05_时间线工程" / "pipeline.json").read_text(encoding="utf-8"))
     assert doc["decision_log"] == log
 
 
@@ -357,7 +357,7 @@ def test_seed_intent_decisions_merges(tmp_path):
                     "source": "user", "inferred": False, "why": "用户明说", "promptQuote": "知识口播"},
                    {"id": "intent:maxChars", "field": "maxChars", "value": 12,
                     "source": "registry", "inferred": True, "why": "平台预设", "promptQuote": ""}]}
-    (root / "00_brief" / "intent_decisions.json").write_text(
+    (root / "00_制作简报" / "intent_decisions.json").write_text(
         json.dumps(payload, ensure_ascii=False), encoding="utf-8")
     assert rs_run.seed_intent_decisions(root) == 2
     assert rs_run.seed_intent_decisions(root) == 2, "重复播种必须幂等"
@@ -394,7 +394,7 @@ def test_auto_s2_posts_apply_remap_and_review_keep(tmp_path, monkeypatch):
         return _fake_run_ok(cmd, **kw)
 
     monkeypatch.setattr(rs_run.subprocess, "run", fake_run)
-    (root / "04_cut" / "cutlist.json").write_text(json.dumps({"cuts": [
+    (root / "04_粗剪决策" / "cutlist.json").write_text(json.dumps({"cuts": [
         {"id": "c1", "action": "remove"}, {"id": "c2", "action": "review"},
         {"id": "c3", "action": "review"}]}, ensure_ascii=False), encoding="utf-8")
     st = next(s for s in rs_run.spec() if s["id"] == "S2")
@@ -413,14 +413,14 @@ def test_auto_s2_posts_apply_remap_and_review_keep(tmp_path, monkeypatch):
 def test_auto_s11_deliverables_tolerates_agent_items_only(tmp_path, monkeypatch):
     """S11 自动对账:只缺封面(Agent 侧产物)→ 留痕不拦;缺硬项(成片)→ 失败。"""
     root = _mk_project(tmp_path)
-    final = root / "06_output" / "final"
+    final = root / "06_成片输出" / "final"
     final.mkdir(exist_ok=True)
     (final / "final_x_916.mp4").write_bytes(b"v")
     for name in ("subtitles.ass", "master.srt", "sync_report.md"):
-        (root / "06_output" / name).write_text("x", encoding="utf-8")
-    (root / "06_output" / "metadata.json").write_text(
+        (root / "06_成片输出" / name).write_text("x", encoding="utf-8")
+    (root / "06_成片输出" / "metadata.json").write_text(
         json.dumps({"platforms": {"douyin": {"title": "t"}}}, ensure_ascii=False), encoding="utf-8")
-    (root / "00_brief" / "intent_decisions.json").write_text(json.dumps(
+    (root / "00_制作简报" / "intent_decisions.json").write_text(json.dumps(
         {"decisions": [{"id": "intent:videoType", "field": "videoType", "value": "talking-head",
                         "source": "user", "inferred": False, "why": "用户明说", "promptQuote": ""}]},
         ensure_ascii=False), encoding="utf-8")
@@ -428,8 +428,8 @@ def test_auto_s11_deliverables_tolerates_agent_items_only(tmp_path, monkeypatch)
     info: dict = {}
     ok, msg = rs_run.run_manual_auto(root, st, info)
     assert ok and "封面" in msg, msg
-    assert (root / "06_output" / "deliverables.md").is_file()
-    assert (root / "06_output" / "决策说明书.md").is_file(), "S11 交付必须自动附带决策说明书"
+    assert (root / "06_成片输出" / "deliverables.md").is_file()
+    assert (root / "06_成片输出" / "决策说明书.md").is_file(), "S11 交付必须自动附带决策说明书"
     assert any(d["id"] == "auto:S11:deliverables" for d in rs_run.load_decision_log(root))
     # 缺硬项 → 失败(成片缺失绝不允许 --auto 装作交付完成)
     root2 = _mk_project(tmp_path / "b")
@@ -441,7 +441,7 @@ def test_auto_s11_deliverables_tolerates_agent_items_only(tmp_path, monkeypatch)
 def test_decision_notes_lists_params_sources_and_rerun_hints(tmp_path):
     """N4:决策说明书人类可读 —— 参数快照、来源图例、改一条重跑一段,一个都不能少。"""
     root = _mk_project(tmp_path)
-    (root / "05_ir" / "pipeline.json").write_text(json.dumps(
+    (root / "05_时间线工程" / "pipeline.json").write_text(json.dumps(
         {"version": 1, "params": {"maxChars": 12, "cpsMax": 9.0, "ratio": "9x16"},
          "decision_log": [
              {"id": "intent:maxChars", "field": "maxChars", "value": 12, "source": "registry",
@@ -461,7 +461,7 @@ def test_decision_notes_lists_params_sources_and_rerun_hints(tmp_path):
 def test_auto_verify_l0_only_with_bench_decision(tmp_path, monkeypatch):
     """--auto 验证策略:L1 降级抽帧留证(不阻断)、L0 仍是唯一硬闸;决策全留痕。"""
     root = _mk_project(tmp_path)
-    final = root / "06_output" / "final"
+    final = root / "06_成片输出" / "final"
     final.mkdir(exist_ok=True)
     (final / "final_x_916.mp4").write_bytes(b"v")
 
@@ -487,22 +487,22 @@ def test_auto_verify_l0_only_with_bench_decision(tmp_path, monkeypatch):
 def _seed_full_project(tmp_path: Path) -> Path:
     """铺一个「上游全部跑完」的工程(真实存在物),供 --auto 全程 fake 演练。"""
     root = _mk_project(tmp_path)
-    (root / "01_materials" / "manifest.json").write_text("{}", encoding="utf-8")
-    (root / "05_ir" / "wordline.json").write_text("{}", encoding="utf-8")
-    (root / "04_cut" / "cutlist.json").write_text("{}", encoding="utf-8")
-    (root / "04_cut" / "cutlist.applied.json").write_text("{}", encoding="utf-8")
-    (root / "05_ir" / "wordline.final.json").write_text("{}", encoding="utf-8")
-    (root / "05_ir" / "project.json").write_text("{}", encoding="utf-8")
-    (root / "05_ir" / "sfx_draft.json").write_text("{}", encoding="utf-8")
-    (root / "06_output" / "subtitles.ass").write_text("[Script Info]", encoding="utf-8")
-    (root / "06_output" / "master.srt").write_text("1\n00:00:00,000 --> 00:00:02,000\nx\n",
+    (root / "01_原始素材" / "manifest.json").write_text("{}", encoding="utf-8")
+    (root / "05_时间线工程" / "wordline.json").write_text("{}", encoding="utf-8")
+    (root / "04_粗剪决策" / "cutlist.json").write_text("{}", encoding="utf-8")
+    (root / "04_粗剪决策" / "cutlist.applied.json").write_text("{}", encoding="utf-8")
+    (root / "05_时间线工程" / "wordline.final.json").write_text("{}", encoding="utf-8")
+    (root / "05_时间线工程" / "project.json").write_text("{}", encoding="utf-8")
+    (root / "05_时间线工程" / "sfx_draft.json").write_text("{}", encoding="utf-8")
+    (root / "06_成片输出" / "subtitles.ass").write_text("[Script Info]", encoding="utf-8")
+    (root / "06_成片输出" / "master.srt").write_text("1\n00:00:00,000 --> 00:00:02,000\nx\n",
                                                    encoding="utf-8")
-    (root / "06_output" / "final").mkdir(exist_ok=True)
-    (root / "06_output" / "final" / "final_p_916.mp4").write_bytes(b"render")
-    (root / "06_output" / "sync_report.md").write_text("# sync", encoding="utf-8")
-    (root / "06_output" / "metadata.json").write_text(
+    (root / "06_成片输出" / "final").mkdir(exist_ok=True)
+    (root / "06_成片输出" / "final" / "final_p_916.mp4").write_bytes(b"render")
+    (root / "06_成片输出" / "sync_report.md").write_text("# sync", encoding="utf-8")
+    (root / "06_成片输出" / "metadata.json").write_text(
         json.dumps({"platforms": {"douyin": {"title": "t"}}}, ensure_ascii=False), encoding="utf-8")
-    (root / "00_brief" / "intent_decisions.json").write_text(json.dumps(
+    (root / "00_制作简报" / "intent_decisions.json").write_text(json.dumps(
         {"decisions": [{"id": "intent:videoType", "field": "videoType", "value": "talking-head",
                         "source": "user", "inferred": False, "why": "用户明说", "promptQuote": ""}]},
         ensure_ascii=False), encoding="utf-8")
@@ -538,7 +538,7 @@ def test_auto_full_run_reproducible_and_convergent(tmp_path, monkeypatch):
     assert any(d["id"] == "auto:S4:no-cards" for d in log1)
     assert any(d["id"].startswith("auto:S5:") for d in log1)
     assert any(d["id"] == "auto:verify:l1-degrade" for d in log1)
-    p1 = json.loads((root / "05_ir" / "pipeline.json").read_text(encoding="utf-8"))
+    p1 = json.loads((root / "05_时间线工程" / "pipeline.json").read_text(encoding="utf-8"))
 
     monkeypatch.setattr(sys, "argv", ["rs_run.py", "--root", str(root), "--auto"])
     code2, doc2 = _capture(rs_run.main)
@@ -546,7 +546,7 @@ def test_auto_full_run_reproducible_and_convergent(tmp_path, monkeypatch):
     ran2 = [r["stage"] for r in doc2["data"]["results"]
             if not r.get("cached") and not r.get("skipped") and not r.get("manualAuto")]
     assert ran2 == [], f"二跑必须全收敛(无真跑):{ran2}"
-    p2 = json.loads((root / "05_ir" / "pipeline.json").read_text(encoding="utf-8"))
+    p2 = json.loads((root / "05_时间线工程" / "pipeline.json").read_text(encoding="utf-8"))
     assert p2["params"] == p1["params"], "同输入重跑:参数快照必须一致(验收判据 3)"
     assert {d["id"] for d in rs_run.load_decision_log(root)} == {d["id"] for d in log1}
     # 决策条目内容幂等(at 除外):重跑同 id 覆盖
@@ -652,8 +652,8 @@ def test_e2e_prompt_to_film_auto_unattended(tmp_path):
              "--plan", str(inp / "plan.json"), "--prompt", str(inp / "prompt.txt"),
              "--out", str(root), cwd=root)
     assert p.returncode == 0, p.stderr
-    assert (root / "00_brief" / "brief.md").is_file()
-    assert (root / "00_brief" / "terms.txt").is_file()
+    assert (root / "00_制作简报" / "brief.md").is_file()
+    assert (root / "00_制作简报" / "terms.txt").is_file()
 
     # ---- 合成素材:SAPI 语音 + numpy 头部运动画面(真实链路,先前波次同款)
     import numpy as np
@@ -688,10 +688,10 @@ def test_e2e_prompt_to_film_auto_unattended(tmp_path):
     subprocess.run([ff, "-v", "error", "-y", "-framerate", str(fps),
                     "-i", str(frames / "f%04d.ppm"), "-c:v", "libx264",
                     "-pix_fmt", "yuv420p", str(silent)], check=True, timeout=300)
-    (root / "01_materials").mkdir(parents=True, exist_ok=True)
+    (root / "01_原始素材").mkdir(parents=True, exist_ok=True)
     subprocess.run([ff, "-v", "error", "-y", "-i", str(silent), "-i", str(voice),
                     "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-shortest",
-                    str(root / "01_materials" / "a.mp4")], check=True, timeout=300)
+                    str(root / "01_原始素材" / "a.mp4")], check=True, timeout=300)
 
     # ---- 无人介入:rs_run --auto(S0–S11 全程,ASR 用本机 FunASR 真转写)
     p = subprocess.run([sys.executable, str(SCRIPTS / "rs_run.py"),
@@ -712,7 +712,7 @@ def test_e2e_prompt_to_film_auto_unattended(tmp_path):
     assert l0["pass"] is True, l0["failed"]
 
     # ---- 留痕与证据
-    pj1 = json.loads((root / "05_ir" / "pipeline.json").read_text(encoding="utf-8"))
+    pj1 = json.loads((root / "05_时间线工程" / "pipeline.json").read_text(encoding="utf-8"))
     log1 = pj1["decision_log"]
     assert log1 and all(d.get("source") in ("user", "registry", "default", "auto")
                         for d in log1), "每条决策必须带来源"
@@ -720,10 +720,10 @@ def test_e2e_prompt_to_film_auto_unattended(tmp_path):
     assert any(i.startswith("intent:") for i in ids1) and any(i.startswith("auto:") for i in ids1)
     assert "auto:S2:review-keep" in ids1, "粗剪 review 保守保留必须留痕"
     assert any("ambiguous" in i for i in ids1) or True  # 歧义条数可为 0(素材干净)
-    notes = root / "06_output" / "决策说明书.md"
+    notes = root / "06_成片输出" / "决策说明书.md"
     assert notes.is_file() and "改一条、重跑一段" in notes.read_text(encoding="utf-8")
-    assert (root / "06_output" / "L1未人工确认_抽帧留证.png").is_file(), "L1 降级必须留证"
-    finals = list((root / "06_output" / "final").glob("final_*.mp4"))
+    assert (root / "06_成片输出" / "L1未人工确认_抽帧留证.png").is_file(), "L1 降级必须留证"
+    finals = list((root / "06_成片输出" / "final").glob("final_*.mp4"))
     assert finals, "必须产出成片"
 
     # ---- 验收判据 3:同输入重跑,参数快照一致;决策 id 集合一致
@@ -736,7 +736,7 @@ def test_e2e_prompt_to_film_auto_unattended(tmp_path):
     ran2 = [r["stage"] for r in doc2["data"]["results"]
             if not r.get("cached") and not r.get("skipped") and not r.get("manualAuto")]
     assert ran2 == [], f"二跑必须全收敛(ASR/渲染均不重跑):{ran2}"
-    pj2 = json.loads((root / "05_ir" / "pipeline.json").read_text(encoding="utf-8"))
+    pj2 = json.loads((root / "05_时间线工程" / "pipeline.json").read_text(encoding="utf-8"))
     assert pj2["params"] == pj1["params"], "参数快照 diff 必须为空(验收判据 3)"
     assert {d["id"] for d in pj2["decision_log"]} == ids1
 

@@ -1,0 +1,29 @@
+{
+ "version": 1,
+ "$id": "cutflow-prompt-template",
+ "_doc": [
+  "场景化提示词模板结构定义(方案 §5.11)。templates/prompts/<id>.md = YAML front matter(本 schema)+ Markdown 正文(人读用法说明)。",
+  "front matter 必填键:id / label / triggers / pack / videoType / brief_skeleton / plan_skeleton / assets_required / assets_forbidden / example_prompts / acceptance。",
+  "· id       = 文件名(去 .md),小写连字符;",
+  "· triggers = 模糊描述命中词(rs_intent template match 按「命中个数 → 命中总字长 → 文件名」确定性计分);",
+  "· pack     = templates/styles/packs/<slug>/(空串 = 无专属包,编译时按 registry 缺省条目回退);",
+  "· brief_skeleton / plan_skeleton 的值必须能通过 rs_intent validate(枚举/红线一致,否则 compile --template 即红);",
+  "· acceptance 指向 rules/video-types/<型>.md 的验收清单章节(各分册统一 §5)。",
+  "模板不引入新编译路径:--template 只预填骨架,之后仍走既有 compile 校验/补默认/查表/留痕链。"
+ ],
+ "type": "object",
+ "required": ["id", "label", "triggers", "pack", "videoType", "brief_skeleton", "plan_skeleton", "assets_required", "assets_forbidden", "example_prompts", "acceptance"],
+ "properties": {
+  "id": {"type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$", "description": "模板 id = 文件名(去 .md)"},
+  "label": {"type": "string", "minLength": 2, "description": "中文场景名(如 混剪卡点)"},
+  "triggers": {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 2, "description": "模糊描述命中词,非空字符串"},
+  "pack": {"type": "string", "description": "关联风格包 slug;空串 = 无专属包(registry 缺省条目回退)"},
+  "videoType": {"type": "string", "description": "registry.videoTypes 键;必须已登记(compile 校验链会再对拍)"},
+  "brief_skeleton": {"type": "object", "required": ["videoType"], "description": "brief.json 骨架(videoType 必填;platform/ratio/pacing/bgm/density/structure 可选)"},
+  "plan_skeleton": {"type": "object", "description": "plan.json 骨架(pacing/cards/cut/sfx/subtitle 可选)"},
+  "assets_required": {"type": "array", "items": {"type": "string"}, "description": "必需素材清单(人读)"},
+  "assets_forbidden": {"type": "array", "items": {"type": "string"}, "description": "禁用素材类型(人读)"},
+  "example_prompts": {"type": "array", "items": {"type": "string"}, "minItems": 1, "description": "用户原话样例(模糊→精确示范;也是 template match 的回归锚)"},
+  "acceptance": {"type": "string", "description": "验收章节引用(如 rules/video-types/混剪.md §5)"}
+ }
+}

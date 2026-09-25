@@ -1,9 +1,9 @@
 """S5 品牌层:Logo 变体矩阵(rules/branding.md,ADR-0014/ADR-0025)。
 
 用法:
-  rs_brand.py --analyze 03_assets/branding/logos/a.png     # 真实宽高/alpha/内容包围盒
-  rs_brand.py --expand --logos brandA,brandB --ratios 9x16,16x9 --out 05_ir/variants.json
-  rs_brand.py 05_ir/project.json --variants 05_ir/variants.json --out 06_output [--plan]
+  rs_brand.py --analyze 03_创作素材/branding/logos/a.png     # 真实宽高/alpha/内容包围盒
+  rs_brand.py --expand --logos brandA,brandB --ratios 9x16,16x9 --out 05_时间线工程/variants.json
+  rs_brand.py 05_时间线工程/project.json --variants 05_时间线工程/variants.json --out 06_成片输出 [--plan]
 
 策略:共享中间件,只分叉最后一步——base/composed/mixed/subtitled 各算一次,
 每个变体只做 logo overlay + encode(2 Logo × 2 比例 ≈ 1.3 倍单变体成本)。
@@ -28,6 +28,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from rs_common import canvas_for, emit, ffmpeg_bin, ffprobe_json, load_config  # noqa: E402
+import rs_paths  # noqa: E402  — 阶段路径唯一真相源(ADR-0046),本文件禁止目录字面量
 
 SCRIPTS_DIR = Path(__file__).resolve().parent
 
@@ -210,7 +211,7 @@ def load_variants(path: Path) -> dict:
 def _absolutize_assets(doc: dict, base: Path) -> None:
     """变体 IR 的素材路径就地改绝对(锚定工程根)。
 
-    rs_render 以「IR 文件位置推导 base_dir」——变体 IR 在 06_output/branded/_variants/
+    rs_render 以「IR 文件位置推导 base_dir」——变体 IR 在 06_成片输出/branded/_variants/
     下,工程根相对的 src 在那里必然解析错位,渲染/校验必挂;此前被 rs_brand 恒 0 的
     退出码掩盖(失败也记 S5 done,P10b-1 随独占子目录一并修正)。
     """
@@ -246,7 +247,7 @@ def main() -> int:
     ap.add_argument("--out", default="")
     ap.add_argument("--profile", default="final")
     ap.add_argument("--plan", action="store_true")
-    ap.add_argument("--logo-src", default="03_assets/branding/logos/{id}.png")
+    ap.add_argument("--logo-src", default=rs_paths.p("assets") + "/branding/logos/{id}.png")
     a = ap.parse_args()
 
     if a.analyze:
@@ -306,7 +307,7 @@ def main() -> int:
         vp = vdir / f"{v['id']}.json"
         _absolutize_assets(doc, Path.cwd())
         vp.write_text(json.dumps(doc, ensure_ascii=False, indent=1), encoding="utf-8")
-        # P10b-1:品牌变体成片全部落 --out 指定的独占子目录(06_output/branded/),
+        # P10b-1:品牌变体成片全部落 --out 指定的独占子目录(06_成片输出/branded/),
         # 通过 --out 显式告知 rs_render —— 预测路径与实际写盘必须逐字一致。
         final = (outdir / f"成片_{v['ratio']}_{v['logo']}_{a.profile}.mp4").resolve()
         cmd = [sys.executable, str(SCRIPTS_DIR / "rs_render.py"), str(vp),

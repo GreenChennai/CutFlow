@@ -12,7 +12,7 @@
 - reframe.anchorY:比例转换时人物锚点(0=贴顶)。
 - **clip.freezeMs(v0.12,I7)**:冻结帧补长——渲染端 `-t` 只读到该时刻(输入侧),其后 tpad 克隆尾帧补足到 durationMs;用于纯动画卡片比旁白短的场景(冻结必须发生在出场动画开始前,组装器预留 950ms)。
 - **`subtitle.ass` 才是烧录字段**(缺失即**不会烧录字幕**,v0.12 渲染时会显式 WARN);
-  `subtitle.source` 仅作溯源(指向 `05_ir/wordline.json`)——只写 source 不写 ass = 静默无字幕成片(v0.12 前的事故形态)。
+  `subtitle.source` 仅作溯源(指向 `05_时间线工程/wordline.json`)——只写 source 不写 ass = 静默无字幕成片(v0.12 前的事故形态)。
 - **显式 Gap**:粗剪后 keep 区间之间的空隙用 `{"kind":"gap","durationMs":N}` 表达,不再靠"没有 clip"隐式表示(语义对齐 OTIO 的 Gaps / Filler)。
 - **BGM ducking(v0.12 修复后可正常开启)**:`bgm.ducking: true` 时全部人声先合成一条总线再 `asplit` 出闪避侧链——历史工程里被迫写 `ducking:false` 绕 bug 的,需要闪避谁改谁的 IR,**不批量改**。
 
@@ -21,14 +21,14 @@
 主视频/音频轨由 **CutList 自动生成**,消除「Agent 手写毫秒」这一整类误差:
 
 ```
-04_cut/cutlist.json ──► rs_ir.py build --from-cutlist ──► 05_ir/project.json(主轨)
+04_粗剪决策/cutlist.json ──► rs_ir.py build --from-cutlist ──► 05_时间线工程/project.json(主轨)
                                                               │
 Agent 只需补:overlay 卡片 / 字幕 / 音效 / Logo(全部从 Wordline 取时)
 ```
 
 ```powershell
-python skills/cutflow/scripts/rs_ir.py build --from-cutlist 04_cut/cutlist.json `
-    --slug 20260910-demo-口播 --ratio 9x16 --out 05_ir/project.json
+python skills/cutflow/scripts/rs_ir.py build --from-cutlist 04_粗剪决策/cutlist.json `
+    --slug 20260910-demo-口播 --ratio 9x16 --out 05_时间线工程/project.json
 ```
 
 - keep 区间 → `clips[]`,时间由 `map_src_to_final()` 换算(`sourceInMs` 仍指源素材位置);
@@ -43,7 +43,7 @@ python skills/cutflow/scripts/rs_ir.py build --from-cutlist 04_cut/cutlist.json 
 
 ## 中间件与增量(改写旧「人肉复用」)
 
-**旧写法**:`06_output/_build/<ratio>/` 下 `seg_*/base/composed/mixed/subtitled` 可复用;改了字幕只重跑 step6-7(重调 rs_render 会全跑,**手改时可复用 mixed.mkv**)。
+**旧写法**:`06_成片输出/_build/<ratio>/` 下 `seg_*/base/composed/mixed/subtitled` 可复用;改了字幕只重跑 step6-7(重调 rs_render 会全跑,**手改时可复用 mixed.mkv**)。
 
 **新写法(ADR-0013)**:产物复用**由声明式缓存决定,不由人肉记忆决定**。
 
@@ -73,7 +73,7 @@ python skills/cutflow/scripts/rs_run.py --explain S3  # 为什么 stale
 
 ## 渲染后自检
 
-`rs_doctor` 语义校验 + **`rs_sync.py` 三对齐断言** + `rs_bench.py <成片> --ir <ir> --out 06_output/bench_<ratio>.png` → 目测:
+`rs_doctor` 语义校验 + **`rs_sync.py` 三对齐断言** + `rs_bench.py <成片> --ir <ir> --out 06_成片输出/bench_<ratio>.png` → 目测:
 
 黑帧 / 未预处理的幕布残留 / 字幕压脸或出安全区 / 跳变 / 信息卡错位 / Logo 压字幕。修复 ≤3 轮,仍败上报。
 

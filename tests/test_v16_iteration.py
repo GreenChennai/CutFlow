@@ -2,7 +2,7 @@
 
 P9  rs_run S1 post 步骤脚本名拼重 → S1 永远失败,能量校准从未生效。
 P10 S5/S6 声明产物与实际产物不符,且 S5/S8 同 glob 互相打脏、--dirty 永不收敛。
-P16 rs_cleanup --apply 删掉 06_output/rebuild.py 与 _variants/,手册重建链断。
+P16 rs_cleanup --apply 删掉 06_成片输出/rebuild.py 与 _variants/,手册重建链断。
 
 运行:pytest tests/test_v16_iteration.py -q
 """
@@ -21,9 +21,9 @@ import rs_run  # noqa: E402
 def _mk_project(tmp_path: Path) -> Path:
     """最小工程:只铺 rs_run 记账要碰的目录与占位素材(不触发真实子进程)。"""
     root = tmp_path / "proj"
-    for d in ("00_brief", "01_materials", "04_cut", "05_ir", "06_output", "_state"):
+    for d in ("00_制作简报", "01_原始素材", "04_粗剪决策", "05_时间线工程", "06_成片输出", "_内部状态"):
         (root / d).mkdir(parents=True)
-    (root / "01_materials" / "a.mp4").write_bytes(b"fake")
+    (root / "01_原始素材" / "a.mp4").write_bytes(b"fake")
     return root
 
 
@@ -79,9 +79,9 @@ def test_no_post_concat_in_source():
 def test_s5_s6_s8_output_globs_match_reality_and_are_disjoint():
     # P10b-1(副文档03 §4.1)更新:S5/S8 各落独占子目录,从根上消除 glob 交叠
     s5, s6, s8 = _stage("S5"), _stage("S6"), _stage("S8")
-    assert s5["outputs"] == ["06_output/branded/成片_*.mp4"]   # rs_brand --out 06_output/branded
-    assert s6["outputs"] == ["05_ir/sfx_draft.json"]           # 与 S6 cmd 落点同点
-    assert s8["outputs"] == ["06_output/final/final_*.mp4"]    # rs_render final 档独占子目录
+    assert s5["outputs"] == ["06_成片输出/branded/成片_*.mp4"]   # rs_brand --out 06_成片输出/branded
+    assert s6["outputs"] == ["05_时间线工程/sfx_draft.json"]           # 与 S6 cmd 落点同点
+    assert s8["outputs"] == ["06_成片输出/final/final_*.mp4"]    # rs_render final 档独占子目录
     s5_set, s8_set = set(s5["outputs"]), set(s8["outputs"])
     assert not s5_set & s8_set, "S5/S8 产物 glob 交叠会互相打脏(--dirty 永不收敛)"
 
@@ -90,8 +90,8 @@ def test_s5_s8_states_converge_no_mutual_stale(tmp_path):
     """S5、S8 各自落账后,重评对方必须仍是 done(此前同 glob 导致互相改 outHash)。"""
     root = _mk_project(tmp_path)
     # P10b-1:两阶段产物各落独占子目录
-    branded = root / "06_output" / "branded"
-    final = root / "06_output" / "final"
+    branded = root / "06_成片输出" / "branded"
+    final = root / "06_成片输出" / "final"
     branded.mkdir(parents=True)
     final.mkdir(parents=True)
     (branded / "成片_916_logoA_final.mp4").write_bytes(b"brand")
@@ -109,7 +109,7 @@ def test_s5_s8_states_converge_no_mutual_stale(tmp_path):
 def test_s6_done_when_draft_exists(tmp_path):
     """S6 声明产物=命令落点后,evaluate 不再恒 missing。"""
     root = _mk_project(tmp_path)
-    (root / "05_ir" / "sfx_draft.json").write_text("{}", encoding="utf-8")
+    (root / "05_时间线工程" / "sfx_draft.json").write_text("{}", encoding="utf-8")
     st = _stage("S6")
     parts = rs_run.stage_parts(root, st, rs_run.params_of(root), {})
     rs_run.write_state(root, "S6", {"status": "done", "key": rs_run.key_of(parts),
@@ -131,7 +131,7 @@ def test_cleanup_keeps_rebuild_scripts():
 
 def test_cleanup_classify_keeps_rebuild_and_variants(tmp_path):
     root = _mk_project(tmp_path)
-    out = root / "06_output"
+    out = root / "06_成片输出"
     (out / "rebuild.py").write_text("# rebuild", encoding="utf-8")
     (out / "_variants").mkdir()
     (out / "_variants" / "v.json").write_text("{}", encoding="utf-8")
@@ -147,7 +147,7 @@ def test_cleanup_classify_keeps_rebuild_and_variants(tmp_path):
 
 def test_cleanup_apply_preserves_rebuild(tmp_path):
     root = _mk_project(tmp_path)
-    out = root / "06_output"
+    out = root / "06_成片输出"
     (out / "rebuild.py").write_text("# rebuild", encoding="utf-8")
     (out / "junk.txt").write_text("x", encoding="utf-8")
     delete, _ = rs_cleanup.classify(root)

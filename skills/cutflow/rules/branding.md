@@ -12,15 +12,15 @@
 
 旧管线的做法是**跑两遍**——第二遍 20 分钟,只为了换一张右上角的 PNG。这不是能力问题,是**没有变体概念**。
 
-## 2. 变体矩阵(`05_ir/variants.json`)
+## 2. 变体矩阵(`05_时间线工程/variants.json`)
 
 ```json
 {
   "version": 1,
   "logos": [
-    {"id": "brandA", "src": "03_assets/branding/logos/a.png",
+    {"id": "brandA", "src": "03_创作素材/branding/logos/a.png",
      "anchor": "topRight", "scale": 0.12, "opacity": 0.9, "inMs": 0, "outMs": null},
-    {"id": "brandB", "src": "03_assets/branding/logos/b.png",
+    {"id": "brandB", "src": "03_创作素材/branding/logos/b.png",
      "anchor": "topRight", "scale": 0.12, "opacity": 0.9}
   ],
   "ratios": ["9x16", "16x9"],
@@ -57,7 +57,7 @@
   (v0.10 前 rs_render 不认此字段,Logo 会贴满画布——已修);
 - 字幕卡与 Logo 时间窗重叠时,**字幕优先**(Logo 降 alpha 或临时移位)。
 
-新增 `03_assets/branding/logos/`,每个 Logo 一个条目。片头/片尾板也归 S5(用 artboard 生成)。
+新增 `03_创作素材/branding/logos/`,每个 Logo 一个条目。片头/片尾板也归 S5(用 artboard 生成)。
 
 ## 4. 渲染策略(成本的关键)
 
@@ -76,13 +76,13 @@ seg_*/base ─► composed ─► mixed ─► subtitled ──┬─► + logo(
 
 ```powershell
 # 先看真实尺寸(alpha 内容包围盒;排版决策依据)
-python skills/cutflow/scripts/rs_brand.py --analyze 03_assets/branding/logos/a.png
+python skills/cutflow/scripts/rs_brand.py --analyze 03_创作素材/branding/logos/a.png
 
 python skills/cutflow/scripts/rs_brand.py --expand --logos brandA,brandB --ratios 9x16,16x9 `
-    --out 05_ir/variants.json
+    --out 05_时间线工程/variants.json
 
-python skills/cutflow/scripts/rs_brand.py 05_ir/project.json --variants 05_ir/variants.json `
-    --out 06_output --profile final
+python skills/cutflow/scripts/rs_brand.py 05_时间线工程/project.json --variants 05_时间线工程/variants.json `
+    --out 06_成片输出 --profile final
 ```
 
 产物命名**必须带 variantId**(ADR-0007):`成片_竖版_A_最终.mp4` / `成片_横版_B_最终.mp4`。

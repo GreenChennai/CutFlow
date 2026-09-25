@@ -1,0 +1,29 @@
+{
+ "id": "audio.beat",
+ "label": "节拍检测",
+ "appliesTo": [
+  "混剪"
+ ],
+ "stage": "S2",
+ "detector": "rs_beat.py",
+ "depends": [
+  "audio.beat"
+ ],
+ "degrade": {
+  "to": "onset-energy",
+  "trace": "beatDegraded",
+  "message": "节拍检测组件未部署,已降级为能量起音(onset-energy);BPM/拍点精度下降,卡点吸附窗不变"
+ },
+ "params": {
+  "onsetWindowMs": 20,
+  "onsetMinGapMs": 200,
+  "onsetThresholdK": 1.4,
+  "pcmRate": 8000,
+  "bpmMin": 60,
+  "bpmMax": 180,
+  "phaseTol": 0.15
+ },
+ "artifact": "cut/beats.json",
+ "verify": "tests/test_m8_infra.py",
+ "notes": "M8 落地(方案 §5.5.1)。READY=beatnet(venv-dsp 子进程推理);MISSING=onset-energy 能量法(ffmpeg PCM→RMS 包络→半波整流起音→自相关 BPM→相位网格)。beats/downbeats 单位毫秒(与 rs_edit beat.snap 的 startMs 比较口径一致;方案示例为秒,unit 字段显式声明)。挂载器无参调用 rs_beat.py 即工程模式(自动选素材)。性能:3 分钟音频降级档 ≤0.02× 实时。"
+}

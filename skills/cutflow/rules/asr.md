@@ -95,7 +95,7 @@ python tools/fetch_deps.py asr
 
 ```powershell
 # 转写(后端自动选:有 pkg 用 pkg,否则 onnx)
-python tools/fun_asr.py 01_materials/a.mp4 --out 02_sensed/asr_raw.json
+python tools/fun_asr.py 01_原始素材/a.mp4 --out 02_转写与校对/asr_raw.json
 
 # 强制某后端
 python tools/fun_asr.py a.mp4 --backend onnx
@@ -104,9 +104,9 @@ python tools/fun_asr.py a.mp4 --backend onnx
 python tools/fun_asr.py a.mp4 --max-end-sil 300
 
 # 走完整对齐(S1);专名/生造词先喂热词(I1)
-python skills/cutflow/scripts/rs_align.py build --media 01_materials/a.mp4 --out 05_ir/wordline.json
-python skills/cutflow/scripts/rs_align.py build --media 01_materials/a.mp4 `
-    --terms-file 00_brief/terms.txt --out 05_ir/wordline.json
+python skills/cutflow/scripts/rs_align.py build --media 01_原始素材/a.mp4 --out 05_时间线工程/wordline.json
+python skills/cutflow/scripts/rs_align.py build --media 01_原始素材/a.mp4 `
+    --terms-file 00_制作简报/terms.txt --out 05_时间线工程/wordline.json
 ```
 
 输出协议:`{"ok","code","message","data"}`,其中 `data.segments = [{start, end, text, timestamp?}]`
@@ -118,7 +118,7 @@ python skills/cutflow/scripts/rs_align.py build --media 01_materials/a.mp4 `
   **SeACo-Paraformer**(`funasr/download/name_maps_from_hub.py`,本机 2026-09-14 实测),
   热词是其模型级原生能力,`--hotwords` 直接生效,无需切档;
 - 入口:`rs_align.py build --media … --hotwords "安信德 GEO优化"` 或
-  `--terms-file 00_brief/terms.txt`(每行一个词,`#` 注释;来源 = brief.md 术语表);
+  `--terms-file 00_制作简报/terms.txt`(每行一个词,`#` 注释;来源 = brief.md 术语表);
   wordline 顶层 `asr.hotwords` 留痕;
 - **专名错 → 先补热词重跑,不要手工改字**(手改字 → retext 会把错字时间锚固化,
   重跑对齐才是正道);onnx 后端不支持热词(capabilities.hotwords=false)。

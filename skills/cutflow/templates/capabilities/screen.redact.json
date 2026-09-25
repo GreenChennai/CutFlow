@@ -1,0 +1,24 @@
+{
+ "id": "screen.redact",
+ "label": "敏感信息打码检测",
+ "appliesTo": [
+  "screen-recording"
+ ],
+ "stage": "S2",
+ "detector": "rs_screen.py",
+ "depends": [
+  "vision.cv"
+ ],
+ "degrade": {
+  "to": "none",
+  "trace": "redactDegraded",
+  "message": "OpenCV 组件未部署:不打码(方案 §5.5.4 降级 none + L1)——交付前必须人工目测密钥/隐私信息"
+ },
+ "params": {
+  "redactMaxBoxes": 12,
+  "candidateConf": 0.3
+ },
+ "artifact": "cut/screen.json",
+ "verify": "tests/test_m8_infra.py",
+ "notes": "M8 落地(方案 §5.5.4)。READY=梯度形态学类文本候选区(过检为主,全部标『须人工确认』,机检不判定内容);L1 目测复核是交付前置,机检只是圈候选。"
+}

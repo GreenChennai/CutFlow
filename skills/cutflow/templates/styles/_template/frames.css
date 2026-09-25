@@ -1,0 +1,6 @@
+/* 风格包 frames.css(ADR-0051 / M7 探测位契约)—— 新增风格第 2 步照抄改值。
+   消费方:rs_artboard.py load_style_pack —— gen-frames --pack <slug> 命中本文件即把内容
+   追加到五段式卡片 <style> 尾部;文件缺失 = 用内置默认规格(不告警)。
+   纪律:只做变量级/点缀级覆盖,不得破坏 .safe 安全区层、.bg 层与 data-* 机检钩子。 */
+/* pack:TEMPLATE */
+.poster { --pack: "TEMPLATE"; --pack-accent: #4F8CFF; }

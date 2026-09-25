@@ -1,0 +1,25 @@
+{
+ "id": "text.broll",
+ "label": "B-roll 素材语义检索",
+ "appliesTo": [
+  "drama"
+ ],
+ "stage": "S4",
+ "detector": "rs_broll.py",
+ "depends": [
+  "text.clip"
+ ],
+ "degrade": {
+  "to": "keyword-match",
+  "trace": "brollDegraded",
+  "message": "CLIP 语义组件未部署,已降级为关键词命中(文件名/OCR 文本);语义精度下降,匹配结果须人工确认"
+ },
+ "params": {
+  "topK": 8,
+  "filenameWeight": 2,
+  "minTokenLen": 2
+ },
+ "artifact": "cut/broll_matches.json",
+ "verify": "tests/test_m8_infra.py",
+ "notes": "M8 落地(方案 §5.5.3 首行能力)。READY=clip 模型(子进程检索,驱动随 tools/deps 部署);MISSING=keyword-match(CJK 二字 token+西文词,文件名命中加权,排序全序确定)。registry 的 drama capabilities 本波留空(shorts waves 的 sub.pair/drama.hook 归第二波短剧 Agent),本描述符先行登记供其消费。"
+}

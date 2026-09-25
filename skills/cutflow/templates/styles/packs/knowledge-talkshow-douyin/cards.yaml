@@ -1,0 +1,15 @@
+# 风格包卡片映射(ADR-0051 体例见 _template/cards.yaml):知识口播 → artboard 借格。
+slug: knowledge-talkshow-douyin
+artboard:
+  styles: [tech-kv]                                # [内部] artboard references/styles/tech-kv.md(深底玻璃拟态,发布级克制)
+  cases: ["assets/cases/tech-kv-case.html"]        # [内部] artboard assets/cases/tech-kv-case.html
+templates:
+  opener: 1        # 片头钩子卡:一句话承诺(3 秒内给结论)
+  title: 3         # 标题卡:知识点断行,每卡一个术语
+  section: 0
+  stat: 2          # 数据卡:调研数字/对比增幅
+  compare: 1       # 对比卡:错误做法 vs 正确做法(口播高价值卡)
+  endcard: 1       # 片尾卡:关注/下期预告
+durationMsHint:
+  opener: 4200
+  endcard: 4800

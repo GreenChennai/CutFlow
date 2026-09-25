@@ -1,0 +1,15 @@
+# 风格包卡片映射(ADR-0051)—— 六类场景卡 → artboard 借格。新增风格第 3 步照抄改值。
+# 纪律:artboard.styles 一次只借 1–2 个原子(artboard SKILL.md 风格清单);与 params.yaml 的 artboard.styles 必须一致。
+# 门禁:rs_stylepack.py check 对拍 styles/cases 指向的 artboard 文件真实存在(artboard 缺席时 SKIP 不红)。
+slug: TEMPLATE
+artboard:
+  styles: [ARTBOARD-SLUG]                          # artboard references/styles/<slug>.md 真实存在
+  cases: ["assets/cases/ARTBOARD-SLUG-case.html"]  # artboard assets/cases/*.html 真实存在
+templates:          # 六类场景卡数量(0 = 本风格不用该卡;Agent 据 00_制作简报/cards.json 生成 kind 条目)
+  opener: 1         # 片头钩子卡
+  title: 0          # 标题卡
+  section: 0        # 章节卡
+  stat: 0           # 数据卡
+  compare: 0        # 对比卡(条目须带 ≥2 条 lines)
+  endcard: 1        # 片尾卡(outro 别名 endcard)
+durationMsHint: {}  # 可选:建议挂轨时长(ms);缺省走 rs_artboard 内置五段规格,单卡以 cards.json 为准

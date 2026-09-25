@@ -8,6 +8,9 @@ config.json
 04_ai_prompts/
 05_ir/
 06_output/
+06_成片输出/
+_内部状态/
+成品/
 *.mp4
 *.mov
 *.mp3
@@ -24,6 +27,11 @@ __pycache__/
 .venv/
 .pytest_cache/
 tools/.venv-asr/
+
+# 懒加载可选件与重依赖 venv(ADR-0049):用到才下载,绝不入库
+tools/deps/
+tools/.venv-dsp/
+tools/.venv-torch/
 
 # ASR 模型(体积大,绝不入库;用 fetch_deps.py asr --seed-models 播种)
 models/

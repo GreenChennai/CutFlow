@@ -1,0 +1,21 @@
+{
+ "id": "sub.pair",
+ "label": "解说/原声对白双 Style 字幕",
+ "appliesTo": [
+  "drama"
+ ],
+ "stage": "S7",
+ "detector": "rs_subtitle.py",
+ "depends": [],
+ "degrade": {
+  "to": "single-style-quote",
+  "trace": "dualStyleDegraded",
+  "message": "wordline 无句级 voice=dialogue 标记时,降级为单 Style + 引号标注(对白仍以引号区分,无双色/斜体),需人工确认对白段落"
+ },
+ "params": {
+  "quoteReserveChars": 2
+ },
+ "artifact": "output/subtitles.ass",
+ "verify": "tests/test_drama_commentary.py",
+ "notes": "M8 第二波落地(方案 §5.5.3)。--dual-style 生成 ASS 双 Style 段:解说体 Main + 原声对白体 Quote(暖黄斜体),对白文本自动包中文引号;对白卡切分预算预留 quoteReserveChars=2 字给引号,显示不超每卡上限;并卡/吞卡不跨声轨(断句保护)。film-commentary(影视解说)暂无独立 videoTypes 注册键,随 drama 登记(见 registry._doc)。"
+}

@@ -26,8 +26,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 import rs_common  # noqa: E402
 from rs_common import emit  # noqa: E402
+import rs_paths  # noqa: E402  — 阶段路径唯一真相源(ADR-0046),本文件禁止目录字面量
 
-OVERRIDE_REL = ("00_brief", "greenscreen-override.txt")
+OVERRIDE_REL = (rs_paths.p("brief"), "greenscreen-override.txt")  # 放行留痕落点(ADR-0046)
 SAMPLE_RATIOS = (0.08, 0.24, 0.40, 0.56, 0.72, 0.88)
 FRAME_W = 64
 DOMINANCE = 1.20          # 幕色通道需比其余两个通道高 20%
@@ -170,7 +171,7 @@ def read_override(root: str | Path) -> str | None:
         txt = p.read_text(encoding="utf-8", errors="replace").strip()
         if txt:
             return txt
-    brief = Path(root) / "00_brief" / "brief.md"
+    brief = rs_paths.resolve(root, "brief") / "brief.md"
     if brief.is_file():
         for line in brief.read_text(encoding="utf-8", errors="replace").splitlines():
             s = line.strip().lstrip("-* ").strip()
@@ -188,11 +189,11 @@ def write_override(root: str | Path, reason: str) -> Path:
 
 
 def guidance_md(root: str | Path, flagged: list[dict]) -> Path:
-    """写 01_materials/GREENSCREEN.md:给用户的处理指引(阻断时必产)。"""
-    p = Path(root) / "01_materials" / "GREENSCREEN.md"
+    """写 01_原始素材/GREENSCREEN.md:给用户的处理指引(阻断时必产)。"""
+    p = rs_paths.resolve(root, "materials") / "GREENSCREEN.md"
     lines = ["# ⛔ 检测到绿幕/蓝幕素材 —— 请先自行抠像并合成背景", "",
              "v0.14 起 CutFlow 不再做抠像与背景合成。以下素材仍含绿幕/蓝幕背景,"
-             "必须由你**自行抠像并合成好背景**后,替换 `01_materials/` 里的原文件,再重新摄取:", "",
+             f"必须由你**自行抠像并合成好背景**后,替换 `{rs_paths.p('materials')}/` 里的原文件,再重新摄取:", "",
              "| 文件 | 类型 | 边框幕色占比 | 全帧幕色占比 |", "|---|---|---|---|"]
     for it in flagged:
         g = it.get("greenScreen") or {}
@@ -201,13 +202,13 @@ def guidance_md(root: str | Path, flagged: list[dict]) -> Path:
                      f"{g.get('greenRatio') or g.get('blueRatio')} |")
     lines += ["", "处理步骤:", "",
               "1. 用剪映/Pr/AE 等完成抠像,并合成好最终背景(导出为常规 mp4);",
-              "2. 用处理后的文件替换 `01_materials/` 中的原素材(文件名保持一致或同步更新 brief);",
+              f"2. 用处理后的文件替换 `{rs_paths.p('materials')}/` 中的原素材(文件名保持一致或同步更新 brief);",
               "3. 重新运行 `python skills/cutflow/scripts/rs_ingest.py scan <工程根>`。", "",
               "如果这**不是**绿幕素材(误判),向 Agent 说明后执行:", "",
               "```powershell",
               "python skills/cutflow/scripts/rs_ingest.py green-ok <工程根> --reason \"误判原因\"",
               "```", "",
-              "> 放行会写入 `00_brief/greenscreen-override.txt` 留痕;L0 自检据此不再阻断。", ""]
+              f"> 放行会写入 `{rs_paths.p('brief')}/greenscreen-override.txt` 留痕;L0 自检据此不再阻断。", ""]
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text("\n".join(lines), encoding="utf-8")
     return p

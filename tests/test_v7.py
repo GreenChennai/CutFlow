@@ -515,12 +515,12 @@ def test_review_pack_marks_degraded_when_audio_extract_fails(tmp_path):
 def test_sync_detects_animation_card_overlapping_subtitle():
     """字幕卡被 artboard 动画卡压住 → 必须点名(普通素材轨不算)。"""
     ir = {"tracks": [{"kind": "video", "clips": [
-        {"src": "03_assets/artboard/c1/export/c1.mp4", "startMs": 0, "durationMs": 1500}]}]}
+        {"src": "03_创作素材/artboard/c1/export/c1.mp4", "startMs": 0, "durationMs": 1500}]}]}
     events = [{"start": 0.5, "end": 1.2, "text": "字幕一段"}]
     ov = rs_sync.check_card_overlap(events, ir)
     assert ov and ov[0]["overlapMs"] == 700, ov
     plain = {"tracks": [{"kind": "video", "clips": [
-        {"src": "01_materials/a.mp4", "startMs": 0, "durationMs": 1500}]}]}
+        {"src": "01_原始素材/a.mp4", "startMs": 0, "durationMs": 1500}]}]}
     assert rs_sync.check_card_overlap(events, plain) == []
 
 
@@ -529,30 +529,30 @@ def test_rs_ingest_scan_writes_manifest_and_skeleton(tmp_path, monkeypatch, caps
     import rs_ingest
 
     root = tmp_path / "proj"
-    (root / "01_materials").mkdir(parents=True)
-    (root / "01_materials" / "a.mp4").write_bytes(b"not a real video")
+    (root / "01_原始素材").mkdir(parents=True)
+    (root / "01_原始素材" / "a.mp4").write_bytes(b"not a real video")
     monkeypatch.setattr(sys, "argv", ["rs_ingest.py", "scan", str(root)])
     assert rs_ingest.main() == 0
     data = _last_json(capsys)["data"]
     assert data["count"] == 1
-    man = json.loads((root / "01_materials" / "manifest.json").read_text(encoding="utf-8"))
+    man = json.loads((root / "01_原始素材" / "manifest.json").read_text(encoding="utf-8"))
     assert man["items"][0]["file"] == "a.mp4"
     assert man["items"][0]["probe"] in ("ok", "failed", "unavailable")
-    assert (root / "01_materials" / "MANIFEST.md").is_file()
-    assert (root / "05_ir" / "project.skeleton.json").is_file()
+    assert (root / "01_原始素材" / "MANIFEST.md").is_file()
+    assert (root / "05_时间线工程" / "project.skeleton.json").is_file()
 
 
 def test_rs_ingest_deliverables_lists_outputs(tmp_path, monkeypatch, capsys):
     import rs_ingest
 
     root = tmp_path / "proj"
-    for sub in ("00_brief", "05_ir", "06_output", "_state"):
+    for sub in ("00_制作简报", "05_时间线工程", "06_成片输出", "_内部状态"):
         (root / sub).mkdir(parents=True)
-    (root / "00_brief" / "brief.md").write_text("# Brief — 演示片\n", encoding="utf-8")
-    (root / "05_ir" / "project.json").write_text(json.dumps(
+    (root / "00_制作简报" / "brief.md").write_text("# Brief — 演示片\n", encoding="utf-8")
+    (root / "05_时间线工程" / "project.json").write_text(json.dumps(
         {"canvas": {"width": 1080, "height": 1440}}), encoding="utf-8")
-    (root / "06_output" / "final_demo_34.mp4").write_bytes(b"x")
-    (root / "_state" / "verify.json").write_text(json.dumps(
+    (root / "06_成片输出" / "final_demo_34.mp4").write_bytes(b"x")
+    (root / "_内部状态" / "verify.json").write_text(json.dumps(
         {"firstCheck": {"done": True}, "lastL0": {"level": "L0", "at": "2026-09-12"}}),
         encoding="utf-8")
     monkeypatch.setattr(sys, "argv", ["rs_ingest.py", "deliverables", str(root)])
@@ -565,7 +565,7 @@ def test_rs_ingest_deliverables_lists_outputs(tmp_path, monkeypatch, capsys):
     missing = " ".join(data["missing"])
     for need in ("subtitles.ass", "master.srt", "封面.png", "metadata.json"):
         assert need in missing, f"缺失项必须点名:{need}"
-    doc = (root / "06_output" / "deliverables.md").read_text(encoding="utf-8")
+    doc = (root / "06_成片输出" / "deliverables.md").read_text(encoding="utf-8")
     assert "final_demo_34.mp4" in doc and "3x4" in doc
     assert "subtitles.ass" in doc, "缺失项必须点名"
     assert "缺失项(交付前必须补齐)" in doc
@@ -647,7 +647,7 @@ def test_rs_dub_refuses_write_without_char_timestamps(tmp_path, monkeypatch, cap
 def test_sync_card_overlap_is_warning_by_default_and_fails_when_strict():
     events = [{"start": 0.5, "end": 1.2, "text": "字幕一段"}]
     ir = {"tracks": [{"kind": "video", "clips": [
-        {"src": "03_assets/artboard/c1/export/c1.mp4", "startMs": 0, "durationMs": 1500}]}]}
+        {"src": "03_创作素材/artboard/c1/export/c1.mp4", "startMs": 0, "durationMs": 1500}]}]}
     res = rs_sync.summarize([{"event": "字幕一段", "matched": True, "offsetMs": 0.0,
                               "endOffsetMs": 0.0, "durMs": 700.0, "chars": 4}], events)
     assert res["pass"] is True, "重叠默认只是告警,不该拖垮对齐自检"

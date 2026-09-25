@@ -1,0 +1,16 @@
+# 风格包参数档(ADR-0051):教程·B站横屏。出处标注体例见 _template/params.yaml。
+slug: tutorial-bilibili
+label: 教程·B站横屏
+videoType: talking-head
+platform: bilibili                     # [内部] templates/platforms.json bilibili
+ratio: 16x9                            # [内部] templates/platforms.json bilibili.ratio
+
+pacing: slow                           # [内部] registry.entries.tutorial-bilibili.pacing
+cardMs: [2500, 7000]                   # [内部] registry.pacingTiers.slow.cardMs
+visualBeatSec: [3, 5]                  # [内部] registry.pacingTiers.slow.visualBeatSec
+bgm: {enabled: false, gainDb: -20, ducking: none}   # [内部] registry.pacingTiers.slow(bgm=false,gainDb=-20);[经验] 讲解类 BGM 默认关,开了也压到 -20 保讲解声
+transition: {default: fade, allow: [hard_cut], snapToBeat: false}   # [经验] 章节切换用 fade,步骤内硬切;B站观众容忍度高于抖音但仍忌花哨
+subtitle: {style: tutorial-clean, maxChars: 22, cpsMax: 9, lyricOnly: false}   # [内部] registry 条目 style=tutorial-clean + platforms.bilibili.maxChars=22 + 全库 CPS≤9
+cards: {density: 少, template: chapter}   # [内部] registry.entries.tutorial-bilibili.cards
+capabilities: [vision.greenscreen, cut.dead-air, qc.black-frame]   # [内部] registry.videoTypes.talking-head.capabilities(描述符均已登记)
+artboard: {styles: [data-longform], templates: ["opener:1", "section:3", "endcard:1"]}   # [内部] artboard references/styles/data-longform.md(报告型步骤感)

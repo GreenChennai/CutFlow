@@ -2,7 +2,7 @@
 
 ## 用法
 
-`rs_tts.py --script 00_brief/文案.txt --out 03_assets/tts [--voice koubo-test] [--speed 1.0]`
+`rs_tts.py --script 00_制作简报/文案.txt --out 03_创作素材/tts [--voice koubo-test] [--speed 1.0]`
 
 - 文案格式:普通多行文本;行首 `【开心】` 指定该句情感。
 - 断点续传:manifest.json 已有句子自动跳过;改文案后重跑只合成新句。

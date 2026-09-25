@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "license": "自产合成(ffmpeg aevalsrc 正弦/三角波叠加 + loudnorm 归一),无版权约束,可商用",
+  "engine": "ffmpeg-synth",
+  "note": "M8 内置 BGM 小曲库(清欠账 #13):--bgm auto 按节奏档从本曲库选曲(rs_intent compile 消费,decision_log source=library 留痕)。选曲规则:取 pacingFit 含当前节奏档的首条;都不含则取第一条(确定性,同输入字节级同选)。",
+  "tracks": [
+    {
+      "name": "脉冲节奏 140",
+      "file": "pulse_rhythm_140bpm.mp3",
+      "durationSec": 28.8,
+      "bpm": 140,
+      "mood": "节奏驱动/高燃",
+      "pacingFit": ["music", "fast"],
+      "gainHintDb": -12,
+      "note": "锯齿脉冲 + 噪声 hat;混剪卡点(music 档 BGM 即时间轴骨架)与快节奏通用"
+    },
+    {
+      "name": "暖垫 120",
+      "file": "warm_pad_120bpm.mp3",
+      "durationSec": 32.0,
+      "bpm": 120,
+      "mood": "温暖铺底/正向",
+      "pacingFit": ["fast", "normal"],
+      "gainHintDb": -18,
+      "note": "A 大调和声垫 + 软鼓点;知识口播快节奏/常规档通用"
+    },
+    {
+      "name": "LoFi 慢摇 100",
+      "file": "lofi_groove_100bpm.mp3",
+      "durationSec": 36.0,
+      "bpm": 100,
+      "mood": "松弛/生活感",
+      "pacingFit": ["normal"],
+      "gainHintDb": -18,
+      "note": "软贝斯 + 噪底碎响;vlog 生活记录与常规口播"
+    },
+    {
+      "name": "氛围低吟 90",
+      "file": "ambient_calm_90bpm.mp3",
+      "durationSec": 40.0,
+      "bpm": 90,
+      "mood": "安静/深度",
+      "pacingFit": ["slow"],
+      "gainHintDb": -20,
+      "note": "低频 drone 慢动;教程演示/深度内容(slow 档)"
+    }
+  ]
+}

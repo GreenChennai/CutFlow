@@ -1,0 +1,28 @@
+{
+ "id": "vision.shot",
+ "label": "镜头切分",
+ "appliesTo": [
+  "vlog",
+  "drama",
+  "screen-recording"
+ ],
+ "stage": "S2",
+ "detector": "rs_shot.py",
+ "depends": [
+  "vision.shot"
+ ],
+ "degrade": {
+  "to": "frame-diff",
+  "trace": "shotDegraded",
+  "message": "场景检测组件未部署,已降级为帧差切分(ffmpeg scene 滤镜);快摇/闪白可能误判"
+ },
+ "params": {
+  "threshold": 0.3,
+  "minShotMs": 250,
+  "sampleFps": 10,
+  "downscaleWidth": 160
+ },
+ "artifact": "cut/shots.json",
+ "verify": "tests/test_m8_infra.py",
+ "notes": "M8 落地(方案 §5.5.2/附录 C 示例口径)。READY=scenedetect(子进程);MISSING=frame-diff(降采样流 select=gt(scene,T))。--deep 的 TransNetV2 未登记进懒加载清单,请求时如实留痕退回当前档(诚实纪律)。性能:10 分钟素材降级档 ≤0.05× 实时(降采样实现)。"
+}

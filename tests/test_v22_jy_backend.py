@@ -51,7 +51,7 @@ def _wordline(text: str, start_ms: int = 0, per: int = 200) -> dict:
     seg = {"start": start_ms / 1000.0, "end": (start_ms + len(text) * per) / 1000.0,
            "text": text, "timestamp": ts, "conf": 0.95}
     import rs_align
-    return rs_align.build_wordline([seg], "01_materials/a.mp4")
+    return rs_align.build_wordline([seg], "01_原始素材/a.mp4")
 
 
 # ================================================================ J2 protect 保护区(TDD 先红)
@@ -122,7 +122,7 @@ def test_j2_cli_protect_flag_lands_in_cutlist(tmp_path, monkeypatch):
     wl = _wordline("大家好今天讲蓝屏修复的第一课")
     src = tmp_path / "wordline.json"
     src.write_text(json.dumps(wl, ensure_ascii=False), encoding="utf-8")
-    out = tmp_path / "04_cut"
+    out = tmp_path / "04_粗剪决策"
     monkeypatch.setattr(sys, "argv", [
         "rs_cut.py", str(src), "--detect", "all", "--out", str(out),
         "--protect", "1200-1580,2000-2800"])
@@ -150,39 +150,39 @@ def _mk_project(tmp: Path, media_bytes: bytes | None = DUMMY_MP4) -> Path:
     media_bytes=None 时不写素材(调用方自备真素材,写盘 e2e 用)。
     """
     root = tmp / "proj"
-    (root / "01_materials").mkdir(parents=True)
-    (root / "05_ir").mkdir(parents=True)
+    (root / "01_原始素材").mkdir(parents=True)
+    (root / "05_时间线工程").mkdir(parents=True)
     if media_bytes:
-        (root / "01_materials" / "a.mp4").write_bytes(media_bytes)
-        (root / "01_materials" / "voice.mp3").write_bytes(media_bytes)
-        (root / "01_materials" / "bgm.mp3").write_bytes(b"dummy-bgm")
+        (root / "01_原始素材" / "a.mp4").write_bytes(media_bytes)
+        (root / "01_原始素材" / "voice.mp3").write_bytes(media_bytes)
+        (root / "01_原始素材" / "bgm.mp3").write_bytes(b"dummy-bgm")
     ir = {
         "version": 1, "slug": "dev-jy", "fps": FPS,
         "canvas": {"width": 1080, "height": 1920},
         "tracks": [
             {"kind": "video", "clips": [
-                {"src": "01_materials/a.mp4", "startMs": 0, "durationMs": 2000,
+                {"src": "01_原始素材/a.mp4", "startMs": 0, "durationMs": 2000,
                  "sourceInMs": 0, "fade": {"inMs": 200, "outMs": 0}},
-                {"src": "01_materials/a.mp4", "startMs": 2000, "durationMs": 2400,
+                {"src": "01_原始素材/a.mp4", "startMs": 2000, "durationMs": 2400,
                  "sourceInMs": 0, "speed": 1.0, "volume": 0.5,
                  "transition": {"type": "fade", "durMs": 300}},
             ]},
             {"kind": "audio", "clips": [
-                {"src": "01_materials/voice.mp3", "startMs": 0, "durationMs": 4400,
+                {"src": "01_原始素材/voice.mp3", "startMs": 0, "durationMs": 4400,
                  "role": "voice"},
             ]},
         ],
-        "bgm": {"src": "01_materials/bgm.mp3", "gainDb": -18},
-        "subtitle": {"source": "05_ir/wordline.json"},
+        "bgm": {"src": "01_原始素材/bgm.mp3", "gainDb": -18},
+        "subtitle": {"source": "05_时间线工程/wordline.json"},
     }
-    (root / "05_ir" / "project.json").write_text(json.dumps(ir, ensure_ascii=False),
+    (root / "05_时间线工程" / "project.json").write_text(json.dumps(ir, ensure_ascii=False),
                                                  encoding="utf-8")
-    (root / "05_ir" / "wordline.json").write_text(json.dumps({
+    (root / "05_时间线工程" / "wordline.json").write_text(json.dumps({
         "segments": [
             {"start": 0.2, "end": 1.8, "text": "大家好今天讲蓝屏"},
             {"start": 2.2, "end": 4.3, "text": "修复的第一课"},
         ]}, ensure_ascii=False), encoding="utf-8")
-    return root / "05_ir" / "project.json"
+    return root / "05_时间线工程" / "project.json"
 
 
 def _cfg(tmp: Path) -> dict:
@@ -260,7 +260,7 @@ def test_j1_dry_run_prints_table_and_writes_nothing(tmp_path, monkeypatch):
 def test_j1_dry_run_gate_fail_still_nonzero(tmp_path, monkeypatch):
     """--dry-run 门禁失败也非零退出(映射表照印,便于人读排障)。"""
     ir_path = _mk_project(tmp_path)
-    (ir_path.parent.parent / "01_materials" / "a.mp4").unlink()   # 拆掉素材 → 门禁必挂
+    (ir_path.parent.parent / "01_原始素材" / "a.mp4").unlink()   # 拆掉素材 → 门禁必挂
     monkeypatch.setattr(rs_jy_draft, "load_config", lambda: _cfg(tmp_path))
     code, doc, out = _run_main(monkeypatch, [str(ir_path), "--dry-run"])
     assert code == 4 and doc["code"] == "PLAN_GATE_FAIL"
@@ -327,7 +327,7 @@ def test_j3_gate_rejects_first_segment_off_zero_and_track_drift(tmp_path):
 def test_j3_write_path_refuses_on_gate_fail(tmp_path, monkeypatch):
     """判据 3:门禁失败 = 拒绝写草稿,错误码非零(PLAN_GATE_FAIL,退出码 4)。"""
     ir_path = _mk_project(tmp_path)
-    (ir_path.parent.parent / "01_materials" / "a.mp4").unlink()
+    (ir_path.parent.parent / "01_原始素材" / "a.mp4").unlink()
     monkeypatch.setattr(rs_jy_draft, "load_config", lambda: _cfg(tmp_path))
     called = {"tasklist": False}
     real_run = rs_jy_draft.subprocess.run
@@ -400,8 +400,8 @@ def test_j4_ir_expressed_fields_mapped_through_compile(tmp_path, monkeypatch):
     monkeypatch.setattr(rs_jy_draft, "_probe_duration_ms",
                         lambda path, cfg, errors, where: 4400)
     plan2 = rs_jy_draft.compile_draft_plan(
-        json.loads((tmp_path / "proj" / "05_ir" / "project.json").read_text(encoding="utf-8")),
-        tmp_path / "proj" / "05_ir" / "project.json", None, [])
+        json.loads((tmp_path / "proj" / "05_时间线工程" / "project.json").read_text(encoding="utf-8")),
+        tmp_path / "proj" / "05_时间线工程" / "project.json", None, [])
     bgm = next(t for t in plan2["tracks"] if t["role"] == "bgm")
     assert bgm["trackId"] == "A2"
     assert abs(bgm["segments"][0]["volume"] - 10 ** (-18 / 20)) < 1e-9
@@ -421,9 +421,9 @@ def test_j4_bgm_degrades_with_warning_when_unavailable(tmp_path):
 def test_j4_sfx_pseudo_protocol_resolved(tmp_path):
     """J4:音效 assets_sfx: 伪协议 → 内置音效库真实路径;gainDb → 线性音量。"""
     root = tmp_path / "proj"
-    (root / "05_ir").mkdir(parents=True)
-    ir = root / "05_ir" / "project.json"
-    fake_mov = root / "05_ir" / "main.mp4"
+    (root / "05_时间线工程").mkdir(parents=True)
+    ir = root / "05_时间线工程" / "project.json"
+    fake_mov = root / "05_时间线工程" / "main.mp4"
     fake_mov.write_bytes(b"x")
     ir.write_text(json.dumps({
         "version": 1, "slug": "sfx", "fps": 30,
@@ -491,12 +491,12 @@ def test_j6_cutforge_export_jianying_uses_same_script():
 
 def test_j6_same_ir_same_plan_via_bridge_invocation(tmp_path, monkeypatch):
     """判据 6:export_jianying 的调用形态(cwd=工程根,scriptArgs=
-    ['05_ir/project.json','--name','x'])与直跑 CLI 得到同一计划、同一门禁结论
+    ['05_时间线工程/project.json','--name','x'])与直跑 CLI 得到同一计划、同一门禁结论
     —— 映射只此一层,两处入口不漂移(实写路径由真素材 e2e 覆盖)。"""
     ir_path = _mk_project(tmp_path)
     monkeypatch.setattr(rs_jy_draft, "load_config", lambda: _cfg(tmp_path))
     monkeypatch.chdir(ir_path.parent.parent)     # orchestrate 以工程根为 cwd
-    code, doc, _ = _run_main(monkeypatch, ["05_ir/project.json", "--name", "dev_bridge",
+    code, doc, _ = _run_main(monkeypatch, ["05_时间线工程/project.json", "--name", "dev_bridge",
                                            "--dry-run"])
     assert code == 0 and doc["code"] == "JY_PLAN_DRY_RUN"
     # 直跑形态(绝对路径)与 export_jianying 调用形态 → 计划逐键一致
@@ -523,7 +523,7 @@ def test_j6_e2e_real_media_write_and_gates(tmp_path, monkeypatch):
     if not ff:
         pytest.skip("本机没有 ffmpeg,无法造真素材,跳过写盘 e2e")
     ir_path = _mk_project(tmp_path, media_bytes=None)
-    mat = tmp_path / "proj" / "01_materials"
+    mat = tmp_path / "proj" / "01_原始素材"
     a = mat / "a.mp4"
     subprocess.run([ff, "-y", "-v", "error",
                     "-f", "lavfi", "-i", "color=c=red:s=320x240:d=5:r=30",

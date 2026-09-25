@@ -128,7 +128,7 @@ def test_mix_ducking_renders(tmp_path):
 
 def test_render_warns_when_ass_missing():
     """B4:IR 只有 subtitle.source 没有 subtitle.ass → 渲染必须显式 WARN,不许静默。"""
-    doc = {"subtitle": {"source": "05_ir/wordline.json"}}
+    doc = {"subtitle": {"source": "05_时间线工程/wordline.json"}}
     warnings: list[str] = []
     out = rs_render.step_subtitle(doc, Path("in.mp4"), Path("."), {}, warnings)
     assert out == Path("in.mp4"), "无 ass 时不得产出新文件"
@@ -144,8 +144,8 @@ def test_render_warns_when_ass_missing():
 def test_verify_l0_includes_qc_when_video_present(tmp_path, monkeypatch):
     """B5:成片存在 → L0 checks 必须出现 QC 项(rules/verify.md 早已列为 L0 判据);
     QC 不可用 → skipped 留痕,不硬失败(ADR-0021 失败语义)。"""
-    (tmp_path / "06_output").mkdir()
-    (tmp_path / "06_output" / "final_x_169.mp4").write_bytes(b"not a real video")
+    (tmp_path / "06_成片输出").mkdir()
+    (tmp_path / "06_成片输出" / "final_x_169.mp4").write_bytes(b"not a real video")
     monkeypatch.setattr(rs_sync, "run_qc",
                         lambda video, cfg=None: (_ for _ in ()).throw(
                             SystemExit(3)))          # 模拟 ffprobe 缺失 die()
@@ -335,8 +335,8 @@ def test_build_from_cards_end_to_end(tmp_path):
     """I7 验收:3 卡 + 3 段旁白最小工程,一条 build_from_cards 出 IR 且 validate 全绿;
     卡时间 = 停顿中点边界,字幕两字段写全。"""
     (tmp_path / "cards").mkdir()
-    (tmp_path / "06_output").mkdir()
-    (tmp_path / "06_output" / "subtitles.ass").write_text("[Script Info]", encoding="utf-8")
+    (tmp_path / "06_成片输出").mkdir()
+    (tmp_path / "06_成片输出" / "subtitles.ass").write_text("[Script Info]", encoding="utf-8")
     for i in (1, 2, 3):
         _gen(tmp_path / "cards" / f"c0{i}.mp4",
              ["-f", "lavfi", "-i", "testsrc2=s=160x90:r=30:d=1", "-c:v", "libx264",
@@ -358,7 +358,7 @@ def test_build_from_cards_end_to_end(tmp_path):
     assert len(clips) == 3
     assert clips[0]["durationMs"] == clips[0]["startMs"] + clips[1]["durationMs"] - clips[1]["startMs"] \
         or clips[1]["startMs"] == clips[0]["durationMs"], "卡首尾相接无缝"
-    assert doc["subtitle"]["ass"] == "06_output/subtitles.ass" and doc["subtitle"]["source"], \
+    assert doc["subtitle"]["ass"] == "06_成片输出/subtitles.ass" and doc["subtitle"]["source"], \
         "B4 教训:subtitle.ass 必须写全"
     assert doc["_meta"]["generatedFrom"] == "cards"
     # 卡路径写工程根相对(与 rs_artboard --apply 的归一化挂点匹配同口径)

@@ -1,0 +1,23 @@
+{
+ "id": "audio.downbeat",
+ "label": "强拍/弱拍网格(下拍)",
+ "appliesTo": [
+  "混剪"
+ ],
+ "stage": "S2",
+ "detector": "rs_beat.py",
+ "depends": [
+  "audio.downbeat"
+ ],
+ "degrade": {
+  "to": "beat-only",
+  "trace": "downbeatDegraded",
+  "message": "下拍组件(madmom)未部署,已降级为 beat-only:只给拍点网格不区分小节,downbeats 为空表"
+ },
+ "params": {
+  "meter": 4
+ },
+ "artifact": "cut/beats.json",
+ "verify": "tests/test_m8_infra.py",
+ "notes": "M8 落地(方案 §5.5.1)。--downbeat 显式请求;READY=madmom/beatnet 联合解码;降级 beat-only 时 downbeats=[]、meter=4 仅作假设留痕(tiers.downbeat)。与 audio.beat 共用 beats.json 产物(同文件分层留痕)。"
+}

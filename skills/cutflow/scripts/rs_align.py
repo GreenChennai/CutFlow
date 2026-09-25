@@ -1,15 +1,15 @@
 """S1 字级对齐:产出 wordline.json(全片时间的唯一真相源,ADR-0011)。
 
 用法:
-  rs_align.py build --from-transcript 02_sensed/transcript_corrected.json --out 05_ir/wordline.json
-  rs_align.py build --from-tts 03_assets/tts/manifest.json --out 05_ir/wordline.json
-  rs_align.py build --media 01_materials/a.mp4 --out 05_ir/wordline.json
-  rs_align.py build --media a.mp4 --hotwords "安信德 GEO优化" --out 05_ir/wordline.json
-  rs_align.py smooth 05_ir/wordline.json --out 05_ir/wordline.final.json
-  rs_align.py remap 05_ir/wordline.json --cutlist 04_cut/cutlist.json --out 05_ir/wordline.final.json
+  rs_align.py build --from-transcript 02_转写与校对/transcript_corrected.json --out 05_时间线工程/wordline.json
+  rs_align.py build --from-tts 03_创作素材/tts/manifest.json --out 05_时间线工程/wordline.json
+  rs_align.py build --media 01_原始素材/a.mp4 --out 05_时间线工程/wordline.json
+  rs_align.py build --media a.mp4 --hotwords "安信德 GEO优化" --out 05_时间线工程/wordline.json
+  rs_align.py smooth 05_时间线工程/wordline.json --out 05_时间线工程/wordline.final.json
+  rs_align.py remap 05_时间线工程/wordline.json --cutlist 04_粗剪决策/cutlist.json --out 05_时间线工程/wordline.final.json
   rs_align.py remap … --force-remap            # P29-1:越过 final 域防护(慎用)
-  rs_align.py prune-ghost 05_ir/wordline.final.json --cutlist 04_cut/cutlist.applied.json
-  rs_align.py refresh-durations 05_ir/wordline.final.json --media 01_materials/a.mp4
+  rs_align.py prune-ghost 05_时间线工程/wordline.final.json --cutlist 04_粗剪决策/cutlist.applied.json
+  rs_align.py refresh-durations 05_时间线工程/wordline.final.json --media 01_原始素材/a.mp4
 
 三条入口统一落到同一数据结构;取不到字级时间戳时降级为「句级均分」并**显式标注 degraded**。
 本模块同时导出 map_src_to_final():全部下游唯一允许的时间换算函数。
@@ -774,7 +774,7 @@ def main() -> int:
                          "透传自带 ASR(默认模型 paraformer-zh=SeACo,原生吃热词);"
                          "wordline.asr.hotwords 留痕")
     ap.add_argument("--terms-file", dest="terms_file", default=None,
-                    help="热词文件:每行一个词(# 注释;约定放 00_brief/terms.txt,"
+                    help="热词文件:每行一个词(# 注释;约定放 00_制作简报/terms.txt,"
                          "来源 brief.md 术语表;与 --hotwords 合并)")
     ap.add_argument("--calib-window", dest="calib_window", type=int,
                     default=DEFAULT_CALIB_WINDOW_MS,

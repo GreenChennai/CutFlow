@@ -11,16 +11,22 @@
   rs_run.py --plan --from S3         只打印将要执行的命令,不执行
   rs_run.py --force --from S3        强制重跑起点阶段;--force 必须搭配 --from/--only
   rs_run.py --auto                   无人值守(副文档 04·阶段四 N3):人工阶段自动执行/标记,
-                                     所有 CHECKS 转「自动决策 + 理由留痕」(05_ir/pipeline.json
-                                     的 decision_log);粗剪 review 刀保守保留;断句歧义取 DP
-                                     最优并留候选(segments_candidates.json);L1 目测降级为
-                                     抽帧留证(标注 L1 未人工确认);L0 硬闸不放松;L2 验收
-                                     始终归用户,auto 不代劳。
+                                     所有 CHECKS 转「自动决策 + 理由留痕」(05_时间线工程/
+                                     pipeline.json 的 decision_log);粗剪 review 刀保守保留;
+                                     断句歧义取 DP 最优并留候选(segments_candidates.json);
+                                     L1 目测降级为抽帧留证(标注 L1 未人工确认);L0 硬闸
+                                     不放松;L2 验收始终归用户,auto 不代劳。
 
 缓存键 = sha1(上游产物内容 hash + 本阶段消费的参数快照(paramKeys) + **本阶段脚本文件
 hash** + 外部服务版本)。粒度到 segment(见 rules/incremental.md §2)。
 状态与记账写盘为原子写(P15-1);CutForge 编辑器运行时(.cutforge/lock)自动只读降级
 并告警(O7-2);每个真正写盘的阶段跑前先备份(P13-1)。
+
+能力挂载(ADR-0047):每阶段跑完自有命令后,通用挂载器(run_stage_capabilities)读
+resolved.capabilities → 查 templates/capabilities/ 描述符 → 按 stage 执行/校验
+detector → 产物缺失或未部署按 degrade 降级留痕(_内部状态/capabilities_report.json
++ decision_log);degrade.to="none" 缺失则阻断。引擎只认识「阶段」与「能力」,
+永远不认识 videoType。
 """
 from __future__ import annotations
 
@@ -39,67 +45,89 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 from rs_common import COVER_PNG, RATIOS, emit  # noqa: E402
 from rs_subtitle import STYLES, load_platforms  # noqa: E402
+import rs_paths  # noqa: E402  — 阶段路径唯一真相源(ADR-0046),本文件禁止目录字面量
 import segmentation  # noqa: E402
 
 SCRIPTS_DIR = Path(__file__).resolve().parent
 CST = timezone(timedelta(hours=8))
-SKIP_DIRS = {"_state", ".git", "__pycache__"}
+# 遍历跳过:内部状态目录(新旧名)+ 环境目录。阶段目录绝不能整目录跳过 ——
+# 输入/产物 hash 要扫素材与产物(ADR-0046:名字一律查 rs_paths)。
+SKIP_DIRS = rs_paths.STATE_DIR_NAMES | {".git", "__pycache__"}
 
 ONLY = "only"
 FROM = "from"
 S13 = "all"
 
 
-def spec() -> list[dict]:
-    """S0–S11 阶段注册表(rules/incremental.md §2 / SKILL.md §1)。"""
+def spec(root: Path | None = None) -> list[dict]:
+    """S0–S11 阶段注册表(rules/incremental.md §2 / SKILL.md §1)。
+
+    路径一律经 rs_paths(ADR-0046):root 给定时按工程解析新旧目录名
+    (旧结构工程 resolve 兜底 → 注册表指向真实存在的目录);root=None 用新名
+    (rs_caps 能力目录等静态口径)。
+    """
+    if root is not None:
+        def d(key: str, *parts: str) -> str:
+            return rs_paths.rel(root, key, *parts)
+    else:
+        def d(key: str, *parts: str) -> str:
+            return "/".join((rs_paths.p(key), *parts))
     return [
         {"id": "S0", "name": "基础素材", "manual": True,
-         "inputs": ["00_brief/brief.md", "01_materials/*"],
-         "outputs": ["01_materials/manifest.json"], "scripts": ["rs_ingest.py"],
+         "inputs": [d("brief", "brief.md"), d("materials", "*")],
+         "outputs": [d("materials", "manifest.json")],
+         # rs_greenscreen 在册(ADR-0047):S0 的幕布检测逻辑在 rs_ingest 内联引用,
+         # 其脚本 hash 属于 S0 工具集(改检测规则须打脏 S0),也是能力
+         # vision.greenscreen 的 detector —— 挂载器据此识别为阶段自有,不重复执行。
+         "scripts": ["rs_ingest.py", "rs_greenscreen.py"],
          "cmd": ["rs_ingest.py", "scan", ".", "--slug", "{slug}"]},
         {"id": "S1", "name": "转写与字级对齐",
-         "inputs": ["01_materials/*"], "outputs": ["05_ir/wordline.json"],
+         "inputs": [d("materials", "*")], "outputs": [d("timeline", "wordline.json")],
          "scripts": ["rs_align.py"],
          "cmd": ["rs_align.py", "build", "--media", "{first_material}",
-                 "--out", "05_ir/wordline.json"],
-         "post": ["rs_align.py", "calibrate", "05_ir/wordline.json",
-                  "--media", "{first_material}", "--out", "05_ir/wordline.json"]},
+                 "--out", d("timeline", "wordline.json")],
+         "post": ["rs_align.py", "calibrate", d("timeline", "wordline.json"),
+                  "--media", "{first_material}", "--out", d("timeline", "wordline.json")]},
         {"id": "S2", "name": "粗剪处理",
-         "inputs": ["05_ir/wordline.json"], "outputs": ["04_cut/cutlist.json"],
+         "inputs": [d("timeline", "wordline.json")], "outputs": [d("cut", "cutlist.json")],
          "scripts": ["rs_cut.py"],
-         "cmd": ["rs_cut.py", "05_ir/wordline.json", "--detect", "all", "--out", "04_cut"]},
+         "cmd": ["rs_cut.py", d("timeline", "wordline.json"), "--detect", "all",
+                 "--out", d("cut")]},
         {"id": "S3", "name": "基础合成",
-         "inputs": ["04_cut/cutlist.applied.json", "05_ir/wordline.json"],
-         "outputs": ["05_ir/project.json"], "scripts": ["rs_ir.py", "rs_render.py"],
+         "inputs": [d("cut", "cutlist.applied.json"), d("timeline", "wordline.json")],
+         "outputs": [d("timeline", "project.json")], "scripts": ["rs_ir.py", "rs_render.py"],
          # 阶段四 N1:画幅进缓存键(brief.md「画幅:」声明即改参数源);{ratio} 缺省 9x16,
          # 未声明参数的旧工程命令与字面完全一致(零漂移)。
          "paramKeys": ["ratio"],
-         "cmd": ["rs_ir.py", "build", "--from-cutlist", "04_cut/cutlist.applied.json",
-                 "--slug", "{slug}", "--ratio", "{ratio}", "--out", "05_ir/project.json"]},
+         "cmd": ["rs_ir.py", "build", "--from-cutlist", d("cut", "cutlist.applied.json"),
+                 "--slug", "{slug}", "--ratio", "{ratio}",
+                 "--out", d("timeline", "project.json")]},
         {"id": "S4", "name": "动画/信息卡", "manual": True,
-         "inputs": ["05_ir/project.json"],
+         "inputs": [d("timeline", "project.json")],
          # P11-1:S4 的产物标记 = artboard manifest 经 `rs_artboard --apply` 写入的
-         # appliedAt(真实存在物)。不再声明 05_ir/project.json —— 那是 S3 的产物,
+         # appliedAt(真实存在物)。不再声明 timeline/project.json —— 那是 S3 的产物,
          # 曾让 S4 在 S3 跑完后被自动判 done,--mark S4 形同虚设。
          # 无卡片的工程跑 `rs_run --mark S4` 显式记录"无事可做"。
-         "outputs": ["03_assets/artboard/manifest.json"],
-         "marker": "03_assets/artboard/manifest.json:appliedAt",
+         "outputs": [d("assets", "artboard", "manifest.json")],
+         "marker": d("assets", "artboard", "manifest.json") + ":appliedAt",
          "scripts": []},
         {"id": "S5", "name": "品牌(Logo 变体)",
-         "inputs": ["05_ir/project.json", "05_ir/variants.json"],
+         "inputs": [d("timeline", "project.json"), d("timeline", "variants.json")],
          # BUGREPORT P10:rs_brand 实际产 `成片_<ratio>_<logo>_<profile>.mp4`,
          # 声明须与之一致;此前误写 final_*.mp4,与 S8 同 glob 互相打脏、--dirty 永不收敛。
-         # P10b-1:落 06_output/branded/ 独占子目录,从根上消除与 S8 的 glob 交叠。
-         "outputs": ["06_output/branded/成片_*.mp4"], "scripts": ["rs_brand.py"],
-         "cmd": ["rs_brand.py", "05_ir/project.json", "--variants", "05_ir/variants.json",
-                 "--out", "06_output/branded"]},
+         # P10b-1:落 成片输出/branded/ 独占子目录,从根上消除与 S8 的 glob 交叠。
+         "outputs": [d("output", "branded", "成片_*.mp4")], "scripts": ["rs_brand.py"],
+         "cmd": ["rs_brand.py", d("timeline", "project.json"), "--variants",
+                 d("timeline", "variants.json"), "--out", d("output", "branded")]},
         {"id": "S6", "name": "音效",
-         "inputs": ["05_ir/project.json"],
-         # BUGREPORT P10:命令落点是 05_ir/sfx_draft.json,声明必须同点。
-         "outputs": ["05_ir/sfx_draft.json"], "scripts": ["rs_sfx.py"],
-         "cmd": ["rs_sfx.py", "05_ir/project.json", "--auto", "--out", "05_ir/sfx_draft.json"]},
+         "inputs": [d("timeline", "project.json")],
+         # BUGREPORT P10:命令落点是 timeline/sfx_draft.json,声明必须同点。
+         "outputs": [d("timeline", "sfx_draft.json")], "scripts": ["rs_sfx.py"],
+         "cmd": ["rs_sfx.py", d("timeline", "project.json"), "--auto",
+                 "--out", d("timeline", "sfx_draft.json")]},
         {"id": "S7", "name": "字幕",
-         "inputs": ["05_ir/wordline.json"], "outputs": ["06_output/subtitles.ass"],
+         "inputs": [d("timeline", "wordline.json")],
+         "outputs": [d("output", "subtitles.ass")],
          "scripts": ["rs_subtitle.py", "textopt.py", "segmentation.py"],
         # P12-1:S7 消费的参数进缓存键,且经 {max_chars} 真正进入命令行 ——
         # 改 brief 里的每卡字数,字幕重跑产出的卡就真的不一样(不只是账面变脏)。
@@ -108,33 +136,37 @@ def spec() -> list[dict]:
         "paramKeys": ["maxChars", "cpsMax", "ratio"],
         "cmd": ["rs_subtitle.py", "--from-wordline", "{final_wordline}",
                 "--style", "{sub_style}", "--ratio", "{ratio}",
-                "--max-chars", "{max_chars}", "--out", "06_output"]},
+                "--max-chars", "{max_chars}", "--out", d("output")]},
         # S8 是"手改字幕"的落点:它**只用现有 ass 重新烧录导出**,不重新生成字幕。
         # 没有这一段,改完字幕的一键重建会把用户的修改冲掉(见 OPTIMIZATION-v5 §4.2)。
         {"id": "S8", "name": "烧录导出",
-         "inputs": ["06_output/subtitles.ass", "05_ir/project.json"],
-         # P10b-1:落 06_output/final/ 独占子目录(旧工程顶层遗留的 final_*.mp4 不追改,
+         "inputs": [d("output", "subtitles.ass"), d("timeline", "project.json")],
+         # P10b-1:落 成片输出/final/ 独占子目录(旧工程顶层遗留的 final_*.mp4 不追改,
          # rs_run 的 {final_video} 映射与 rs_cleanup 白名单两处都兼容新旧两落点)。
-        "outputs": ["06_output/final/final_*.mp4"],
+        "outputs": [d("output", "final", "final_*.mp4")],
         "scripts": ["rs_render.py"],
         # 阶段四 N1:画幅进缓存键({ratio} 缺省 9x16,旧行为零漂移)
         "paramKeys": ["ratio"],
-        "cmd": ["rs_render.py", "05_ir/project.json", "--ratio", "{ratio}",
+        "cmd": ["rs_render.py", d("timeline", "project.json"), "--ratio", "{ratio}",
                 "--profile", "final"]},
         {"id": "S9", "name": "自评与对齐断言",
-         "inputs": ["06_output/subtitles.ass"], "outputs": ["06_output/sync_report.md"],
+         "inputs": [d("output", "subtitles.ass")],
+         # sync_rows.json 在册(ADR-0047):能力 qc.black-frame 的产物落点进产物图,
+         # rs_sync 每次都写(report + rows 两件),纳入 outHash/缺失检测。
+         "outputs": [d("output", "sync_report.md"), d("output", "sync_rows.json")],
          "scripts": ["rs_sync.py"],
          "cmd": ["rs_sync.py", "--wordline", "{final_wordline}",
-                 "--ass", "06_output/subtitles.ass", "--out", "06_output",
+                 "--ass", d("output", "subtitles.ass"), "--out", d("output"),
                  "--video", "{final_video}", "--audio-content", "--qc"]},
         {"id": "S10", "name": "封面与文案",
-         "inputs": ["05_ir/wordline.json", "00_brief/brief.md"],
-         "outputs": ["06_output/metadata.json"], "scripts": ["rs_meta.py"],
-         "cmd": ["rs_meta.py", "--wordline", "05_ir/wordline.json",
-                 "--brief", "00_brief/brief.md", "--platform", "douyin,bili",
-                 "--out", "06_output"]},
+         "inputs": [d("timeline", "wordline.json"), d("brief", "brief.md")],
+         "outputs": [d("output", "metadata.json")], "scripts": ["rs_meta.py"],
+         "cmd": ["rs_meta.py", "--wordline", d("timeline", "wordline.json"),
+                 "--brief", d("brief", "brief.md"), "--platform", "douyin,bili",
+                 "--out", d("output")]},
         {"id": "S11", "name": "交付", "manual": True,
-         "inputs": ["06_output/metadata.json"], "outputs": ["06_output/deliverables.md"],
+         "inputs": [d("output", "metadata.json")],
+         "outputs": [d("output", "deliverables.md")],
          "scripts": []},
     ]
 
@@ -184,7 +216,7 @@ def key_of(parts: dict) -> str:
 # ---------------------------------------------------------------- 状态
 
 def state_path(root: Path, sid: str) -> Path:
-    return root / "_state" / f"{sid}.json"
+    return rs_paths.resolve(root, "state") / f"{sid}.json"
 
 
 def atomic_write_text(p: Path, text: str) -> None:
@@ -238,11 +270,11 @@ def write_state(root: Path, sid: str, doc: dict) -> str | None:
                   f"{sid} 状态未写盘,本次产物不进缓存账")
         print(f"[WARN] {reason}", file=sys.stderr)
         return reason
-    d = root / "_state"
+    d = rs_paths.resolve(root, "state")
     d.mkdir(parents=True, exist_ok=True)
     atomic_write_text(state_path(root, sid), json.dumps(doc, ensure_ascii=False, indent=1))
     stages = {}
-    for s in spec():
+    for s in spec(root):
         rec, prob = load_state(root, s["id"])
         stages[s["id"]] = rec if rec is not None else {"status": prob or "missing"}
     agg = {"version": 1, "slug": root.name,
@@ -253,9 +285,9 @@ def write_state(root: Path, sid: str, doc: dict) -> str | None:
            # 阶段四 N4:决策留痕(--auto 写入;write_state 全量重写聚合时原样保全,
            # 不清账 —— 账本只有 log_decision 一个写入口)
            "decision_log": load_decision_log(root)}
-    (root / "05_ir").mkdir(parents=True, exist_ok=True)
-    atomic_write_text(root / "05_ir" / "pipeline.json",
-                      json.dumps(agg, ensure_ascii=False, indent=1))
+    tl = rs_paths.resolve(root, "timeline")
+    tl.mkdir(parents=True, exist_ok=True)
+    atomic_write_text(tl / "pipeline.json", json.dumps(agg, ensure_ascii=False, indent=1))
     return None
 
 
@@ -263,7 +295,7 @@ def write_state(root: Path, sid: str, doc: dict) -> str | None:
 
 def load_decision_log(root: Path) -> list:
     """pipeline.json 的 decision_log(缺文件/坏 JSON → 空表,不阻塞主流程)。"""
-    p = root / "05_ir" / "pipeline.json"
+    p = rs_paths.pipeline_json(root)
     if not p.is_file():
         return []
     try:
@@ -277,12 +309,12 @@ def log_decision(root: Path, entry: dict) -> None:
     """追加/替换一条决策(按 id 幂等:同 id 重跑覆盖,不重复堆积)。
 
     entry 形如 {"id": "auto:S2:review-keep", "stage": "S2", "source": "auto",
-    "inferred": false, "what": …, "why": …};意图编译决策(00_brief/
+    "inferred": false, "what": …, "why": …};意图编译决策(00_制作简报/
     intent_decisions.json)的条目带 "id": "intent:<字段>"、source ∈ user/registry/
     default,原样并入。时间戳只记在运行时条目的 at;意图决策无 at —— 编译是纯函数,
     同输入字节级可复现(验收判据 3)。
     """
-    p = root / "05_ir" / "pipeline.json"
+    p = rs_paths.pipeline_json(root)
     log = load_decision_log(root)
     by_id = {d.get("id"): i for i, d in enumerate(log) if isinstance(d, dict) and d.get("id")}
     if entry.get("id") in by_id:
@@ -296,13 +328,13 @@ def log_decision(root: Path, entry: dict) -> None:
         except (json.JSONDecodeError, OSError, UnicodeDecodeError):
             doc = {}
     doc["decision_log"] = log
-    (root / "05_ir").mkdir(parents=True, exist_ok=True)
+    p.parent.mkdir(parents=True, exist_ok=True)
     atomic_write_text(p, json.dumps(doc, ensure_ascii=False, indent=1))
 
 
 def intent_decisions_of(root: Path) -> list:
-    """读 00_brief/intent_decisions.json(rs_intent compile 产物);坏文件返回空表。"""
-    p = root / "00_brief" / "intent_decisions.json"
+    """读 00_制作简报/intent_decisions.json(rs_intent compile 产物);坏文件返回空表。"""
+    p = rs_paths.resolve(root, "brief") / "intent_decisions.json"
     if not p.is_file():
         return []
     try:
@@ -321,6 +353,211 @@ def seed_intent_decisions(root: Path) -> int:
             log_decision(root, d)
             n += 1
     return n
+
+
+# ---------------------------------------------------------------- 能力挂载(ADR-0047)
+#
+# 可插拔能力注册表:类型(数据)──声明──► capabilities(数据)──► 能力描述符
+# (templates/capabilities/*.json,数据)──► 本挂载器按 stage 挂到阶段(引擎通用机制)。
+# 引擎只认识「阶段」与「能力」,类型只作为 registry 查表键存在,绝不进分支
+# (ADR-0018:禁止按类型字符串硬编码;tests/test_capabilities.py 门禁把守)。
+# 与 capabilities.json(能力目录:Agent 可调用的脚本/命令清单)是两个东西 —— 本目录
+# templates/capabilities/ 是「算法能力表」:引擎的算法能力声明,能力靠登记生效。
+
+# 能力描述符目录(templates/capabilities/);与 rs_intent.load_capability_descriptors 同源
+CAPS_DIR = SCRIPTS_DIR.parent / "templates" / "capabilities"
+
+
+def load_capability_descriptors() -> dict[str, dict]:
+    """算法能力注册表:templates/capabilities/*.json,每能力一文件。
+
+    坏文件(坏 JSON / 缺 id / id 重复)WARN 跳过,绝不崩主流程;`_` 前缀文件是
+    体例样板,不进注册表。rs_intent 从本加载器 import(单一真相源)。
+    """
+    out: dict[str, dict] = {}
+    if not CAPS_DIR.is_dir():
+        return out
+    for f in sorted(CAPS_DIR.glob("*.json")):
+        if f.name.startswith("_"):
+            continue
+        try:
+            desc = json.loads(f.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError, UnicodeDecodeError) as exc:
+            print(f"[WARN] 能力描述符 {f.name} 解析失败,已跳过:{exc}", file=sys.stderr)
+            continue
+        cid = desc.get("id") if isinstance(desc, dict) else None
+        if not cid:
+            print(f"[WARN] 能力描述符 {f.name} 缺 id,已跳过", file=sys.stderr)
+            continue
+        if str(cid) in out:
+            print(f"[WARN] 能力描述符 id 重复:{cid}({f.name}),后者已跳过", file=sys.stderr)
+            continue
+        out[str(cid)] = desc
+    return out
+
+
+def registry_video_types() -> dict:
+    """registry 的 videoTypes(经 rs_intent 单一真相源;rs_intent 顶层 import 本模块,
+    故此处只能函数内懒加载防循环)。registry 不可读 → 空表,兜底退化为「无能力」,不崩。"""
+    try:
+        from rs_intent import load_registry  # noqa: PLC0415 — 懒加载防循环导入
+        return load_registry().get("videoTypes") or {}
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError, ImportError) as exc:
+        print(f"[WARN] registry.json 不可读,能力兜底退化为空:{exc}", file=sys.stderr)
+        return {}
+
+
+def intent_resolved_of(root: Path) -> dict:
+    """intent_decisions.json 的 resolved(缺失/坏文件 → 空表)。"""
+    p = rs_paths.resolve(root, "brief") / "intent_decisions.json"
+    if not p.is_file():
+        return {}
+    try:
+        doc = json.loads(p.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError):
+        return {}
+    if not isinstance(doc, dict):
+        return {}
+    return doc.get("resolved") if isinstance(doc.get("resolved"), dict) else {}
+
+
+def resolved_capabilities(root: Path) -> tuple[list[str], list[str]]:
+    """本工程声明的能力列表(挂载器入口)。
+
+    优先 intent_decisions.json 的 resolved.capabilities(rs_intent compile 产物);
+    缺失(旧工程)→ 按 registry 的 videoTypes.<videoType>.capabilities 兜底 +
+    WARN capabilitiesMissing(ADR-0047 四问口径:旧工程行为不变)。
+    返回 (能力 id 列表, 告警列表)。
+    """
+    resolved = intent_resolved_of(root)
+    if isinstance(resolved.get("capabilities"), list):
+        return [str(c) for c in resolved["capabilities"]], []
+    vts = registry_video_types()
+    meta = vts.get(str(resolved.get("videoType") or "")) or {}
+    caps = [str(c) for c in meta.get("capabilities") or []]
+    return caps, ["capabilitiesMissing"]
+
+
+def capabilities_for_stage(root: Path, st: dict) -> list[dict]:
+    """解析出挂载在阶段 st 上的能力描述符(按声明顺序;无描述符的能力 WARN 跳过)。"""
+    caps, warns = resolved_capabilities(root)
+    for w in warns:
+        print(f"[WARN] {w}:工程缺 resolved.capabilities(旧工程),按 registry 兜底",
+              file=sys.stderr)
+    descs = load_capability_descriptors()
+    out: list[dict] = []
+    for cid in caps:
+        desc = descs.get(cid)
+        if desc is None:
+            print(f"[WARN] 能力 {cid} 无描述符,无法挂载(先在 templates/capabilities/ 登记)",
+                  file=sys.stderr)
+            continue
+        if desc.get("stage") == st["id"]:
+            out.append(desc)
+    return out
+
+
+def capability_artifact_path(root: Path, artifact: str) -> Path | None:
+    """描述符 artifact(「rs_paths 逻辑键/子路径」)→ 工程内绝对路径;逻辑键不合法 → None。"""
+    key, _, rest = str(artifact).partition("/")
+    if key not in rs_paths.STAGE_DIRS or not rest:
+        return None
+    return rs_paths.resolve(root, key) / rest
+
+
+def capabilities_report_path(root: Path) -> Path:
+    """_内部状态/capabilities_report.json(能力挂载留痕账,按阶段覆盖)。"""
+    return rs_paths.resolve(root, "state") / "capabilities_report.json"
+
+
+def record_capability_report(root: Path, sid: str, entries: list[dict]) -> None:
+    """把本阶段能力挂载结果并入留痕账(原子写;坏旧账直接重建,不崩)。"""
+    p = capabilities_report_path(root)
+    doc: dict = {}
+    if p.is_file():
+        try:
+            loaded = json.loads(p.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict) and isinstance(loaded.get("stages"), dict):
+                doc = loaded
+        except (json.JSONDecodeError, OSError, UnicodeDecodeError):
+            pass
+    stages = doc.setdefault("stages", {})
+    stages[sid] = entries
+    doc["version"] = 1
+    doc["updatedAt"] = datetime.now(CST).isoformat(timespec="seconds")
+    p.parent.mkdir(parents=True, exist_ok=True)
+    atomic_write_text(p, json.dumps(doc, ensure_ascii=False, indent=1))
+
+
+def run_stage_capabilities(root: Path, st: dict, info: dict | None = None) -> tuple[bool, str]:
+    """通用能力挂载器(ADR-0047 §5.2):阶段跑完自家命令后,挂载声明在该阶段的能力。
+
+    流程:读 resolved.capabilities → 查描述符 → 按 stage 执行 detector →
+    校验 artifact 存在 → 缺失/未部署按 degrade 降级并留痕。
+      · detector 文件不存在 = 能力未部署:走降级,不崩;degrade.to=="none" → 阻断;
+      · detector 已是本阶段自有脚本(st["scripts"])时不重复执行,只校验产物 ——
+        已登记的三条能力(greenscreen/dead-air/black-frame)都属此类;M8/M9 的
+        算法能力(rs_beat/rs_shot 等)落地时随脚本与描述符一起登记,走执行分支;
+      · 降级留痕:_内部状态/capabilities_report.json 逐条 {degraded:true, trace,
+        message},并进 pipeline.json 的 decision_log(id 幂等,重跑覆盖);
+      · 返回 (False, msg) = 有不可降级能力缺失,阶段按失败处置(非零退出)。
+    """
+    if info is None:
+        info = {}
+    descs = capabilities_for_stage(root, st)
+    if not descs:
+        return True, ""
+    entries: list[dict] = []
+    blocked: list[str] = []
+    for desc in descs:
+        cid = str(desc.get("id"))
+        degrade = desc.get("degrade") or {}
+        trace = str(degrade.get("trace") or "capabilityDegraded")
+        message = str(degrade.get("message") or "")
+        art_rel = str(desc.get("artifact") or "")
+        art = capability_artifact_path(root, art_rel)
+        entry: dict = {"id": cid, "stage": st["id"], "artifact": art_rel}
+        # ① detector 未部署/执行失败;② 产物校验(缺一即按 degrade 处置)
+        reason = ""
+        detector = SCRIPTS_DIR / str(desc.get("detector") or "")
+        if not detector.is_file():
+            reason = f"detector 未部署:{desc.get('detector')}"
+        elif str(desc.get("detector")) not in (st.get("scripts") or []):
+            # 阶段外置 detector:通用执行(M8/M9 算法能力的挂载路径)
+            p, terr = _run_subprocess([sys.executable, str(detector)], root, st)
+            if terr:
+                reason = f"detector 执行超时:{terr[-160:]}"
+            elif p is not None and p.returncode != 0:
+                reason = (f"detector 执行失败(exit {p.returncode}):"
+                          f"{(p.stderr or p.stdout or '')[-160:]}")
+        if not reason and (art is None or not art.is_file()):
+            reason = "产物缺失:" + art_rel if art_rel else "产物缺失(artifact 配置非法)"
+        if reason:
+            if degrade.get("to") == "none":
+                entry.update({"status": "blocked", "degraded": True, "trace": trace,
+                              "message": message or reason, "reason": reason})
+                blocked.append(f"{cid}({reason})")
+            else:
+                entry.update({"status": "degraded", "degraded": True, "trace": trace,
+                              "message": message or reason, "reason": reason,
+                              "degradeTo": degrade.get("to")})
+                log_decision(root, {"id": f"cap:{st['id']}:{cid}", "stage": st["id"],
+                                    "source": "auto", "inferred": False,
+                                    "what": f"能力 {cid} 降级:{reason}",
+                                    "why": message, "trace": trace,
+                                    "at": datetime.now(CST).isoformat(timespec="seconds")})
+        else:
+            entry.update({"status": "ok", "degraded": False})
+        entries.append(entry)
+    record_capability_report(root, st["id"], entries)
+    info["capabilities"] = entries
+    if blocked:
+        return False, f"{st['id']} 能力阻断(不可降级):{';'.join(blocked)}"
+    n_deg = sum(1 for e in entries if e.get("degraded"))
+    if n_deg:
+        return True, (f"能力降级 {n_deg} 条(留痕:{rs_paths.p('state')}/"
+                      "capabilities_report.json)")
+    return True, ""
 
 
 def auto_decision(sid: str, kind: str, what: str, why: str, **extra) -> dict:
@@ -363,7 +600,7 @@ def default_params() -> dict:
 
 def brief_params(root: Path) -> dict:
     """brief.md 里显式声明的参数(仅声明了的键):maxChars / cpsMax / ratio / platform。"""
-    p = root / "00_brief" / "brief.md"
+    p = rs_paths.brief_md(root)
     if not p.is_file():
         return {}
     try:
@@ -389,7 +626,7 @@ def params_of(root: Path) -> dict:
     落账由 write_state 完成:首次运行回填一次,此后改 brief 里的参数即改快照。
     """
     stored: dict | None = None
-    p = root / "05_ir" / "pipeline.json"
+    p = rs_paths.pipeline_json(root)
     if p.is_file():
         try:
             v = json.loads(p.read_text(encoding="utf-8")).get("params")
@@ -425,7 +662,7 @@ def manual_marker_ok(root: Path, st: dict) -> bool:
     """P11-1:人工阶段的「真实产物标记」。
 
     显式 marker 形如 `"路径:JSON键"`(JSON 键支持点号下钻),如 S4 的
-    `03_assets/artboard/manifest.json:appliedAt`;未声明 marker 的人工阶段
+    `03_创作素材/artboard/manifest.json:appliedAt`;未声明 marker 的人工阶段
     (S0/S11)退回 outputs 存在性 —— 它们声明的产物本来就是本阶段的真实产物。
     """
     marker = st.get("marker")
@@ -454,7 +691,7 @@ def evaluate(root: Path, st: dict) -> dict:
     if problem == "corrupt":
         # P15-1:状态文件损坏 ≠ 从未运行 —— 显式告警,按 missing 处理重跑但留痕
         return {"status": "corrupt",
-                "staleReason": [f"状态文件损坏(_state/{st['id']}.json 无法解析,按缺失重跑)"],
+                "staleReason": [f"状态文件损坏({rs_paths.p('state')}/{st['id']}.json 无法解析,按缺失重跑)"],
                 "outs": len(expand(root, st["outputs"]))}
     outs = expand(root, st["outputs"])
     # P25-1:failed 是真实状态(incremental.md §2 从文档承诺变成实现):
@@ -536,7 +773,7 @@ def editor_session_summary(root: Path) -> dict | None:
 
 def cmd_status(root: Path) -> int:
     lines, data = [], []
-    evals = [(st, evaluate(root, st)) for st in spec()]
+    evals = [(st, evaluate(root, st)) for st in spec(root)]
     ids = [st["id"] for st, _ in evals]
     failed_ids = [st["id"] for st, r in evals if r["status"] == "failed"]
     for st, r in evals:
@@ -573,7 +810,7 @@ def cmd_status(root: Path) -> int:
 
 
 def cmd_explain(root: Path, sid: str) -> int:
-    st = next((s for s in spec() if s["id"] == sid), None)
+    st = next((s for s in spec(root) if s["id"] == sid), None)
     if not st:
         return emit(False, "BAD_STAGE", f"未知阶段:{sid}", exit_code=2)
     r = evaluate(root, st)
@@ -588,7 +825,7 @@ BACKUP_KEEP = 5
 
 
 def backup_paths(root: Path, st: dict, errors: list[str] | None = None) -> Path | None:
-    """把该阶段将覆盖的产物备份到 _state/backup/<时间戳>/(手改成果的唯一保险)。
+    """把该阶段将覆盖的产物备份到 _内部状态/backup/<时间戳>/(手改成果的唯一保险)。
 
     P13-2:备份与旧备份清理失败不再被 ignore_errors 掩盖 —— 失败项收进 errors
     由调用方上报;errors=None 时直接抛出(严格调用方)。
@@ -597,7 +834,7 @@ def backup_paths(root: Path, st: dict, errors: list[str] | None = None) -> Path 
     if not files:
         return None
     ts = datetime.now(CST).strftime("%Y%m%d-%H%M%S")
-    dest = root / "_state" / "backup" / ts
+    dest = rs_paths.backup_dir(root, ts)
     for f in files:
         rel = f.relative_to(root)
         tgt = dest / rel
@@ -611,7 +848,7 @@ def backup_paths(root: Path, st: dict, errors: list[str] | None = None) -> Path 
 
 
 def _prune_backups(root: Path, errors: list[str] | None = None) -> None:
-    bdir = root / "_state" / "backup"
+    bdir = rs_paths.backup_dir(root)
     if not bdir.is_dir():
         return
     items = sorted([d for d in bdir.iterdir() if d.is_dir()], key=lambda d: d.name)
@@ -622,11 +859,11 @@ def _prune_backups(root: Path, errors: list[str] | None = None) -> None:
             # P13-2:删除失败如实上报,不再 ignore_errors=True 静默吞掉
             if errors is None:
                 raise
-            errors.append(f"_state/backup/{old.name}: {exc}")
+            errors.append(f"{rs_paths.p('state')}/backup/{old.name}: {exc}")
 
 
 def rollback(root: Path, at: str = "") -> tuple[bool, str]:
-    bdir = root / "_state" / "backup"
+    bdir = rs_paths.backup_dir(root)
     if not bdir.is_dir():
         return False, "没有可用的备份"
     items = sorted([d for d in bdir.iterdir() if d.is_dir()], key=lambda d: d.name)
@@ -649,7 +886,7 @@ def rollback(root: Path, at: str = "") -> tuple[bool, str]:
 REBUILD_TMPL = '''"""一键重建 —— {label}
 
 改完 `{folder}/` 里的东西后运行本脚本。它会:
-  1) 备份将被覆盖的产物到 _state/backup/
+  1) 备份将被覆盖的产物到 {state}/backup/
   2) 从 {sid} 级联重跑(上游命中缓存,所以很快)
   3) 跑完输出成片 + 自检报告
 
@@ -667,22 +904,24 @@ sys.exit(subprocess.run(
     cwd=str(ROOT)).returncode)
 '''
 
-# B8(BUGREPORT-20260913):05_ir 的级联起点是 S3 —— 会重新生成 project.json,
+# B8(BUGREPORT-20260913):timeline 的级联起点是 S3 —— 会重新生成 project.json,
 # 手注的单 clip 音频/转场修正全被冲掉。必须在脚本头部写明正确出路。
+# 文案里的 {cut}/{timeline}/{output} 由 init_rebuild 按工程解析后填入(旧结构工程出旧名)。
 REBUILD_EXTRA_NOTES = {
-    "04_cut": """⚠ 例外:若你只改了 cuts[].action(删/留决策),不要跑本脚本 ——
+    "cut": """⚠ 例外:若你只改了 cuts[].action(删/留决策),不要跑本脚本 ——
    S2 会从 wordline 重新 detect 并**重写 cutlist.json**,把触发重建的那次编辑冲掉。
-   正确做法:`python <scripts>/rs_cut.py --apply 04_cut/cutlist.json`(只重算 keep/removedMs)。
+   正确做法:`python <scripts>/rs_cut.py --apply {cut}/cutlist.json`(只重算 keep/removedMs)。
    CutForge 侧的编辑同理:cut_apply 已服务端重算 keep,无需重跑 S2。""",
-    "05_ir": """⚠ 例外:若你**手改过 05_ir/project.json**(手注单 clip 音频/
+    "timeline": """⚠ 例外:若你**手改过 {timeline}/project.json**(手注单 clip 音频/
    转场修正等),不要跑本脚本 —— S3 会重新生成 IR 把手注冲掉。
-   正确做法:改跑 `06_output/rebuild.py`(S8:只用现有 ass 重烧录导出,不碰 IR)。
+   正确做法:改跑 `{output}/rebuild.py`(S8:只用现有 ass 重烧录导出,不碰 IR)。
    (rs_ir build 也会检测手注痕迹并拒绝覆盖,除非显式 --force。)""",
 }
 
-INIT_MAP = [("04_cut", "S2", "粗剪决策(CutList)"), ("05_ir", "S3", "IR / Wordline"),
-            ("03_assets/artboard", "S4", "artboard 卡片"),
-            ("06_output", "S8", "字幕(改完只重烧录导出,不重新生成字幕)")]
+# (逻辑键, 子路径, 阶段, 标签) —— 目录名经 rs_paths 按工程解析(ADR-0046)
+INIT_MAP = [("cut", "", "S2", "粗剪决策(CutList)"), ("timeline", "", "S3", "IR / Wordline"),
+            ("assets", "artboard", "S4", "artboard 卡片"),
+            ("output", "", "S8", "字幕(改完只重烧录导出,不重新生成字幕)")]
 
 
 ARTBOARD_REBUILD_TMPL = '''"""一键重建 —— artboard 卡片
@@ -698,7 +937,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS = Path(r"{scripts}")
-MANIFEST = ROOT / "03_assets" / "artboard" / "manifest.json"
+MANIFEST = ROOT / {assets_dir} / "artboard" / "manifest.json"
 
 
 def run(*args):
@@ -709,41 +948,50 @@ def run(*args):
 
 if not MANIFEST.is_file():
     run(SCRIPTS / "rs_artboard.py", "--root", ROOT, "--scan",
-        ROOT / "03_assets" / "artboard", "--out", MANIFEST)
+        ROOT / {assets_dir} / "artboard", "--out", MANIFEST)
 run(SCRIPTS / "rs_artboard.py", "--root", ROOT, MANIFEST, "--export")
 run(SCRIPTS / "rs_artboard.py", "--root", ROOT, MANIFEST, "--apply",
-    ROOT / "05_ir" / "project.json")
+    ROOT / {timeline_dir} / "project.json")
 run(SCRIPTS / "rs_run.py", "--root", ROOT, "--from", "S4", "--force")
 '''
 
 
 def init_rebuild(root: Path) -> list[str]:
-    """在每个阶段文件夹里放一个 rebuild.py(薄壳),用户只需知道"改哪点哪"。"""
+    """在每个阶段文件夹里放一个 rebuild.py(薄壳),用户只需知道"改哪点哪"。
+
+    目录名经 rs_paths 按工程解析(ADR-0046):旧结构工程把脚本种进旧目录、
+    模板里也回填旧相对路径,保证生成的脚本在该工程上可直接运行。
+    """
     runner = Path(__file__).resolve()
     made = []
-    for folder, sid, label in INIT_MAP:
-        d = root / folder
-        if not d.is_dir() and folder != "06_output":
+    names = {k: rs_paths.resolve_name(root, k) for k in ("brief", "materials", "assets",
+                                                         "cut", "timeline", "output", "state")}
+    fmt = {"cut": names["cut"], "timeline": names["timeline"], "output": names["output"]}
+    for key, sub, sid, label in INIT_MAP:
+        d = rs_paths.resolve(root, key) / sub
+        if not d.is_dir() and key != "output":
             continue
         d.mkdir(parents=True, exist_ok=True)
-        if folder == "03_assets/artboard":
-            body = ARTBOARD_REBUILD_TMPL.format(scripts=SCRIPTS_DIR)
+        if key == "assets" and sub == "artboard":
+            body = ARTBOARD_REBUILD_TMPL.format(scripts=SCRIPTS_DIR,
+                                                assets_dir=repr(names["assets"]),
+                                                timeline_dir=repr(names["timeline"]))
         else:
-            body = REBUILD_TMPL.format(label=label, folder=folder, sid=sid, runner=str(runner),
-                                       depth=1,
-                                       extra_note=REBUILD_EXTRA_NOTES.get(folder, ""))
+            body = REBUILD_TMPL.format(label=label, folder=d.name, sid=sid, runner=str(runner),
+                                       depth=1, state=names["state"],
+                                       extra_note=REBUILD_EXTRA_NOTES.get(key, "").format(**fmt))
         atomic_write_text(d / "rebuild.py", body)
-        made.append(f"{folder}/rebuild.py")
+        made.append(f"{d.relative_to(root).as_posix()}/rebuild.py")
     body = REBUILD_TMPL.format(label="全量重建", folder="工程根", sid="S0", runner=str(runner),
-                               depth=0, extra_note="")
+                               depth=0, extra_note="", state=names["state"])
     atomic_write_text(root / "rebuild.py", body)
     made.append("rebuild.py")
     readme = ["# 改了东西怎么办?", "",
               "| 你改了什么 | 运行哪个脚本 |", "|---|---|",
-              "| 字幕(06_output/subtitles.ass) | `python 06_output/rebuild.py` |",
-              "| IR 或 wordline(05_ir/) | `python 05_ir/rebuild.py` |",
-              "| 粗剪决策 action 改动(04_cut/cutlist.json) | `python <scripts>/rs_cut.py --apply 04_cut/cutlist.json`(重算 keep;**不要**重跑 S2 detect——会冲掉 action 编辑) |",
-              "| artboard 卡片(03_assets/artboard/) | `python 03_assets/artboard/rebuild.py` |",
+              f"| 字幕({fmt['output']}/subtitles.ass) | `python {fmt['output']}/rebuild.py` |",
+              f"| IR 或 wordline({fmt['timeline']}/) | `python {fmt['timeline']}/rebuild.py` |",
+              f"| 粗剪决策 action 改动({fmt['cut']}/cutlist.json) | `python <scripts>/rs_cut.py --apply {fmt['cut']}/cutlist.json`(重算 keep;**不要**重跑 S2 detect——会冲掉 action 编辑) |",
+              f"| artboard 卡片({names['assets']}/artboard/) | `python {names['assets']}/artboard/rebuild.py` |",
               "| 拿不准 | `python rebuild.py`(全量) |", "",
               "每个脚本都会**先备份**再重跑,跑砸了可以 `--rollback` 还原。"]
     atomic_write_text(root / "REBUILD.md", "\n".join(readme) + "\n")
@@ -769,7 +1017,7 @@ def run_verify(root: Path, level: str) -> tuple[bool, str, dict]:
 
 def verify_policy(root: Path) -> tuple[str, str]:
     """返回 (该跑的级别, 原因)。"""
-    vp = root / "_state" / "verify.json"
+    vp = rs_paths.verify_json(root)
     first_done = False
     if vp.is_file():
         try:
@@ -784,7 +1032,7 @@ def verify_policy(root: Path) -> tuple[str, str]:
     for sid in ("S3", "S4", "S5"):
         if read_state(root, sid) is None:
             continue
-        st = next(s for s in spec() if s["id"] == sid)
+        st = next(s for s in spec(root) if s["id"] == sid)
         if evaluate(root, st)["status"] != "done":
             changed.append(sid)
     if changed:
@@ -830,7 +1078,7 @@ def _record_failed(root: Path, st: dict, msg: str, info: dict) -> None:
     if skip:
         info["stateSkipped"] = skip
 
-# S1 的 --media 候选:可抽音频的容器。01_materials 里还躺着 manifest.json/MANIFEST.md(S0 产物)
+# S1 的 --media 候选:可抽音频的容器。01_原始素材 里还躺着 manifest.json/MANIFEST.md(S0 产物)
 # 与图片素材,且 Windows 下 Path 排序大小写不敏感(manifest.json 会排在 MANIFEST.md 之前),
 # 不过滤会把 manifest 喂给 ffmpeg(v0.10 店群工程实测 S1 必崩)。
 ASR_MEDIA_EXTS = {".mp4", ".mov", ".mkv", ".avi", ".webm", ".m4v", ".ts", ".flv",
@@ -842,13 +1090,10 @@ def pick_asr_media(mats: list[Path]) -> Path | None:
 
 
 def _final_videos(root: Path) -> list[Path]:
-    """S8 成片池:P10b-1 起新账落 06_output/final/;旧工程顶层遗留的 final_*.mp4
+    """S8 成片池:P10b-1 起新账落 成片输出/final/;旧工程顶层遗留的 final_*.mp4
     不追改历史,兼容读取。按 mtime 取「最新成片」—— 变体名(final_*_916_logoA.mp4)
     字典序与产出顺序无关,按名取会把 Logo 变体误当最新主成片。"""
-    out: list[Path] = []
-    for pat in ("06_output/final/final_*.mp4", "06_output/final_*.mp4"):
-        out.extend(root.glob(pat))
-    return sorted(out, key=lambda p: p.stat().st_mtime)
+    return rs_paths.final_videos(root)
 
 
 def _max_chars_for(root: Path) -> int:
@@ -882,19 +1127,20 @@ def _sub_style_and_ratio(root: Path) -> tuple[str, str]:
 
 def _token_mapping(root: Path) -> dict:
     """st["cmd"] 占位符 → 实际值(build_cmd / build_cmd_from_argv 共用,防两份漂移)。"""
-    mats = expand(root, ["01_materials/*"])
+    mats = expand(root, [rs_paths.rel(root, "materials", "*")])
     media = pick_asr_media(mats)
     finals = _final_videos(root)
     # S9 对账必须用**成片空间**的 wordline(remap 产物,rs_verify 同一约定);
     # wordline.json 始终是源空间 —— 拿它对账时长必然差一个粗剪裁剪量。
-    fw = root / "05_ir" / "wordline.final.json"
-    final_wl = str(fw.relative_to(root)) if fw.is_file() else "05_ir/wordline.json"
+    fw = rs_paths.resolve(root, "timeline") / "wordline.final.json"
+    final_wl = str(fw.relative_to(root)) if fw.is_file() else rs_paths.rel(root, "timeline", "wordline.json")
     sub_style, ratio = _sub_style_and_ratio(root)
-    return {"{first_material}": str(media.relative_to(root)) if media else "01_materials/",
+    return {"{first_material}": str(media.relative_to(root)) if media
+            else rs_paths.rel(root, "materials") + "/",
             "{slug}": root.name,
             "{final_wordline}": final_wl,
             "{final_video}": str(finals[-1].relative_to(root)) if finals
-            else "06_output/final/final_latest.mp4",
+            else rs_paths.rel(root, "output", "final", "final_latest.mp4"),
             "{max_chars}": str(_max_chars_for(root)),
             "{sub_style}": sub_style,
             "{ratio}": ratio}
@@ -974,10 +1220,18 @@ def run_stage(root: Path, st: dict, info: dict | None = None) -> tuple[bool, str
                 msg = f"{st['id']} post 步骤失败:{(pp.stderr or pp.stdout or '')[-300:]}"
                 _record_failed(root, st, msg, info)
                 return False, msg
+    # ADR-0047:阶段自有命令成功后,通用挂载器挂载声明在该阶段的能力
+    # (detector 执行/产物校验/降级留痕;degrade.to=none 缺失 → 阶段失败)
+    ok_caps, caps_msg = run_stage_capabilities(root, st, info)
+    if not ok_caps:
+        _record_failed(root, st, caps_msg, info)
+        return False, caps_msg
     skip = record_stage_done(root, st)
     if skip:
         info["stateSkipped"] = skip
         return True, f"{st['id']} ✓ {st['name']}(⚠ 状态未写盘:只读降级)"
+    if caps_msg:
+        return True, f"{st['id']} ✓ {st['name']}(⚠ {caps_msg})"
     return True, f"{st['id']} ✓ {st['name']}"
 
 
@@ -986,11 +1240,15 @@ def run_stage(root: Path, st: dict, info: dict | None = None) -> tuple[bool, str
 # --auto 的 S2 后置:保守落盘(全部复用既有命令,不改 rs_cut/rs_align 逻辑)
 #   ① --apply:review 刀一律保留(宁可漏删),keep 重算 + 时长账同步(P27-1);
 #   ② remap:粗剪后出成片空间 wordline.final.json(S7 出字幕 / S9 对账同一约定)。
-AUTO_S2_POSTS = [
-    ["rs_cut.py", "--apply", "04_cut/cutlist.json"],
-    ["rs_align.py", "remap", "05_ir/wordline.json", "--cutlist", "04_cut/cutlist.applied.json",
-     "--out", "05_ir/wordline.final.json"],
-]
+# 路径经 rs_paths 按工程解析(ADR-0046)。
+def _auto_s2_posts(root: Path) -> list[list[str]]:
+    cut = rs_paths.resolve_name(root, "cut")
+    tl = rs_paths.resolve_name(root, "timeline")
+    return [
+        ["rs_cut.py", "--apply", f"{cut}/cutlist.json"],
+        ["rs_align.py", "remap", f"{tl}/wordline.json", "--cutlist", f"{cut}/cutlist.applied.json",
+         "--out", f"{tl}/wordline.final.json"],
+    ]
 
 
 def run_auto_s2_posts(root: Path, st: dict, info: dict) -> tuple[bool, str]:
@@ -1000,14 +1258,14 @@ def run_auto_s2_posts(root: Path, st: dict, info: dict) -> tuple[bool, str]:
     必须重落一次 S2 的账(record_stage_done),否则重跑永远不收敛。
     """
     review_n = 0
-    cl_path = root / "04_cut" / "cutlist.json"
+    cl_path = rs_paths.resolve(root, "cut") / "cutlist.json"
     if cl_path.is_file():
         try:
             cl = json.loads(cl_path.read_text(encoding="utf-8"))
             review_n = sum(1 for c in cl.get("cuts", []) if c.get("action") == "review")
         except (json.JSONDecodeError, OSError, UnicodeDecodeError):
             pass
-    for argv in AUTO_S2_POSTS:
+    for argv in _auto_s2_posts(root):
         cmd = build_cmd_from_argv(root, argv)
         if cmd is None:
             return False, f"{st['id']} auto 后置命令构建失败:{argv[0]}"
@@ -1040,7 +1298,7 @@ def refresh_stage_outhash(root: Path, sid: str, kind: str, why: str) -> None:
     rec = read_state(root, sid)
     if rec is None or rec.get("status") != "done":
         return
-    st = next(s for s in spec() if s["id"] == sid)
+    st = next(s for s in spec(root) if s["id"] == sid)
     parts = stage_parts(root, st, params_of(root), external_versions())
     new_key, new_hash = key_of(parts), outputs_hash(root, st)
     if rec.get("key") == new_key and rec.get("outHash") == new_hash:
@@ -1054,30 +1312,33 @@ def run_manual_auto(root: Path, st: dict, info: dict | None = None) -> tuple[boo
     """--auto:人工阶段(S0/S4/S11)的自动处置,决策全部留痕。
 
     S0  注册 cmd 是机械命令(素材摄取)→ 照常执行,不问人;
-    S4  无卡片计划(00_brief/cards.json 缺)→ 标记「无事可做」;有计划 → 走
+    S4  无卡片计划(00_制作简报/cards.json 缺)→ 标记「无事可做」;有计划 → 走
         artboard 三连(gen-cards --force / --export / --apply,与卡片 rebuild 同链),
         文案内容是 Agent 语义产物,--auto 不生成、只保证模板/导出/安全区;
-    S11 跑交付对账并生成决策说明书(06_output/决策说明书.md);缺项凡属 Agent 语义
+    S11 跑交付对账并生成决策说明书(成片输出/决策说明书.md);缺项凡属 Agent 语义
         产物(封面/占位文案)如实留痕不代劳,其余缺项 = 失败(成片/字幕等早已失败)。
     """
     if info is None:
         info = {}
     sid = st["id"]
-    if sid == "S4" and not (root / "00_brief" / "cards.json").is_file():
+    if sid == "S4" and not (rs_paths.resolve(root, "brief") / "cards.json").is_file():
         skip = record_stage_done(root, st)
         write_rec = read_state(root, sid) or {}
         write_rec["manual"] = True
         if not skip:
             atomic_write_text(state_path(root, sid), json.dumps(write_rec, ensure_ascii=False, indent=1))
-        msg = "S4 无卡片计划(00_brief/cards.json 不存在),--auto 标记无事可做"
+        msg = (f"S4 无卡片计划({rs_paths.p('brief')}/cards.json 不存在),"
+               "--auto 标记无事可做")
         log_decision(root, auto_decision(sid, "no-cards", msg,
                                          "卡片文案是 Agent 语义产物,--auto 不代劳"))
         return True, msg
     if sid == "S4":
-        chain = [["rs_artboard.py", "gen-cards", "--from", "00_brief/cards.json", "--force"],
-                 ["rs_artboard.py", "03_assets/artboard/manifest.json", "--export"],
-                 ["rs_artboard.py", "03_assets/artboard/manifest.json", "--apply",
-                  "05_ir/project.json"]]
+        manifest = rs_paths.rel(root, "assets", "artboard", "manifest.json")
+        ir = rs_paths.rel(root, "timeline", "project.json")
+        chain = [["rs_artboard.py", "gen-cards", "--from",
+                  rs_paths.rel(root, "brief", "cards.json"), "--force"],
+                 ["rs_artboard.py", manifest, "--export"],
+                 ["rs_artboard.py", manifest, "--apply", ir]]
         for argv in chain:
             cmd = build_cmd_from_argv(root, argv)
             if cmd is None:
@@ -1139,9 +1400,9 @@ def run_manual_auto(root: Path, st: dict, info: dict | None = None) -> tuple[boo
 
 def auto_skip_reason(root: Path, st: dict) -> str | None:
     """--auto 的阶段前置检查:缺声明宁可漏做不猜(留痕跳过,不装作无事)。"""
-    if st["id"] == "S5" and not (root / "05_ir" / "variants.json").is_file():
-        return ("工程未声明品牌变体(05_ir/variants.json 不存在):S5 无事可做;"
-                "需要 Logo 变体时先 rs_brand.py --expand 再重跑")
+    if st["id"] == "S5" and not (rs_paths.resolve(root, "timeline") / "variants.json").is_file():
+        return (f"工程未声明品牌变体({rs_paths.p('timeline')}/variants.json 不存在):"
+                "S5 无事可做;需要 Logo 变体时先 rs_brand.py --expand 再重跑")
     return None
 
 
@@ -1151,9 +1412,9 @@ def bench_evidence(root: Path) -> str | None:
     finals = _final_videos(root)
     if not finals:
         return None
-    out = root / "06_output" / "L1未人工确认_抽帧留证.png"
+    out = rs_paths.resolve(root, "output") / "L1未人工确认_抽帧留证.png"
     cmd = [sys.executable, str(SCRIPTS_DIR / "rs_bench.py"), str(finals[-1]),
-           "--ir", str(root / "05_ir" / "project.json"), "--out", str(out)]
+           "--ir", str(rs_paths.project_json(root)), "--out", str(out)]
     try:
         p = subprocess.run(cmd, cwd=str(root), capture_output=True, text=True,
                            encoding="utf-8", errors="replace", timeout=600)
@@ -1186,7 +1447,7 @@ def external_versions() -> dict:
 
 
 def select(root: Path, mode: str, target: str | None) -> list[dict]:
-    stages = spec()
+    stages = spec(root)
     ids = [s["id"] for s in stages]
     if mode == ONLY:
         return [s for s in stages if s["id"] == target]
@@ -1263,7 +1524,7 @@ def main() -> int:
     if a.explain:
         return cmd_explain(root, a.explain)
     if a.mark:
-        st = next((s for s in spec() if s["id"] == a.mark), None)
+        st = next((s for s in spec(root) if s["id"] == a.mark), None)
         if not st:
             return emit(False, "BAD_STAGE", f"未知阶段:{a.mark}", exit_code=2)
         parts = stage_parts(root, st, params_of(root), external_versions())
@@ -1304,14 +1565,14 @@ def main() -> int:
     deliverables_missing: list[str] = []
     auto = bool(a.auto)
     if auto:
-        # N4:意图编译决策(00_brief/intent_decisions.json)先并入 decision_log,
+        # N4:意图编译决策(00_制作简报/intent_decisions.json)先并入 decision_log,
         # 运行时自动决策随后追加 —— 「每个参数从哪句话推出来」全程可审计。
         seed_intent_decisions(root)
     # 收敛式 --dirty(P13-1/§4.1 验收):上游重跑会把下游打脏(如 S7 改字 → S8 输入变),
     # 只在起点选一次会漏掉"运行中途变脏"的下游,收敛要拖到下一次调用。
     # 这里逐轮重选直到没有非 done 阶段;--from/--only 单轮即可(列表覆盖全部后续阶段,
     # 级联由循环内 evaluate 驱动)。
-    rounds = len(spec()) + 1 if mode == S13 else 1
+    rounds = len(spec(root)) + 1 if mode == S13 else 1
     for _ in range(rounds):
         todo = select(root, mode, target)
         if mode == S13:
@@ -1392,7 +1653,7 @@ def main() -> int:
     bench_name = None
     if auto:
         # N3:断句歧义自动裁决留痕(候选清单 rs_subtitle 本就落盘,事后可人工复核)
-        cand = root / "06_output" / "segments_candidates.json"
+        cand = rs_paths.resolve(root, "output") / "segments_candidates.json"
         amb = 0
         if cand.is_file():
             try:
@@ -1407,7 +1668,8 @@ def main() -> int:
         if amb:
             log_decision(root, auto_decision(
                 "S7", "ambiguous-auto", f"{amb} 句切分歧义,自动取 DP 最优",
-                "断句 DP + 硬约束由脚本兜底;候选见 06_output/segments_candidates.json,可人工复核",
+                "断句 DP + 硬约束由脚本兜底;候选见 "
+                f"{rs_paths.p('output')}/segments_candidates.json,可人工复核",
                 ambiguous=amb, candidates=cand.name))
         log_decision(root, auto_decision(
             "verify", "l1-degrade", "L1 目测降级为抽帧留证(不判定、不阻断)",
@@ -1429,7 +1691,7 @@ def main() -> int:
     if auto:
         msg += ";--auto 决策留痕 " + str(decision_count) + " 条(L2 验收归用户)"
     if level == "L1":
-        msg += "(需 Agent 目测;详见 06_output/verify_report.md)"
+        msg += f"(需 Agent 目测;详见 {rs_paths.p('output')}/verify_report.md)"
     read_only = sorted({r["stateReadOnly"] for r in results if r.get("stateReadOnly")})
     if read_only:
         msg += f";⚠ 状态只读降级({read_only[0]})"
@@ -1443,7 +1705,8 @@ def main() -> int:
         # N4:决策留痕计数与证据随运行结果带回;L2 验收归用户,不写 firstCheck
         payload["auto"] = True
         payload["decisionLogCount"] = decision_count
-        payload["l2Note"] = "L2 最终验收归用户(--auto 不代劳);首次 L1 目测未人工确认,抽帧留证在 06_output/"
+        payload["l2Note"] = ("L2 最终验收归用户(--auto 不代劳);首次 L1 目测未人工确认,"
+                             f"抽帧留证在 {rs_paths.p('output')}/")
         if bench_name:
             payload["benchEvidence"] = bench_name
         if deliverables_missing:

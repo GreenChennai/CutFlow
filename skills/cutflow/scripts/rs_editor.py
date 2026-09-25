@@ -37,8 +37,19 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from rs_common import emit, ensure_utf8  # noqa: E402
+import rs_paths  # noqa: E402  — 阶段路径唯一真相源(ADR-0046),本文件禁止目录字面量
 
-TRUTH_SOURCES = ["05_ir/project.json", "05_ir/wordline.json", "04_cut/cutlist.json", "notes.json"]
+def truth_sources(root: Path | None = None) -> list[str]:
+    """工程真相文件(相对路径):目录名经 rs_paths 按工程解析(ADR-0046);root=None 用新名。"""
+    if root is None:
+        return [rs_paths.p("timeline") + "/project.json", rs_paths.p("timeline") + "/wordline.json",
+                rs_paths.p("cut") + "/cutlist.json", "notes.json"]
+    return [rs_paths.rel(root, "timeline", "project.json"),
+            rs_paths.rel(root, "timeline", "wordline.json"),
+            rs_paths.rel(root, "cut", "cutlist.json"), "notes.json"]
+
+
+TRUTH_SOURCES = truth_sources()   # 兼容旧引用(静态新名口径)
 
 SESSION_SUMMARY_REL = ".cutforge/session-summary.json"
 BASES_REL = ".cutforge/bases"
@@ -306,7 +317,7 @@ def _ckey(c: dict) -> tuple:
 
 
 def cmd_diff(root: Path) -> int:
-    pj = root / "05_ir" / "project.json"
+    pj = rs_paths.project_json(root)
     if not pj.is_file():
         return emit(False, "DEP_MISSING", f"缺 IR,无法对比:{pj}",
                     {"bridge": "editor"}, exit_code=3)
@@ -369,19 +380,19 @@ def main() -> int:
         return cmd_diff(root)
 
     if a.cmd == "view":
-        p = root / "05_ir/project.json"
+        p = rs_paths.project_json(root)
         if not p.is_file():
             return emit(False, "DEP_MISSING", f"缺 IR: {p}", {}, exit_code=3)
         return emit(True, "OK", "工程视图", {"project": _load(p), "rev_hint": "写操作请走 cutforge-cli/mcp"}, exit_code=0)
 
     if a.cmd == "timeline":
-        p = root / "05_ir/project.json"
+        p = rs_paths.project_json(root)
         if not p.is_file():
             return emit(False, "DEP_MISSING", f"缺 IR: {p}", {}, exit_code=3)
         return emit(True, "OK", "时间线", {"clips": timeline(_load(p))}, exit_code=0)
 
     # check
-    found = {rel: (root / rel).is_file() for rel in TRUTH_SOURCES}
+    found = {rel: (root / rel).is_file() for rel in truth_sources(root)}
     state_ok = (root / ".cutforge").is_dir()
     missing = [k for k, v in found.items() if not v]
     ok = not missing

@@ -1,0 +1,16 @@
+# 风格包参数档(ADR-0051):短剧·高燃竖屏。出处标注体例见 _template/params.yaml。
+slug: drama-vertical
+label: 短剧·高燃竖屏
+videoType: drama
+platform: douyin                       # [内部] templates/platforms.json douyin(短剧主战场)
+ratio: 9x16                            # [内部] templates/platforms.json douyin.ratio
+
+pacing: fast                           # [经验] 短剧完播压力与口播快节奏同档;registry 暂无 drama 专属档,M8 手法库落地后复核
+cardMs: [900, 3500]                    # [内部] registry.pacingTiers.fast.cardMs(镜头按剧情节拍切,禁冗长空镜)
+visualBeatSec: [2, 3]                  # [内部] registry.pacingTiers.fast.visualBeatSec
+bgm: {enabled: true, gainDb: -18, ducking: on_voice_only}   # [经验] 配乐铺情绪(鼓点/弦乐渐推),对白段 ducking 保台词;增益不越过 fast 档 -18
+transition: {default: hard_cut, allow: [fade, slide], snapToBeat: false}   # [经验] 硬切为剧情主语法;fade 用于时空转换,slide 用于爽点翻转;禁节拍特技
+subtitle: {style: subtitle-white, maxChars: 14, cpsMax: 9, lyricOnly: false}   # [经验] 台词比口播金句略长,14 字内保竖屏可读;CPS≤9 同全库红线
+cards: {density: 少, template: scene}  # [经验] 短剧只做集数钩子/前情回顾/下集预告卡;scene 场景卡与剧情同语言
+capabilities: [text.broll, sub.pair, drama.hook]   # [内部] registry.videoTypes.drama.capabilities 同源(M8 方案 §5.5.3:B-roll 检索/双 Style 字幕/钩子密度;描述符见 templates/capabilities/)
+artboard: {styles: [ecommerce-promo], templates: ["opener:1", "title:2", "endcard:1"]}   # [经验] 借 ecommerce-promo 大字报强对比做"钩子标题卡";artboard references/styles/ecommerce-promo.md

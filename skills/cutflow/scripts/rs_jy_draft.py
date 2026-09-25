@@ -1,7 +1,9 @@
 """IR → 剪映 5.9 明文草稿(vendored pyJianYingDraft,MIT)。
 
 用法:python rs_jy_draft.py <project.json> [--name 草稿名] [--dry-run] [--open]
-产出:<draft_root>/<name>/draft_content.json + draft_meta_info.json,并注册进 root_meta_info.json。
+产出:<工程根>/05_时间线工程/导出/剪映59/<name>/draft_content.json + draft_meta_info.json
+  (ADR-0052:草稿落点在**工程区**,是半成品单向出口,不是交付物、不进 成品/);
+  并注册进剪映 root_meta_info.json(首页可见,条目指向工程区落点)。
 
 编译层(阶段六 J1/J3,副文档 06):
   IR ──compile──► 草稿计划(draft plan,帧对齐中间表示)──门禁──► 写草稿
@@ -9,10 +11,12 @@
   · 门禁:轨道数符合计划 / 主轨时长和 == 预期 / 首段从 0 且不重叠 / 无黑场间隙 /
     帧对齐断言(所有边界落在工程 fps 的帧网格上);任一失败 → PLAN_GATE_FAIL 拒写;
   · --dry-run:打印「IR 片段 → 草稿片段」映射表(人读),不写任何文件、不查剪映进程。
-安全:写前检测剪映进程(运行中即 JY_RUNNING 拒绝);只写 config.jianying59 指向的
-  5.9 明文草稿根,11.3+ 加密草稿永不读写。
+安全:写前检测剪映进程(运行中即 JY_RUNNING 拒绝);只写 5.9 明文草稿,
+  11.3+ 加密草稿永不读写。
 限制:视觉动效关键帧(motion/reframe/punchIn)v1 不写(计划留 warning,见
   rules/jianying-verification.md「未支持」区);音频淡入淡出经 fade 字段写入。
+单向出口:剪映侧精修不回流工程区(草稿被剪映规范化重排、元素 id 不稳定,无法建
+  可信内容寻址锚点),详见 rules/editing-roundtrip.md。
 """
 from __future__ import annotations
 
@@ -27,6 +31,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(Path(__file__).parent / "vendor"))
 
+import rs_paths  # noqa: E402  — 阶段路径唯一真相源(ADR-0046),本文件禁止目录字面量
 from rs_common import die, emit, load_config  # noqa: E402
 
 # ---- pymediainfo shim:用 ffprobe 顶替,保持零第三方依赖 ----
@@ -212,6 +217,21 @@ def _seg_common(seg_id: str, src: Path, start_ms: float, dur_ms: float, fps: flo
             "irRef": ir_ref}
 
 
+def _matte_degradations(doc: dict, warnings: list[str]) -> list[str]:
+    """M9(ADR-0050)能力降级标注:剪映侧没有抠像/蒙版映射。
+
+    带 matte 的 clip 在草稿里只是普通视频段(已合成画面不可拆层);如实进 warnings
+    与 degradedCapabilities,绝不静默丢弃(与 motion/ducking 同口径)。
+    """
+    matte_clips = [c for t in doc.get("tracks", []) if t.get("kind") == "video"
+                   for c in t.get("clips", []) if c.get("matte")]
+    if not matte_clips:
+        return []
+    warnings.append(f"matte(抠像) 无草稿映射:{len(matte_clips)} 段已合成画面在剪映侧不可拆层"
+                    "(剪映草稿是半成品出口,ADR-0052)")
+    return ["matte"]
+
+
 def compile_draft_plan(doc: dict, project_path: Path, cfg: dict | None = None,
                        warnings: list[str] | None = None) -> dict:
     """IR → 草稿计划(帧对齐、可校验)。纯映射:不写盘、不开进程、不建素材。"""
@@ -394,6 +414,7 @@ def compile_draft_plan(doc: dict, project_path: Path, cfg: dict | None = None,
         "tracks": tracks,
         "compileErrors": errors,
         "warnings": warnings,
+        "degradedCapabilities": _matte_degradations(doc, warnings),
     }
 
 
@@ -554,9 +575,19 @@ def format_mapping_table(doc: dict, plan: dict) -> str:
 
 # ---------------------------------------------------------------- 写草稿
 
+def draft_fold(project: Path, name: str) -> Path:
+    """草稿落点(ADR-0052 半成品出口):<工程根>/05_时间线工程/导出/剪映59/<名>/。
+
+    project = project.json 路径(05_时间线工程/ 下),工程根 = 其祖父目录;
+    落点一律经 rs_paths.jianying_draft(目录字面量零散写 = 迁移事故温床)。
+    """
+    return rs_paths.jianying_draft(project.parent.parent) / name
+
+
 def register_in_root_meta(cfg: dict, name: str, draft_id: str, fold: Path) -> None:
     root_file = Path(cfg["jianying59"].get("root_meta") or
                      (Path(cfg["jianying59"]["draft_root"]) / "root_meta_info.json"))
+    root_file.parent.mkdir(parents=True, exist_ok=True)   # 落点改工程区后,剪映草稿根可能尚不存在
     draft_root = root_file.parent
     now_us = time.time() * 1e6
     entry = {
@@ -583,8 +614,13 @@ def register_in_root_meta(cfg: dict, name: str, draft_id: str, fold: Path) -> No
     root_file.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
 
 
-def build_draft_from_plan(plan: dict, name: str, cfg: dict, warnings: list[str]) -> dict:
-    """草稿计划 → 剪映 5.9 草稿文件。只做「计划 → 库调用」的机械翻译,不再含映射决策。"""
+def build_draft_from_plan(plan: dict, name: str, cfg: dict, warnings: list[str],
+                          project: Path) -> dict:
+    """草稿计划 → 剪映 5.9 草稿文件。只做「计划 → 库调用」的机械翻译,不再含映射决策。
+
+    落点 = 工程区 `05_时间线工程/导出/剪映59/<名>/`(ADR-0052 半成品出口);
+    root_meta 注册仍在剪映草稿根(首页可见,条目 draft_fold_path 指回工程区落点)。
+    """
     template = Path(__file__).parents[1] / "templates" / "jy59_empty_draft.json"
     script = ScriptFile.load_template(str(template))
     script.width = plan["canvas"]["width"]
@@ -644,9 +680,11 @@ def build_draft_from_plan(plan: dict, name: str, cfg: dict, warnings: list[str])
 
     script.duration = int(plan["durationUs"])
 
-    draft_root = Path(cfg["jianying59"]["draft_root"])
-    draft_root.mkdir(parents=True, exist_ok=True)
-    fold = draft_root / name
+    # TODO(M9,能力降级标注钩子):剪映侧不支持的能力(如 matte/蒙版、高级转场)在此
+    # 如实降级 —— plan["warnings"] 追加「<能力> 无草稿映射」,并把降级能力清单写进
+    # draft_meta_info.json 的 degradedCapabilities 字段,绝不静默丢弃(与 motion/ducking
+    # 同口径)。本里程碑(M2)只改落点与文档,不引入新降级项。
+    fold = draft_fold(project, name)
     fold.mkdir(parents=True, exist_ok=True)
     draft_id = str(uuid.uuid4()).upper()
 
@@ -663,10 +701,12 @@ def build_draft_from_plan(plan: dict, name: str, cfg: dict, warnings: list[str])
 
     meta = {
         "draft_fold_path": str(fold).replace("\\", "/"), "draft_id": draft_id,
-        "draft_name": name, "draft_root_path": str(draft_root).replace("\\", "/"),
+        "draft_name": name,
+        "draft_root_path": str(cfg["jianying59"]["draft_root"]).replace("\\", "/"),
         "draft_type": "", "tm_draft_create": int(time.time() * 1e6),
         "tm_draft_modified": int(time.time() * 1e6), "tm_duration": script.duration // 1000,
         "draft_materials": [], "draft_cover": "draft_cover.jpg",
+        "degradedCapabilities": plan.get("degradedCapabilities", []),
     }
     (fold / "draft_meta_info.json").write_text(json.dumps(meta, ensure_ascii=False), encoding="utf-8")
     register_in_root_meta(cfg, name, draft_id, fold)
@@ -704,7 +744,7 @@ def main() -> int:
                          "不写任何文件、不查剪映进程;门禁照跑,失败仍非零退出")
     ap.add_argument("--open", action="store_true", help="生成后启动剪映 5.9")
     a = ap.parse_args()
-    p = Path(a.project)
+    p = Path(a.project).resolve()      # 落点换算需要绝对工程根(草稿写 05_时间线工程/导出/)
     if not p.is_file():
         return emit(False, "NO_PROJECT", f"IR 不存在:{p}", exit_code=2)
     doc = json.loads(p.read_text(encoding="utf-8"))
@@ -747,7 +787,7 @@ def main() -> int:
                     {"gates": gates, "warnings": warnings}, exit_code=4)
     assert_jianying_closed()
     name = a.name or f"cutflow_{time.strftime('%m%d_%H%M')}"
-    data = build_draft_from_plan(plan, name, cfg, warnings)
+    data = build_draft_from_plan(plan, name, cfg, warnings, p)
     write_errs = verify_written_draft(Path(data["draft_dir"]) / "draft_content.json", plan)
     if write_errs:
         return emit(False, "DRAFT_GATE_FAIL",

@@ -1,0 +1,16 @@
+# 风格包卡片映射(ADR-0051 体例见 _template/cards.yaml):B站教程 → artboard 借格。
+slug: tutorial-bilibili
+artboard:
+  styles: [data-longform]                            # [内部] artboard references/styles/data-longform.md(报告型,ECharts 图表语言)
+  cases: ["assets/cases/data-longform-case.html"]    # [内部] artboard assets/cases/data-longform-case.html
+templates:
+  opener: 1        # 片头卡:本教程学完能得到什么
+  title: 1         # 标题卡:正题
+  section: 3       # 章节卡:第 N 步(教程骨架)
+  stat: 1          # 数据卡:效果对比/耗时
+  compare: 1       # 对比卡:新手做法 vs 正确做法
+  endcard: 1       # 片尾卡:三连/合集引导
+durationMsHint:
+  opener: 4200
+  section: 4000
+  endcard: 4800

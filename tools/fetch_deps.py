@@ -1,6 +1,6 @@
-"""OCR / VQA / ASR 模块一键部署。
+"""OCR / VQA / ASR 模块一键部署(兼容入口;新能力组件委托 rs_fetchable,ADR-0049)。
 
-用法:
+既有用法(行为不变):
   python tools/fetch_deps.py ocr    # ~113MB,RapidOCR 单文件
   python tools/fetch_deps.py vqa    # ~630MB,QORA 看图问答(Rust 引擎,免 Python)
   python tools/fetch_deps.py        # 查看部署状态
@@ -12,7 +12,17 @@
   python tools/fetch_deps.py asr --seed-models DIR    # 从已有目录播种模型(优先目录联接,零拷贝)
   python tools/fetch_deps.py asr --update-vendor DIR  # 用新版本覆盖 tools/asr_vendor/
 
-自动解压到 tools\\deps\\ 并回写 config(ocr_exe / vqa_exe / asr.models_dir)。
+字幕词边界(ADR-0020,可选):
+  python tools/fetch_deps.py subtitle               # 把 jieba 装进当前解释器(不装也降级兜底)
+
+懒加载能力组件(ADR-0049,委托 skills/cutflow/scripts/rs_fetchable.py):
+  python tools/fetch_deps.py state                  # 八项能力组件三态
+  python tools/fetch_deps.py install beatnet        # 现场下载(--no-fetch 离线;--auto 默认降级)
+  python tools/fetch_deps.py update --check         # 清单版本比对(不自动更新)
+  python tools/fetch_deps.py rollback <module>      # 清理 config 回写项
+  组件:beatnet / madmom / demucs / scenedetect / rvm / bytetrack / opencv / clip
+
+自动解压到 tools\\deps\\ 并回写 config(ocr_exe / vqa_exe / asr.models_dir / deps.*)。
 """
 from __future__ import annotations
 
@@ -320,6 +330,15 @@ def install_subtitle_lexicon() -> int:
     return 1
 
 
+def _rs_fetchable():
+    """懒加载委托口(ADR-0049):按需 import rs_fetchable,绝不影响既有三件。"""
+    scripts = Path(__file__).resolve().parents[1] / "skills" / "cutflow" / "scripts"
+    if str(scripts) not in sys.path:
+        sys.path.insert(0, str(scripts))
+    import rs_fetchable
+    return rs_fetchable
+
+
 def main() -> int:
     if len(sys.argv) <= 1:
         status()
@@ -331,7 +350,12 @@ def main() -> int:
     if mod == "subtitle":
         return install_subtitle_lexicon()
     if mod not in MODULES:
-        print(f"未知模块:{mod}(可选 ocr / vqa / asr / subtitle)")
+        # ADR-0049:三态子命令与能力组件委托 rs_fetchable(ocr/vqa/asr/subtitle 行为不变)
+        rf = _rs_fetchable()
+        if mod in ("state", "install", "update", "rollback") or rf.is_known_module(mod):
+            return rf.main([mod, *rest])
+        print(f"未知模块:{mod}(可选 ocr / vqa / asr / subtitle;"
+              "能力组件三态:python tools/fetch_deps.py state)")
         return 2
     return install(mod)
 

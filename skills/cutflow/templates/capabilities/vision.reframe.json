@@ -1,0 +1,25 @@
+{
+ "id": "vision.reframe",
+ "label": "横转竖自动重构",
+ "appliesTo": [
+  "vlog"
+ ],
+ "stage": "S3",
+ "detector": "rs_reframe.py",
+ "depends": [
+  "vision.track"
+ ],
+ "degrade": {
+  "to": "static-center",
+  "trace": "reframeDegraded",
+  "message": "同 vision.track:跟踪组件未部署时每 clip 居中锚(static-center);裁切不拉伸由 crop_window 构造保证"
+ },
+ "params": {
+  "defaultScale": 1.0,
+  "smoothWindow": 15,
+  "maxShiftPxPerSec": 240.0
+ },
+ "artifact": "timeline/reframe_plan.json",
+ "verify": "tests/test_m8_infra.py",
+ "notes": "M8 落地(方案 §5.5.2)。产物每 clip {clipId, anchorX, anchorY, scale, trajectory, cropWindow, mode, violations};裁切窗宽高比恒等于目标画幅比(裁切不拉伸,继承 artboard 桥精神)。第二波 vlog Agent 按 plan 逐 clip 消费。"
+}

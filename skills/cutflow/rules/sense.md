@@ -2,17 +2,17 @@
 
 ## ASR(口播视频 → 文字)
 
-1. `rs_asr.py <媒体> --out 02_sensed`:自动抽 16k wav → FunASR 服务 → 句级时间戳分段。
+1. `rs_asr.py <媒体> --out 02_转写与校对`:自动抽 16k wav → FunASR 服务 → 句级时间戳分段。
    **句级只是过渡产物**——紧接着必须做字级对齐(S1 第二步),否则时间精度不够用。
 2. 服务不可达时按序拉起:
    a. `python tools/start_asr.py`(无头直启,PATH 含 ffmpeg);
    b. 打包版 GUI(MomentShift.exe)用 computer-use 点"服务模式";
    c. 失败则告知用户,先做不依赖转写的环节。
-3. `rs_align.py build --media <素材> --out 05_ir/wordline.json`:取 **Paraformer 原生字级时间戳(timestamp 字段)** 建 Wordline
+3. `rs_align.py build --media <素材> --out 05_时间线工程/wordline.json`:取 **Paraformer 原生字级时间戳(timestamp 字段)** 建 Wordline
    (唯一真相源)。若上游 MomentShift 未透传字级字段,自动降级为「句级 + 停顿锚点」模式,并在
    `data.degraded` 与报告中标注,**不静默降级**。详见 rules/align.md。
 4. **校对(必做)**:逐句读 transcript_raw.md,修错字/口误/标点,专有名词对照 brief 术语表;
-   产出 `02_sensed/transcript_corrected.md`(格式同 raw:每行 `[ss.s] 说话人N: 文本`),并写 `transcript.json`
+   产出 `02_转写与校对/transcript_corrected.md`(格式同 raw:每行 `[ss.s] 说话人N: 文本`),并写 `transcript.json`
    (同 raw 结构,文本已修正)。下游字幕/剪映草稿一律用 corrected 版。
 5. **校对后必须重聚合**(修订旧规则「只改文本不动时间戳」):用字级锚点把校订文本重新对齐到
    `wordline.json` 的 `chars`——未改动的连续片段沿用原字时间戳,新增字取相邻字区间均分(仅此一处
@@ -21,7 +21,7 @@
 
 ## OCR / VQA(图片)
 
-- `rs_sense.py <图> --out 02_sensed`:OCR(文字原样)+ VQA(中文描述)合并。
+- `rs_sense.py <图> --out 02_转写与校对`:OCR(文字原样)+ VQA(中文描述)合并。
 - 用途:素材理解、给图复刻(转 artboard)、分镜表图片内容提取。
 
 ## 抽帧(视频内容理解/重构图锚点)

@@ -1,0 +1,16 @@
+# 风格包参数档(ADR-0051):录屏教程。出处标注体例见 _template/params.yaml。
+slug: screen-tutorial
+label: 录屏教程
+videoType: screen-recording
+platform: bilibili                     # [内部] templates/platforms.json bilibili(中长教程主阵地;抖音短视频教程去 knowledge-talkshow-douyin)
+ratio: 16x9                            # [内部] templates/platforms.json bilibili.ratio
+
+pacing: slow                           # [经验] 跟操作节奏,观众要逐步跟进;registry 暂无 screen-recording 专属档,M8 落地后复核
+cardMs: [2500, 7000]                   # [内部] registry.pacingTiers.slow.cardMs(深度内容/教程演示档)
+visualBeatSec: [3, 5]                  # [内部] registry.pacingTiers.slow.visualBeatSec(一步一节拍)
+bgm: {enabled: false, gainDb: -20, ducking: none}   # [经验] 录屏讲解降噪优先,BGM 默认关;显式开也不越过 slow 档 -20
+transition: {default: hard_cut, allow: [fade], snapToBeat: false}   # [经验] 步骤间硬切,章节切换 fade;观众注意力在操作区,忌转场特技
+subtitle: {style: tutorial-clean, maxChars: 22, cpsMax: 9, lyricOnly: false}   # [内部] platforms.bilibili.maxChars=22 + registry tutorial 系 style=tutorial-clean + CPS≤9
+cards: {density: 少, template: chapter}   # [经验] 步骤章节卡(第 N 步)+ 要点强调卡;录屏本体即内容,卡片只做导航
+capabilities: [screen.cursor, screen.zoom, screen.keys, screen.redact]   # [内部] registry.videoTypes.screen-recording.capabilities(M8 补登:rs_screen.py 四描述符已落地)
+artboard: {styles: [data-longform], templates: ["opener:1", "section:3", "endcard:1"]}   # [内部] 借 data-longform 报告型步骤感;artboard references/styles/data-longform.md

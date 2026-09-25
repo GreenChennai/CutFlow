@@ -4,12 +4,14 @@
   python rs_cleanup.py <工程目录>            # 列出将删除/保留的清单(dry-run)
   python rs_cleanup.py <工程目录> --apply    # 真删
 规则:
-  必删: 06_output/_build、dev-*、*_probe*、99_试算、*.tmp、_asr_16k.wav、preview_*/draft_*
-  必留(06_output 顶层,BUGREPORT B4 修订):final_*.mp4、subtitles.ass、master.srt、
+  必删: 06_成片输出/_build、dev-*、*_probe*、99_试算、*.tmp、_asr_16k.wav、preview_*/draft_*
+  必留(06_成片输出 顶层,BUGREPORT B4 修订):final_*.mp4、subtitles.ass、master.srt、
         metadata.*、*report*.md、cards.json、deliverables、中文命名产物、bench_*.png;
         rebuild.py、REBUILD.md(P16:一键重建脚本与其说明书)、_variants/ 目录(P16);
         branded/、final/ 目录(P10b-1:S5/S8 交付成片的独占子目录);
         只删 `_`-前缀探针件与非交付物 —— 旧版会把成片/字幕/报告全列进删除名单。
+  永不清理(ADR-0052):成品/(rs_paths.NEVER_CLEAN)是交付容器,硬过滤 ——
+        任何通配 glob 都进不了删除名单,只允许 rs_ingest --publish 覆写。
   删除如实记账(P13-2):删失败(文件被占用等)逐项上报 failed 并非零退出,
   "已释放 N MB"只计真正删掉的。
 """
@@ -22,8 +24,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from rs_common import COVER_PNG, emit  # noqa: E402  — P17-1:封面名共用同一常量
+import rs_paths  # noqa: E402  — 阶段路径唯一真相源(ADR-0046),本文件禁止目录字面量
 
-DELETE_PATTERNS = ["06_output/_build", "99_试算"]
+# 必删目录:成片输出/_build(渲染中间件)与 99_试算。目录名经 rs_paths 按工程
+# 解析(ADR-0046;旧结构工程解析回旧名,照样清得到)。
+DELETE_DIRS = ("_build",)          # 相对 成片输出/ 的必删子目录
+DELETE_ROOT_DIRS = ("99_试算",)    # 相对 工程根 的必删目录
 DELETE_GLOBS = ["dev-*", "*_probe*", "*.log", "*.tmp", "**/_asr_16k.wav", "**/*.tmp",
                 "v_b_*.png", "check_*.png"]
 # P17-1:封面必留判定派生自 rs_common.COVER_PNG(封面.png 及 封面_变体.png 前缀同源)
@@ -33,13 +39,13 @@ OUT_KEEP_EXACT = {"subtitles.ass", "master.srt", "cards.json", "sync_rows.json",
                   # BUGREPORT P16:rebuild.py 由 rs_run --init 种下、SKILL.md 手册让用户跑,
                   # REBUILD.md 是它的说明书 —— 清掉会让"改字幕→一键重建"必然 FileNotFoundError。
                   "rebuild.py", "REBUILD.md", "verify_report.md", COVER_PNG}
-# 06_output 下保留的目录前缀:sub_*(字幕 ASS,重渲依赖)、_variants(rs_brand 变体 IR,同 P16)、
+# 06_成片输出 下保留的目录前缀:sub_*(字幕 ASS,重渲依赖)、_variants(rs_brand 变体 IR,同 P16)、
 # branded/ 与 final/(P10b-1:S5 品牌变体成片、S8 烧录导出的独占子目录,全是交付物)
 KEEP_DIR_PREFIX = ("sub_", "_variants", "branded", "final")
 
 
 def _out_keep(name: str) -> bool:
-    """06_output 顶层文件的保留判定(B4):默认必留交付物,只删探针/中间件。"""
+    """06_成片输出 顶层文件的保留判定(B4):默认必留交付物,只删探针/中间件。"""
     if name.startswith(("_", "dev-", "preview_", "draft_")):
         return False
     if name.endswith((".tmp", ".log")):
@@ -59,16 +65,23 @@ def _out_keep(name: str) -> bool:
 
 def classify(root: Path) -> tuple[list[Path], list[Path]]:
     delete, keep = [], []
-    for pat in DELETE_PATTERNS:
+    out = rs_paths.resolve(root, "output")
+    for sub in DELETE_DIRS:
+        p = out / sub
+        if p.exists():
+            delete.append(p)
+    for pat in DELETE_ROOT_DIRS:
         p = root / pat
         if p.exists():
             delete.append(p)
     for pat in DELETE_GLOBS:
         for p in root.glob(pat):
             delete.append(p)
+    # ADR-0052 / NEVER_CLEAN:成品区(交付容器)绝不进删除名单 —— 通配 glob 也不行
+    deliver = rs_paths.resolve(root, "deliver")
+    delete = [d for d in delete if d != deliver and deliver not in d.parents]
     delete = sorted(set(delete))
     delete_set = {d.resolve() for d in delete}
-    out = root / "06_output"
     if out.is_dir():
         for p in out.iterdir():
             if p.resolve() in delete_set:
@@ -82,7 +95,8 @@ def classify(root: Path) -> tuple[list[Path], list[Path]]:
             elif _out_keep(p.name):
                 keep.append(p)
             else:
-                delete.append(p)   # 06_output 顶层非交付物
+                delete.append(p)   # 06_成片输出 顶层非交付物
+    delete = [d for d in delete if d != deliver and deliver not in d.parents]
     return delete, keep
 
 
