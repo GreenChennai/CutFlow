@@ -111,3 +111,18 @@
 - **懒加载依赖(JIT Deps)**:初始零环境;用到某能力而组件缺失时才现场下载;下载过的保留不删,可触发更新(ADR-0049)。
 - **降级留痕(Degraded Trace)**:高级能力缺失或未达标时,降级到基础档并在产物与报告里写入 `degraded + 原因 + 缺哪个组件`;**禁止标 green**。
 - **临时脚本(Trap Script)**:为完成一次任务而现写、且可能被复用的脚本;按纪律必须升格为官方子命令并进能力目录,Agent 禁止现写剪辑逻辑(ADR-0041)。
+
+## v2 术语增补(2026-09-26,ADR-0053~0059)
+
+| 术语 | 定义 |
+|---|---|
+| 素材四字段 | 每条素材必备:`source`/`license`/`commercial`/`attribution`,缺一即 rs_asset check 失败 |
+| 效果目录 | `templates/effects/catalog.json`,剪映效果名规范化全量登记(317 条),字段:id/类别/分级/fxId/常用度/status/why |
+| 可实现性分级 T1/T2/T3 | T1=FFmpeg 原生可做;T2=GLSL 可做(B3:moderngl 预渲重叠区);T3=artboard 预渲染或仅剪映 |
+| 可执行档 | catalog 中 `status: 可执行` 的条目集合(引擎真能渲出来的) |
+| 零静默吞能力 | schema 声明的每个枚举值,渲染端要么实现、要么从声明删;test_schema_consumers 动态审计,UNIMPLEMENTED 白名单≤3 带里程碑 |
+| 花字基础档/进阶档 | 基础=ASS 富文本(底衬+逐字动画,`--huazi`);进阶=artboard 场景卡 |
+| 效果处方 | 风格包 `effects_prescription`:transition/in/out/sfx 的 min/max/prefer/forbid/flashy_max/require_reason |
+| 效果使用率门禁 | 九判据(EFFECTS_UNUSED 等);「声明了处方却零使用」=红,滥用也红;无处方跳过留痕 |
+| 无技巧转场 | 靠镜头间造型/动作/逻辑关联衔接,不用特效(13 类);技巧转场只在时空跳跃/段落切换/风格化三类场景 |
+| reason 的评审效力 | rs_edit EditOp 强制 reason;「好看」类词视为未解释,应改硬切 |

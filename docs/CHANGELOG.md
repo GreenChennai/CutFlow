@@ -1,5 +1,67 @@
 # Changelog
 
+## v0.20.0 (2026-09-26) — v2 迭代:剪得好看——素材库/转场特效/缺陷止血/效果语法(M11–M15)
+
+依据:《CutFlow-迭代计划-v2-20260925》(00 主册 + 分册01–06;ADR-0053~0059)。测试 783 → 948+
+全绿(本轮净增 165+ 门禁)。**行为变更项均已逐条标注**。
+
+### M11 缺陷止血(分册03,ADR-0058)
+
+- **R01(高危)** markers 三方分歧:schema `{ms,label}` 曾被 rs_sfx 静默取 0、rs_meta 曾 KeyError;
+  统一 `rs_common.normalize_markers` 归一口(旧 atMs 兼容)+ tests/test_markers.py(该路径此前零测试)
+- **R02(高危)** 转场 `cut`/`none` 入 rs_ir.TRANSITIONS(合法 IR 曾过不了校验)
+- **R03(高危)** Logo 安全区单一化:logo_rect/check_safe_area 改查 platforms.json safeArea
+  (与 rs_verify 同源;小红书/B站变体不再越过自家禁区)——**行为变更**:底部锚点 Logo 在
+  小红书(18%)/B站(16%)变体上会比旧抖音口径(25%)更低更正确
+- **ADR-0055 零静默吞能力**:motion 五个空壳全部真实现(**行为变更**:scaleIn/zoomIn 由
+  「退化为 fadeIn」变真缩放入场;slideIn*/slideOut* 由「退化/静默无效」变黑底滑动);
+  bgm.loop 契约生效(**行为变更**:loop:false 此前被忽略);matte.bg.mode contain 实现;
+  tests/test_schema_consumers.py 全枚举动态审计(UNIMPLEMENTED 白名单≤3 带 reason/milestone)
+- R25/R26 子进程超时(verify/ASR;--auto 与直调不再可能永久挂起);R28 无 video 轨结构化
+  NO_VIDEO_TRACK;tests/test_field_contracts.py 字段级生产者→消费者对拍(R01 整类根因);
+  tests/test_cn_paths.py 中文路径端到端+60fps;R23 错误分支回归
+
+### M12 素材库(分册01,ADR-0053/0057)
+
+- 四类 119 条:sfx 40(Mixkit 7+自产 33)/elements 49/huazi 14(ASS 基础档 8+artboard 进阶档 6)/
+  bgm 16(铺满 pacing×mood 矩阵);`assets/manifest.json` 每条**许可四字段**
+  (source/license/commercial/attribution)+aiGenerated;R38 体积预算(音效≤200KB)门禁把守
+- 新增 `rs_asset.py`(list/search/get/check/attribution/add/scan);旧 assets_sfx: 解析统一
+  resolve_sfx_ref;交付自动产 `成品/说明书/素材归因.md`(双向对拍);rs_verify L0 新判据
+  「交付无不可商用素材」
+- 字体链接 artboard(不自建):templates/fonts.json 28 款(与 artboard fonts/ 双向对拍),
+  rs_subtitle 查表兜底不再硬编码 Microsoft YaHei;花字基础档 `--huazi`(ASS 底衬+逐字动画)
+
+### M14 编辑层扩展与性能(分册04,ADR-0056)
+
+- rs_edit **10 新 op + 5 扩展字段**(fx.apply/element.add/huazi.set/font.set/asset.swap/
+  effect.glsl.enable 等;31 op 全量支持);schema 双仓同步(cutforge 校验器同步再生成)
+- **渲染并行**:step_segment 两段式(plan 串行/render 并发,--jobs 默认 min(4,CPU/2)),
+  rs_brand 变体并发;`--jobs 1` 与 `--jobs 4` 产物 sha256 一致(硬门禁);实测段渲染 1.79x
+- **探测合并**:ffprobe ≈3N → N(40 段夹具 26→8 次;全缓存重跑 0 次);rs_common.load_ir()
+  统一 IR 版本校验+迁移引导;--verbose 日志与 pipeline.json 墙钟留痕;超时按素材时长比例
+
+### M13 转场与特效(分册02+06,ADR-0054/0059)
+
+- **效果目录 317 条**:可执行档 **186**(T1 162 + T2 24;目标 ≈192 达成 97%);53 登记待实现
+  (带 why);78 不实现(含 42 条「语义不明,用户确认删除」,search 返回 EFFECT_REMOVED);
+  原始清单逐字存 sources/
+- **62 条标准 NLE 词典全登记**(52 可执行+13 如实待实现);字幕域 6 条走 S7 卡拉OK/huazi
+- **T2 走 B3**(已定案):rs_fx/t2_glsl.py(moderngl + gl-transitions,22 条逐条 MIT 头核验+
+  真渲验证,**只渲转场重叠区零漂移**);缺失/关闭降级最接近 T1 + fxDegraded 留痕;
+  fx.glsl 组件进 ADR-0049 三态
+- **效果处方与使用率门禁(ADR-0059)**:7 风格包 effects_prescription(纯口播 flashy_max=0,
+  混剪 flashy≤3);rs_intent 产 effectsPlan(decision_log source=prescription);
+  rs_edit context 增「本工程该用的特效」进度与缺口;**九判据门禁**
+  (EFFECTS_UNUSED/OVERUSED/REPEATED/UNMOTIVATED/SFX_DENSITY/FLASH_UNSAFE/DURATION_DRIFT)
+  进 rs_verify L0(无处方 → skipped NO_PRESCRIPTION 不误伤);rules/editing-grammar.md
+  用法层(转场决策树+决策表+13 类无技巧转场映射);CACHE_VER v9→v10
+
+### M15 收敛
+
+- BACKLOG 收录分册03 R 系列处置台账(双向对拍);CONTEXT.md v2 术语;README v2 章节;
+  兼容:cutforge schema 同步(matte/fx/huazi/font 字段),cutforge 测试全绿
+
 ## v0.19.0 (2026-09-25) — 多风格迭代:多风格引擎级落地 + 自然语言改片 + 懒加载 + 成品区分离
 
 依据:《CutFlow-多风格迭代方案-v1.md》(桌面,2183 行)M0–M10;ADR-0045~0052。测试基线 457 → 全绿

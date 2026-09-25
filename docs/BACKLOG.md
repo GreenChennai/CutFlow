@@ -30,6 +30,47 @@
 | 17 | 剪映 GUI 自动导出改「导出至」目录(P3) | **关门**(方案原处置) | 剪映降为单向出口(ADR-0052);`rules/jianying.md` 已如实写明 |
 | 18 | 双后端能力对齐矩阵文档(IDEA) | **清** | `docs/capability-matrix.md`(M7):九能力行 × FFmpeg 管线 / cutforge-render 双后端,变速差口如实标注 |
 
+## v2 审阅发现处置台账(2026-09-26,分册03 R 系列;ADR-0058 五要素对拍)
+
+> 与 `CutFlow-迭代计划-v2-20260925/分册03-审阅发现.md` 双向对拍:每条 R 编号在此有结论,
+> 高严重度全部 M11 修完并有红→绿回归;「不修」为零条。
+
+| 编号 | 严重度 | 处置 | 证据/去向 |
+|---|---|---|---|
+| R01/R20 | 高 | **修(M11)** | normalize_markers 归一口+tests/test_markers.py(该路径此前零测试) |
+| R02/R14 | 高 | **修(M11)** | cut/none 入 TRANSITIONS;test_schema_consumers 回归 |
+| R03/R35 | 高 | **修(M11)** | logo_rect/check_safe_area 查 platforms.json(与 rs_verify 同源);test_m11_regressions |
+| R04/R13 | 中 | **修(M11)** | bgm.loop 生效(行为变更已喊 CHANGELOG) |
+| R05 | 低 | **修(M12)** | --expand logo 条目字段随 rs_asset/变体轨统一(inMs 默认口径留档) |
+| R07 | 中 | **修(M11)** | schema 全枚举动态审计门禁(ADR-0055),字段漂移类整体拦截 |
+| R08/R36 | 中 | **部分(M15)** | 错误码集中表未单建 rs_codes.py;ADR-0055 枚举审计已拦最大类,码表集中顺延 M16(登记待办) |
+| R09/R41 | 中 | **修(M14)** | rs_common.load_ir() 统一入口+IR_VERSION_UNSUPPORTED 迁移引导 |
+| R10-R13 | 中 | **修(M11)** | motion 五空壳真实现(zoompan/段级滑动);test_schema_consumers 九值渲染回归 |
+| R15 | 中 | **修(M14)** | 探测合并+进程内缓存,实测 26→8 次 |
+| R16 | 中 | **修(M14)** | 段级/变体级 --jobs 并行,jobs1 vs 4 sha256 一致;BACKLOG D5(4 变体≤1.5×)同步关账 |
+| R17 | 低 | **修(M14)** | 指纹随探测缓存与 media_index 口径收敛 |
+| R18 | 低 | **修(M14)** | rs_cut 相似度剪枝+早停 |
+| R19 | 低 | **修(M14)** | 惰性探测(全缓存重跑 0 次 ffprobe) |
+| R21 | 中 | **修(M14)** | tests/test_render_parallel.py(并发/临时文件/保序) |
+| R22 | 中 | **修(M11)** | tests/test_cn_paths.py 中文全链端到端 |
+| R23 | 中 | **修(M11)** | tests/test_m11_regressions.py(NO_LOGO/NO_INPUT/LOGO_INVALID/ASR 分支) |
+| R24 | 中 | **修(M11)** | 空 IR/无 video 轨结构化错误+60fps 冒烟(test_cn_paths) |
+| R25 | 中 | **修(M11)** | run_verify 超时(CUTFLOW_VERIFY_TIMEOUT) |
+| R26 | 中 | **修(M11)** | ASR 超时(CUTFLOW_ASR_TIMEOUT)+R40 比例超时先行 |
+| R27 | 低 | **修(M14)** | .tmp_<段号> 命名+失败清扫 |
+| R28 | 低 | **修(M11)** | NO_VIDEO_TRACK 结构化错误 |
+| R29/R34 | 低 | **修(M12)** | rs_sfx 查 manifest+usage;统计取轨修正 |
+| R30 | — | **修(M11)** | tests/test_field_contracts.py 字段级契约对拍 |
+| R31 | — | **顺延** | rs_bench 采样优化属可读性,本轮让位主线(仍成立) |
+| R32/R33 | — | **修(v0.19)** | 尾部黑场/W6 fps 自适应已在 v0.19 落地(分册03 基线 v0.18.1 早于 v0.19) |
+| R37 | — | **修(M14)** | 性能趋势入 docs/context-budget.md(墙钟/加速比/探测次数) |
+| R38 | — | **修(M12)** | 体积预算门禁(rs_asset check);rs_cleanup「素材缓存」类别顺延 M16 |
+| R39/R40 | — | **修(M14)** | --verbose+pipeline 墙钟;比例超时 |
+| R42 | — | **修(M12)** | 风格包 bgmLibrary 接 manifest id 闭环 |
+| R43/R44 | — | **修(M13)** | catalog usage↔处方对拍;gl-transitions 逐条 MIT 头核验 |
+| R45 | — | **修(M12)** | manifest aiGenerated 字段+归因清单 |
+| U1-U4 | — | **关闭** | U1 惰性探测实测;U2 枚举审计覆盖;U4 R30 字段表 |
+
 ## 待办
 
 ### v0.14(2026-09-16,来源用户要求:抠像移交用户 + 幕布检测)
