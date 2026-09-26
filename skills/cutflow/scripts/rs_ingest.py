@@ -862,12 +862,18 @@ def _reconcile_publish(root: Path, base: dict, deliver: Path,
         f"{len(videos)} 个;实际画幅 {sorted(have) or '—'}"
         + (f";声明 {sorted(declared)}" if declared else ";工程未声明 outputs"), m1)
 
-    # ② 字幕成对
+    # ② 字幕成对(实剪①补口径:无口播工程合法地无字幕——无 ass 且无 srt 且
+    # 无 wordline → skipped 留痕,不按缺项红标)
     out = rs_paths.resolve(root, "output")
     m2 = [f"字幕:{n} 缺失" for n in ("subtitles.ass", "master.srt")
           if not (out / n).is_file()]
-    add("字幕 subtitles.ass + master.srt 成对", not m2,
-        "成对存在" if not m2 else "、".join(m2), m2)
+    if m2 and not (rs_paths.wordline_json(root).is_file()
+                   or (out / "subtitles.ass").is_file()):
+        add("字幕 subtitles.ass + master.srt 成对", True,
+            "skipped:无字幕工程(无 wordline 无字幕产物)", [])
+    else:
+        add("字幕 subtitles.ass + master.srt 成对", not m2,
+            "成对存在" if not m2 else "、".join(m2), m2)
 
     # ③ 封面尺寸 = 画幅 且过平台 coverSize(PNG IHDR 机械读尺寸)
     from rs_common import COVER_PNG

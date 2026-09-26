@@ -271,8 +271,9 @@ def test_beat_snap_sequence_and_out_of_window_warn(tmp_path, mixcut_assets):
     clips = _video_clips(ir)
     assert [c["startMs"] for c in clips] == CARD_STARTS, "夹具排布应逐卡连续"
 
-    # beat.snap 序列:一次 apply 批量吸附全部切点(锚点 = cf- 内容寻址 id)
-    ops = [{"op": "beat.snap", "target": rs_editor.content_id(c),
+    # beat.snap 序列:一次 apply 批量吸附全部切点(锚点 = 原生 id;rs_ir v0.20 起产
+    # 原生 id,ADR-0048 寻址设计:原生 id 优先,cf- 仅无 id 旧 IR 回退)
+    ops = [{"op": "beat.snap", "target": c.get("id") or c.get("id") or (c.get("id") or rs_editor.content_id(c)),
             "after": {"windowMs": 60},
             "reason": "卡点:吸附最近拍点(60ms 窗,超窗不动)", "source": "agent"}
            for c in clips]
@@ -372,9 +373,9 @@ def test_mixcut_e2e_full_pipeline(tmp_path, mixcut_assets):
     assert not voice, "混剪无对白:无现场人声 clip,BGM 直给(ducking 自动关)"
 
     # ---- beat.snap 序列(9 处落拍 + 1 处超窗 WARN)→ 结尾定格(两批 apply:
-    #      snap 会改 startMs,cf- 内容 id 随之变化,定格必须基于吸附后视图重新寻址) ----
+    #      snap 会改 startMs,内容 id 随之变化,定格必须基于吸附后视图重新寻址) ----
     clips = _video_clips(ir)
-    ops = [{"op": "beat.snap", "target": rs_editor.content_id(c),
+    ops = [{"op": "beat.snap", "target": c.get("id") or (c.get("id") or rs_editor.content_id(c)),
             "after": {"windowMs": 60},
             "reason": "卡点:吸附最近拍点(60ms 窗,超窗不动)", "source": "agent"}
            for c in clips]
@@ -390,7 +391,7 @@ def test_mixcut_e2e_full_pipeline(tmp_path, mixcut_assets):
     clips = _video_clips(ir)
     assert [c["startMs"] for c in clips] == EXPECTED_STARTS, "吸附后切点应逐卡落拍"
     last = clips[-1]
-    ops2 = [{"op": "freeze.set", "target": rs_editor.content_id(last),
+    ops2 = [{"op": "freeze.set", "target": (last.get("id") or rs_editor.content_id(last)),
              "after": {"freezeMs": FREEZE_MS},
              "reason": "结尾定格收尾(混剪.md §3:定格 1–2s 不拖沓)", "source": "agent"}]
     ops2_path = root / "ops_freeze.json"

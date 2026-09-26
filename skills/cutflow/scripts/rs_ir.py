@@ -202,6 +202,9 @@ def build_from_cutlist(cutlist: dict, *, slug: str, ratio: str = "9x16",
                 clip["punchIn"] = {"factor": 1.4, "source": "auto"}
                 last_punch_ms = cursor
                 punch_count += 1
+        # 原生 clipId(M4 寻址设计;实剪②发现:无 id 时 rs_edit 回退内容寻址,
+        # 对重复 keep 片段 cf- 哈希碰撞 → BAD_ADDRESS。id 唯一且稳定=段序)
+        clip["id"] = f"c{i + 1:03d}"
         video.append(clip)
         if with_audio:
             audio.append({"src": src, "startMs": cursor, "durationMs": dur,

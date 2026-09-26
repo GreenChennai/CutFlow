@@ -1044,7 +1044,11 @@ def step_concat(doc: dict, seg_files: list[Path], build: Path, cfg: dict,
             # M13:统一以注册表解析为准(降级的 glsl join 在此已是 fallback xfade)
             tr_type = res.get("xfade") or "fade"
         elif res is not None and res.get("kind") in ("cut", "none"):
-            tr_type = res["kind"]
+            # 实剪①连环修复:xfade 链内没有名为 "cut" 的转场(ffmpeg 报
+            # "const_values array too small")。cut/none join 在链内落成 1 帧
+            # 亚帧软切(ADR-0023:视觉即硬切,仅吃姿态 pop 与爆音)。
+            tr_type = "fade"
+            eff_tr[i] = max(eff_tr[i], 1.0 / fps)
         else:
             tr_type, _fx_note = _transition_type(tr)
         tdur = eff_tr[i]
@@ -1450,8 +1454,22 @@ def step_mix(doc: dict, src: Path, build: Path, base_dir: Path, cfg: dict) -> Pa
     total_s = float(info["format"]["duration"])
     cmd = [ffmpeg_bin(cfg), "-v", "error", "-y", "-i", str(src)]
     parts, mixes, idx = [], [], 1
+    # 实剪②修复(ADR-0056 零漂移的音侧):视频段以帧取整长度拼接,音轨 clip 若按
+    # 名义 startMs 延迟,会与视频时间基累积分叉(23 段实测尾部 386ms)。此处构建
+    # 「名义 startMs → 帧取整实际位置」映射,人声/环境声按实际位置落轨。
+    _fps_m = doc.get("fps", 30)
+    _acc = 0.0
+    _nom2actual: dict[int, int] = {}
+    _vtracks = [t for t in doc.get("tracks", []) if t.get("kind") == "video"]
+    for _c in (_vtracks[0].get("clips") or []) if _vtracks else []:
+        # 纯音频夹具(无视频轨)→ 空映射,人声按名义位置(与旧行为一致)
+        _qf = max(1, round(_c["durationMs"] / 1000.0 * _fps_m))
+        _nom2actual[int(_c["startMs"])] = int(round(_acc * 1000))
+        _acc += _qf / _fps_m
     for t in audio_tracks:
         for clip in t["clips"]:
+            if int(clip.get("startMs", 0)) in _nom2actual:
+                clip = {**clip, "startMs": _nom2actual[int(clip["startMs"])]}
             sp = clip_path(clip, base_dir)
             # B1(BUGREPORT-20260913):人声 clip 的 sourceInMs 必须在**输入侧寻址**,
             # 否则 _voice_chain 的 atrim=0:dur 永远从源文件 0s 取 —— 粗剪后的多段
@@ -1497,16 +1515,23 @@ def step_mix(doc: dict, src: Path, build: Path, base_dir: Path, cfg: dict) -> Pa
             parts.append("[bgraw][voice_dp]"
                          "sidechaincompress=threshold=0.02:ratio=6:attack=60:release=500[bgm]")
             graph = (";".join(parts)
-                     + ";[voice_m][bgm]amix=inputs=2:duration=longest:normalize=0[mix]")
+                     + ";[voice_m][bgm]amix=inputs=2:duration=longest:normalize=0"
+                       "[mixraw];[mixraw]alimiter=limit=0.841:level=false[mix]")
         else:
             parts.append(f"[{idx}:a]{bgm_chain}[bgm]")
             n_in = len(mixes) + 1
             graph = ";".join(parts) + ";" + "".join(mixes) + "[bgm]" + \
-                f"amix=inputs={n_in}:duration=longest:normalize=0[mix]"
+                (f"amix=inputs={n_in}:duration=longest:normalize=0"
+                 "[mixraw];[mixraw]alimiter=limit=0.841:level=false[mix]")
     else:
         graph = ";".join(parts) + ";" + "".join(mixes) + \
-            f"amix=inputs={len(mixes)}:duration=longest:normalize=0[mix]"
+            (f"amix=inputs={len(mixes)}:duration=longest:normalize=0"
+             "[mixraw];[mixraw]alimiter=limit=0.841:level=false[mix]")
 
+    # 实剪修复(v2 实剪①):mix 总线挂限幅(limit 0.841 ≈ -1.5 dBFS 采样峰)。
+    # 双 pass linear loudnorm 在增益需求越 TP 约束时回退动态模式并过冲
+    # (实测输出 TP -0.56 > -0.9 门);限幅在源头保证 TP 余量,响度目标仍由
+    # encode 的 loudnorm 达成。
     out = build / "mixed.mkv"
     cmd += ["-filter_complex", graph, "-map", "0:v", "-map", "[mix]",
             "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", str(out)]
@@ -1534,6 +1559,9 @@ def step_subtitle(doc: dict, src: Path, build: Path, cfg: dict,
     p = Path(ass)
     if not p.is_absolute():
         p = Path(doc.get("_base_dir", ".")) / p
+    # 实剪②修复(字幕侧):视频按帧取整拼接,名义 ASS 时间会与画面累积错位
+    #(23 段尾部 386ms)。按「名义段起点 → 帧取整段起点」的分段 delta 平移事件。
+    p = _shift_ass_for_frame_grid(p, build, doc)
     out = build / "subtitled.mp4"
     cmd = [ffmpeg_bin(cfg), "-v", "error", "-y", "-i", str(src),
            "-vf", f"ass='{esc_sub(p)}'", "-c:v", "libx264", "-preset", "veryfast",
@@ -1574,18 +1602,78 @@ def measure_loudness(src: Path, cfg: dict) -> dict | None:
         return None
 
 
+def _shift_ass_for_frame_grid(ass_path: Path, build: Path, doc: dict) -> Path:
+    """ASS 事件时间按帧取整分段映射平移(零漂移的字幕侧)。
+
+    视频 = Σ 帧取整段长;名义 = Σ durationMs。每段 delta_k = 实际起点 − 名义起点;
+    落在段 k 的事件整体平移 delta_k。无差异(全部 |delta| < 1ms)时原样返回。
+    """
+    fps = doc.get("fps", 30)
+    clips = _main_video_clips(doc)
+    segs: list[tuple[int, int, int]] = []          # (nom_start, nom_end, delta_ms)
+    acc_nom, acc_act = 0.0, 0.0
+    for c in clips:
+        qf = max(1, round(c["durationMs"] / 1000.0 * fps))
+        nom_start, act_start = int(acc_nom), int(round(acc_act * 1000))
+        segs.append((nom_start, nom_start + c["durationMs"],
+                     act_start - nom_start))
+        acc_nom += c["durationMs"]
+        acc_act += qf / fps
+    if all(d == 0 for _, _, d in segs):
+        return ass_path
+
+    import re as _re  # noqa: PLC0415
+
+    def _ass2ms(ts: str) -> int:
+        h, m, s = ts.split(":")
+        return int((int(h) * 3600 + int(m) * 60 + float(s)) * 1000)
+
+    def _ms2ass(ms: int) -> str:
+        ms = max(0, ms)
+        h, rem = divmod(ms, 3600000)
+        m, rem = divmod(rem, 60000)
+        s = rem / 1000
+        return f"{h:d}:{m:02d}:{s:05.2f}"
+
+    def _delta(ms: int) -> int:
+        for a, b, d in segs:
+            if a <= ms < b:
+                return d
+        return segs[-1][2] if segs else 0
+
+    out = build / "subtitled_aligned.ass"
+    lines = ass_path.read_text(encoding="utf-8", errors="replace").splitlines()
+    res = []
+    for ln in lines:
+        if ln.startswith("Dialogue:"):
+            head, _, rest = ln.partition(":")
+            cols = rest.split(",")
+            if len(cols) >= 10:
+                a_ms, b_ms = _ass2ms(cols[1]), _ass2ms(cols[2])
+                cols[1] = _ms2ass(a_ms + _delta(a_ms))
+                cols[2] = _ms2ass(b_ms + _delta(b_ms))
+                ln = head + ":" + ",".join(cols)
+        res.append(ln)
+    out.write_text(chr(10).join(res) + chr(10), encoding="utf-8")
+    return out
+
+
 def step_encode(src: Path, out: Path, profile: str, cfg: dict, fps: int,
                 loudness: dict | None = None) -> None:
     crf = {"final": "19", "preview": "26", "draft": "28"}[profile]
     preset = {"final": "medium", "preview": "veryfast", "draft": "ultrafast"}[profile]
+    # 实剪修复(v2 实剪①):限幅挂在 loudnorm **之后** —— linear=true 在增益需求
+    # 越 TP 约束时回退动态模式,单 pass/动态都会过冲(实测输出 TP -0.57 > -0.9 门)。
+    # alimiter(-1 dBFS 采样峰)兜底保证 TP ≤ -1,响度目标仍由 loudnorm 达成。
+    limiter = ",alimiter=limit=0.751:level=false"   # -2.5 dBFS 采样峰;真峰过冲 ~0.3-0.7dB 后仍 ≤ -1.8
     if profile == "final" and loudness:
         # 双 pass(linear=true):用实测值回填,动态不被单 pass 的归一化曲线拉花。
         af = (f"loudnorm=I=-14:TP=-1.0:LRA=11:"
               f"measured_I={loudness['input_i']}:measured_TP={loudness['input_tp']}:"
               f"measured_LRA={loudness['input_lra']}:measured_thresh={loudness['input_thresh']}:"
-              f"offset={loudness.get('target_offset', 0)}:linear=true")
+              f"offset={loudness.get('target_offset', 0)}:linear=true" + limiter)
     else:
-        af = LOUDNORM_BUS
+        af = LOUDNORM_BUS + limiter
     cmd = [ffmpeg_bin(cfg), "-v", "error", "-y", "-i", str(src),
            "-af", af, "-c:v", "libx264", "-preset", preset, "-crf", crf,
            "-pix_fmt", "yuv420p", "-r", str(fps), "-c:a", "aac", "-b:a", "192k",

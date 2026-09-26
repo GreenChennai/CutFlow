@@ -765,6 +765,9 @@ def op_simple_clip_fields(ctx: Ctx, op: dict, idx: int) -> None:
     norm = validate_after(op, idx)
     track, clip = resolve_clip(ctx.doc, op["target"])
     ti, ci = track_clip_pos(ctx.doc, track, clip)
+    # 实剪②修复:记 op 前值,供音轨镜像裁切按差值同步(_mirror_audio_twin)
+    pre = {"startMs": clip.get("startMs"), "durationMs": clip.get("durationMs"),
+           "sourceInMs": clip.get("sourceInMs")} if track.get("kind") == "video" else None
     label = f"{clip_kind_label(track, ti)} · {op['target']}「{clip_desc(clip)}」"
     boxes: dict[str, list[tuple[str, object]]] = {"clip": [], "motion": [], "reframe": []}
     for key, val in norm.items():
@@ -784,7 +787,44 @@ def op_simple_clip_fields(ctx: Ctx, op: dict, idx: int) -> None:
                    _clip_ptr(ti, ci, "reframe"), boxes["reframe"], label)
     if boxes["clip"]:
         set_fields(ctx, op, clip, _clip_ptr(ti, ci), boxes["clip"], label)
+        # 实剪②:主轨 trim/move 同步音轨镜像(同源同窗的人声/环境声 clip),
+        # 否则音视频时间基分叉(实测 23 段累积 9 处重叠、尾段错位数百 ms)。
+        if pre is not None and name in ("clip.trim", "clip.move"):
+            _mirror_audio_twin(ctx, clip, pre, {k: v for k, v in boxes["clip"]})
     ctx.dirty.add(OP_DIRTY[name])
+
+
+def _mirror_audio_twin(ctx: Ctx, vclip: dict, pre: dict,
+                       changes: dict[str, object]) -> None:
+    """主轨 clip.trim/clip.move → 音轨上「同 src 且三值一致」的镜像 clip 同步。
+
+    · trim(durationMs):镜像 durationMs 加同差值(start 不动,时间基由后续 ripple
+      一致性保证);trim(startMs/sourceInMs):镜像 sourceInMs 加同差值;
+    · move(startMs):镜像 startMs 加同差值;
+    · 找不到镜像(独立配音/音乐轨)→ 不动,不臆测。
+    """
+    d_start = (vclip.get("startMs") or 0) - (pre.get("startMs") or 0)
+    d_dur = (vclip.get("durationMs") or 0) - (pre.get("durationMs") or 0)
+    d_sin = (vclip.get("sourceInMs") or 0) - (pre.get("sourceInMs") or 0)
+    if not (d_start or d_dur or d_sin):
+        return
+    for tr in ctx.doc.get("tracks", []):
+        if tr.get("kind") != "audio":
+            continue
+        for ac in tr.get("clips", []):
+            # sourceInMs 仅在镜像 clip 真有该键时参与比对
+            # (rs_ir 音轨镜像只带 src/start/duration——实剪②:无脑比对永不命中)
+            if "sourceInMs" in ac and ac.get("sourceInMs") != pre.get("sourceInMs"):
+                continue
+            if (ac.get("src") == vclip.get("src")
+                    and ac.get("startMs") == pre.get("startMs")
+                    and ac.get("durationMs") == pre.get("durationMs")):
+                if d_start:
+                    ac["startMs"] = (ac.get("startMs") or 0) + d_start
+                if d_dur:
+                    ac["durationMs"] = max(100, (ac.get("durationMs") or 0) + d_dur)
+                if d_sin:
+                    ac["sourceInMs"] = max(0, (ac.get("sourceInMs") or 0) + d_sin)
 
 
 def _move_ripple(ctx: Ctx, op: dict, track: dict, clip: dict, new_start) -> None:

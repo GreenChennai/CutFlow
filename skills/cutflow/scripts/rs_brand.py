@@ -269,7 +269,11 @@ def _absolutize_assets(doc: dict, base: Path) -> None:
     退出码掩盖(失败也记 S5 done,P10b-1 随独占子目录一并修正)。
     """
     def _abs(v: str) -> str:
-        return v if not v or Path(v).is_absolute() else str((base / v).resolve())
+        # 伪协议(assets_sfx:/assets_library:)由 rs_asset.resolve_sfx_ref 解析,
+        # 加 cwd 前缀会弄坏协议头(实剪①变体渲染发现)
+        if not v or v.startswith(("assets_sfx:", "assets_library:"))                 or Path(v).is_absolute():
+            return v
+        return str((base / v).resolve())
 
     for tr in doc.get("tracks", []):
         for c in tr.get("clips", []):
@@ -376,7 +380,7 @@ def main() -> int:
         if doc["_variant"]["logoRect"].get("lifted"):
             all_errs.append(f"{v['id']}: Logo 自动抬升避开字幕带(交付说明需标注)")
         vp = vdir / f"{v['id']}.json"
-        _absolutize_assets(doc, Path.cwd())
+        _absolutize_assets(doc, Path(a.ir).resolve().parent.parent)   # 工程根(IR 在 05_时间线工程/ 下;相对 src/ass 锚工程根,非 cwd)
         vp.write_text(json.dumps(doc, ensure_ascii=False, indent=1), encoding="utf-8")
         # P10b-1:品牌变体成片全部落 --out 指定的独占子目录(06_成片输出/branded/),
         # 通过 --out 显式告知 rs_render —— 预测路径与实际写盘必须逐字一致。
