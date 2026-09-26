@@ -1533,7 +1533,10 @@ def step_mix(doc: dict, src: Path, build: Path, base_dir: Path, cfg: dict) -> Pa
     # (实测输出 TP -0.56 > -0.9 门);限幅在源头保证 TP 余量,响度目标仍由
     # encode 的 loudnorm 达成。
     out = build / "mixed.mkv"
-    cmd += ["-filter_complex", graph, "-map", "0:v", "-map", "[mix]",
+    # 实剪②交付口径:音轨严格等长于视频(实测音轨 291.9s vs 视频 291.5s 的尾差,
+    # 部分播放器对音画不等长文件会渐进偏移口型)。loudnorm 兜底限幅不受影响。
+    graph += (";[mix]atrim=0:" + f"{total_s:.3f}" + ",asetpts=PTS-STARTPTS[mixc]")
+    cmd += ["-filter_complex", graph, "-map", "0:v", "-map", "[mixc]",
             "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", str(out)]
     p = run(cmd, timeout=proportional_timeout(total_s, floor=3600,
                                               env="CUTFLOW_STEP_TIMEOUT"))

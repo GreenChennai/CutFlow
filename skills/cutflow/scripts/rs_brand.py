@@ -153,15 +153,15 @@ def logo_rect(logo: dict, canvas: dict, ratio: str, margin_pct: float = 0.04,
     # 不再硬编码抖音口径(此前小红书/B站变体会越过自家禁区且自家校验器判不出)。
     sa = _platform_safe_area(platform)
     if sa:
-        top_safe = int(canvas["height"] * float(sa.get("top", 0.12)))
         band_top = canvas["height"] - int(canvas["height"] * float(sa.get("bottom", 0.25)))
         side_l = int(canvas["width"] * float(sa.get("left", 0.0)))
         side_r = canvas["width"] - int(canvas["width"] * float(sa.get("right", 0.0)))
     else:
-        # 平台未声明 → 保留旧保守带(顶部 12% / 底部 25%)并留痕,不猜平台
-        top_safe = int(canvas["height"] * 0.12)
         band_top = int(canvas["height"] * 0.75)
         side_l, side_r = 0, canvas["width"]
+    # 顶排贴顶(2026-09-26 用户反馈:整段 12% 顶带下移让 Logo 落在"中上",观感差)。
+    # 水印角标惯例 = 贴顶小边距:2.5% 高与 1×侧距取大者;底部仍守平台字幕带。
+    top_safe = min(int(canvas["height"] * 0.12), max(int(canvas["height"] * 0.025), m))
     xs = {"topLeft": max(m, side_l + m), "bottomLeft": max(m, side_l + m),
           "topRight": min(canvas["width"] - w - m, side_r - w - m),
           "bottomRight": min(canvas["width"] - w - m, side_r - w - m),
