@@ -989,6 +989,40 @@
    ]
   },
   {
+   "script": "rs_pixabay.py",
+   "purpose": "rs_pixabay.py —— Pixabay 在线素材源(图片/视频/音乐),剪辑素材的在线获取通道。",
+   "stage": [],
+   "outputs": [],
+   "gate": "",
+   "args": [
+    "--kind=music|sound_effect|photo|video",
+    "--query(必需)",
+    "--limit=6",
+    "--pick=1",
+    "--out"
+   ],
+   "commands": [
+    {
+     "name": "rs_pixabay.py search",
+     "sub": "search",
+     "probe": [
+      "search",
+      "--query",
+      "P"
+     ]
+    },
+    {
+     "name": "rs_pixabay.py fetch",
+     "sub": "fetch",
+     "probe": [
+      "fetch",
+      "--query",
+      "P"
+     ]
+    }
+   ]
+  },
+  {
    "script": "rs_reframe.py",
    "purpose": "横转竖自动重构(M8 vlog 能力 vision.track / vision.reframe 的 detector,ADR-0047)。",
    "stage": [],

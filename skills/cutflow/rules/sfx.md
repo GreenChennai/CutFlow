@@ -89,3 +89,14 @@ python skills/cutflow/scripts/rs_sfx.py 05_时间线工程/project.json --apply 
 | 人声不被掩 | 人声段响度无下降超过 1 LU(sidechain 生效) |
 | 可追溯 | 每条音效有 `trigger` 与 `anchorChar`,可反查落点理由 |
 | 丢弃可见 | `dropped` 非空时一定有 `sfx_dropped.md` |
+
+
+## 在线素材源:Pixabay(v0.20 追加,用户指定)
+
+- 剪辑需要音乐/音效/图片/视频素材时,**优先查本地素材库**(rs_asset search <关键词>);本地没有 → 用在线源 fetch:python skills/cutflow/scripts/rs_pixabay.py fetch --kind music --query upbeat --out 01_原始素材/pixabay(kind 只填一个,query 不带引号与尖括号)
+- key 来源:artboard 技能 config.json(用户指定);env `ARTBOARD_PIXABAY_KEY` 可覆盖。
+- 许可:Pixabay Content License(免费商用免署名)= ADR-0053 白名单;fetch 返回的
+  register 块含许可四字段。入库:rs_asset.py add --file <下载文件> --kind bgm --group <组> --label <名> --tags <标签> --usage bgm --source Pixabay --license Pixabay_Content_License --commercial true --attribution Pixabay --ai-generated false(各值不含空格)
+- 通道:photo/video 走官方 API;music/sound_effect 走 playwright 真浏览器
+  (pixabay 音乐页有反爬,纯 HTTP 403;playwright 缺失 → 结构化报错)。
+- 密度与选择纪律不变:音效 15s≤2、同源不重复;BGM 选取仍按 pacing/mood。

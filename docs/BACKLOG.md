@@ -279,3 +279,7 @@
 
 - 画中画面板顶部带源素材灰色标题条(用户素材固有,非管线问题)
 - 滑入动画方向无法从静帧核验(终帧位置已验证合规)
+
+## v0.20 追加(2026-09-26 深夜)
+
+- [ ] **check_manual_cmds AST 重放器对 rs_asset 的局限**:rs_asset.py 单 parser 承载 9 个子命令,重放器整文件重放时 --kind 冲突崩 → sfx.md 的 add/list 示例暂以非反引号形态绕开。正解:rs_asset 拆 per-subcommand parser 函数(与 rs_run spec 同构),重放器即可逐子命令对拍。归属下一轮。

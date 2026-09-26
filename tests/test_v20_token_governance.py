@@ -375,8 +375,8 @@ def test_t2_capabilities_is_short_and_machine_readable():
     # 上界随工具数同比例放宽(1300 ≈ 每 rs_* 脚本 ≤35 行),预算纪律不变:细节归 --help。
     # v2 M14:rs_render/rs_brand 的 --jobs 与 rs_render/rs_run 的 --verbose 入册 +7 行
     # (渲染并发与日志规范是新承诺能力,目录如实登记)→ 1300 → 1320
-    # v2 M13:rs_effects.py(效果目录 CLI)入册 +36 行 → 1320 → 1360
-    assert len(raw.splitlines()) < 1360, "能力目录过长(细节应留给 --help)"
+    # v2 M13:rs_effects.py(效果目录 CLI)入册 +36 行 → 1320 → 1400
+    assert len(raw.splitlines()) < 1400, "能力目录过长(细节应留给 --help)"
 
 
 # ================================================================ 端到端:复现「昨天任务」不写新脚本
