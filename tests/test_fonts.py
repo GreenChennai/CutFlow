@@ -18,6 +18,11 @@ from pathlib import Path
 
 import pytest
 
+import os as _os
+_ARTBOARD = _os.environ.get('CUTFLOW_ARTBOARD_DIR',
+                              json.load(open(Path(__file__).resolve().parents[1] / 'config.json', encoding='utf-8')).get('artboard_dir', '') if Path(__file__).resolve().parents[1].joinpath('config.json').is_file() else '')
+_HAS_ARTBOARD = bool(_ARTBOARD) and Path(_ARTBOARD).is_dir()
+
 REPO = Path(__file__).resolve().parents[1]
 SCRIPTS = REPO / "skills" / "cutflow" / "scripts"
 FONTS_JSON = REPO / "skills" / "cutflow" / "templates" / "fonts.json"
@@ -35,6 +40,7 @@ FONT_DENYLIST = ("Microsoft YaHei", "微软雅黑")
 
 # ================================================================ ① 表 ↔ artboard 对拍
 
+@pytest.mark.skipif(not _HAS_ARTBOARD, reason='artboard 技能目录缺席(CI),字体对表由本地/装 artboard 环境把守')
 def test_fonts_json_matches_artboard_readme():
     assert FONTS_JSON.is_file(), "templates/fonts.json 缺失(--fonts-only 可再生成)"
     doc = json.loads(FONTS_JSON.read_text(encoding="utf-8"))
@@ -116,6 +122,7 @@ def test_generated_huazi_templates_use_table_font():
 
 # ================================================================ ④ rs_doctor 锁定路径
 
+@pytest.mark.skipif(not _HAS_ARTBOARD, reason='artboard 技能目录缺席(CI),字体对表由本地/装 artboard 环境把守')
 def test_doctor_artboard_locked_path_check():
     from pathlib import Path as _P
     locked = str(rs_common.ARTBOARD_LOCKED_DIR)

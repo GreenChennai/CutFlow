@@ -23,6 +23,9 @@ from pathlib import Path
 
 import pytest
 
+_CUTFORGE = Path(__file__).resolve().parents[1].parent / 'cutforge' / 'schemas' / 'project.schema.json'
+_HAS_CUTFORGE = _CUTFORGE.parent.exists()
+
 REPO = Path(__file__).resolve().parents[1]
 SCRIPTS = REPO / "skills" / "cutflow" / "scripts"
 sys.path.insert(0, str(SCRIPTS))
@@ -526,6 +529,7 @@ def test_new_ops_deterministic_and_undo(tmp_path):
 
 # ================================================================ schema 双仓同步
 
+@pytest.mark.skipif(not _HAS_CUTFORGE, reason='cutforge 仓缺席(CI tests job),双仓同步由 rust-gates/本地把守')
 def test_schema_sync_between_repos():
     """CutFlow 与 cutforge 的 project.schema.json clip/顶层字段集一致
     (cutforge additionalProperties:false —— 不同步编辑器会拒开新工程)。"""

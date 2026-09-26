@@ -26,7 +26,7 @@ jobs:
           print("config.json seeded; ffmpeg_dir =", bin_dir)
       - name: Python tests(本仓全量:断句片尾/状态机/意图编译/能力目录/剪映出口)
         run: |
-          pip install pytest numpy -q
+          pip install pytest numpy pillow -q   # pillow: 素材/封面像素测试(v2 M12)
           python -m pytest tests -q
 
   bridge-smoke:
