@@ -205,7 +205,7 @@ def build_from_cutlist(cutlist: dict, *, slug: str, ratio: str = "9x16",
         # 原生 clipId(M4 寻址设计;实剪②发现:无 id 时 rs_edit 回退内容寻址,
         # 对重复 keep 片段 cf- 哈希碰撞 → BAD_ADDRESS。id 唯一且稳定=段序)
         # clipId 契约形态(V1-001;cutforge pattern ^[VAT][0-9]+-[0-9]{3}$,
-        # 实剪②反馈:c001 形态被 cutforge 拒收 INTERNAL)
+        # 实剪②反馈:c001/V-001 形态都被拒收——轨 id 缺省时也必须给 track 补 V1/A1)
         clip["id"] = f"V1-{i + 1:03d}"
         video.append(clip)
         if with_audio:
@@ -215,8 +215,8 @@ def build_from_cutlist(cutlist: dict, *, slug: str, ratio: str = "9x16",
 
     return {
         "version": 1, "slug": slug, "fps": 30, "canvas": dict(CANVAS[ratio]),
-        "tracks": [{"kind": "video", "clips": video},
-                   {"kind": "audio", "clips": audio}],
+        "tracks": [{"id": "V1", "kind": "video", "clips": video},
+                   {"id": "A1", "kind": "audio", "clips": audio}],
         "subtitle": _subtitle_refs(project_root),
         "outputs": [ratio],
         "_meta": {"generatedFrom": "cutlist", "keepSegments": len(keep),
@@ -373,7 +373,7 @@ def build_from_cards(manifest: dict, wordline: dict, anchors: list[dict], *, slu
         audio.append({"src": voice, "startMs": 0, "durationMs": total_ms, "role": "voice"})
     doc = {
         "version": 1, "slug": slug, "fps": fps, "canvas": dict(CANVAS[ratio]),
-        "tracks": [{"kind": "video", "clips": clips},
+        "tracks": [{"id": "V1", "kind": "video", "clips": clips},
                    {"kind": "audio", "clips": audio}],
         "subtitle": _subtitle_refs(base_dir),
         "outputs": [ratio],

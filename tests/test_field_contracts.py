@@ -20,6 +20,7 @@ SCHEMA = REPO / "skills" / "cutflow" / "templates" / "project.schema.json"
 # 字段(clip 内路径) → 消费者文件列表(读取证据 = 源码含字段名字符串)
 # markers 由 rs_common.normalize_markers 统一消费(R01 教训:禁止各脚本直读)
 FIELD_CONSUMERS = {
+    "id": ["rs_render.py", "rs_edit.py"],
     "src": ["rs_render.py"],
     "startMs": ["rs_render.py"],
     "durationMs": ["rs_render.py"],
