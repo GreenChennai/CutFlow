@@ -531,6 +531,10 @@
               "type": "string"
             }
           }
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^[VAT][0-9]+-[0-9]{3}$"
         }
       }
     }

@@ -293,9 +293,14 @@ def apply_draft(ir: dict, draft: dict) -> dict:
         doc.setdefault("tracks", []).append(audio)
     audio["clips"] = [c for c in audio.get("clips", []) if c.get("role") != "sfx"]
     for p in draft.get("placements", []):
-        audio["clips"].append({"src": p["src"], "startMs": int(p["atMs"]), "role": "sfx",
-                               "note": p.get("note", ""), "gainDb": p.get("gainDb", DEFAULT_GAIN_DB),
-                               "trigger": p.get("trigger")})
+        # IR 落盘字段白名单(schema 契约;实剪②反馈:note/gainDb/trigger/atMs 是
+        # 内部 placement 结构,泄漏进 IR 被 cutforge v2 校验拒绝)。gainDb 换算
+        # 为 schema 的 volume(线性比例)。
+        gain = float(p.get("gainDb", DEFAULT_GAIN_DB))
+        audio["clips"].append({"src": p["src"], "startMs": int(p["atMs"]),
+                               "durationMs": int(p.get("durationMs", 1200)),
+                               "role": "sfx",
+                               "volume": round(10 ** (gain / 20.0), 3)})
     audio["clips"].sort(key=lambda c: int(c.get("startMs", 0)))
     return doc
 
