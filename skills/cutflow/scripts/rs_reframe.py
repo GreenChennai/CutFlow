@@ -263,8 +263,9 @@ def plan_project(root: Path, ratio: str | None = None, force: bool = False
             else:
                 plan = clip_plan_static(sw, sh, ratio_wh)
                 if not track_ready:
-                    degrade_reasons.append(
-                        f"{clip.get('id', '?')}:主体跟踪缺失→居中锚(vision.track 未部署)")
+                    note = "主体跟踪缺失→居中锚(vision.track 未部署)"
+                    plan["degradeNote"] = note
+                    degrade_reasons.append(f"{clip.get('id', '?')}:{note}")
             clips_out.append({"clipId": clip.get("id", ""), "src": clip.get("src", ""),
                               "srcWidth": sw, "srcHeight": sh,
                               "startMs": clip.get("startMs", 0),
