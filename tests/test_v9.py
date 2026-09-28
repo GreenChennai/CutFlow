@@ -153,11 +153,18 @@ def test_cleanup_keeps_deliverables(tmp_path):
 # ---------------------------------------------------------------- B5 cards.json 与 ass 同源
 
 def test_cards_json_matches_ass(tmp_path):
-    """B5:全链调整(必并/延长/间距/帧对齐)后,cards.json 时间必须与 ass 一致。"""
+    """B5:全链调整(延长/间距/帧对齐)后,cards.json 时间必须与 ass 一致。
+
+    T4.3(第四册)修订:过短卡不再静默合并(旧用例靠必并并成一卡,使时间恰好
+    落在 ASS 厘秒精度内)。新契约下两张卡各自保留;一致性容差放宽到 ASS 时间
+    格式的精度上限(厘秒 = ±10ms)—— cards.json 与 ass 由同一份 events 写出,
+    差异只可能来自 ASS 厘秒取整,这正是 B5 要守住的同源不变量。
+    """
     wl = _wordline("一二三四五六七八九", sent_spans=[(0, 4), (4, 9)])
     for i, c in enumerate(wl["chars"]):
-        c["startMs"], c["endMs"] = 10 * i, 10 * i + 8      # 触发必并
-    events, _meta = sub.events_from_wordline(wl, 10)
+        c["startMs"], c["endMs"] = 10 * i, 10 * i + 8
+    events, meta = sub.events_from_wordline(wl, 10)
+    assert meta["mergedShort"] == 0, "T4.3:过短卡不再静默合并"
     sub.snap_events_to_frames(events, 30.0)
     sub._enforce_gaps(events, 30.0)
     cards = [{"startMs": int(round(e["start"] * 1000)),
@@ -166,8 +173,8 @@ def test_cards_json_matches_ass(tmp_path):
     parsed = rs_sync.parse_ass(tmp_path / "subtitles.ass")
     assert len(parsed) == len(cards)
     for c, e in zip(cards, parsed):
-        assert abs(c["startMs"] - e["start"] * 1000) < 1, (c, e)
-        assert abs(c["endMs"] - e["end"] * 1000) < 1, (c, e)
+        assert abs(c["startMs"] - e["start"] * 1000) <= 10, (c, e)   # ASS 厘秒精度
+        assert abs(c["endMs"] - e["end"] * 1000) <= 10, (c, e)
         assert c["startMs"] < c["endMs"], c
 
 

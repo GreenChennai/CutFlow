@@ -133,7 +133,8 @@ OP_DIRTY = {
 # context「可执行手法」/裁剪声明的节名
 SECTION_LABELS = {"ops": "可执行手法清单", "degrade": "当前降级项", "subtitle": "字幕摘要",
                   "protect": "保护区", "overlay": "覆盖轨明细", "audio": "音频轨明细",
-                  "effects": "可用特效", "fxplan": "本工程该用的特效", "assets": "可用素材"}
+                  "effects": "可用特效", "fxplan": "本工程该用的特效", "assets": "可用素材",
+                  "vision": "画面摘要(视觉)"}
 
 
 class EditError(Exception):
@@ -790,12 +791,11 @@ def op_simple_clip_fields(ctx: Ctx, op: dict, idx: int) -> None:
         # 实剪②:主轨 trim/move 同步音轨镜像(同源同窗的人声/环境声 clip),
         # 否则音视频时间基分叉(实测 23 段累积 9 处重叠、尾段错位数百 ms)。
         if pre is not None and name in ("clip.trim", "clip.move"):
-            _mirror_audio_twin(ctx, clip, pre, {k: v for k, v in boxes["clip"]})
+            _mirror_audio_twin(ctx, clip, pre)   # M6:changes 形参从未使用,删(差值全由 pre/post 推得)
     ctx.dirty.add(OP_DIRTY[name])
 
 
-def _mirror_audio_twin(ctx: Ctx, vclip: dict, pre: dict,
-                       changes: dict[str, object]) -> None:
+def _mirror_audio_twin(ctx: Ctx, vclip: dict, pre: dict) -> None:
     """主轨 clip.trim/clip.move → 音轨上「同 src 且三值一致」的镜像 clip 同步。
 
     · trim(durationMs):镜像 durationMs 加同差值(start 不动,时间基由后续 ripple
@@ -1393,19 +1393,24 @@ def op_element_add(ctx: Ctx, op: dict, idx: int) -> None:
 
 
 def _element_clip_guard(ctx: Ctx, op: dict):
-    """element.remove / element.retime 的目标守卫:必须是元素段(assetId 且在覆盖轨)。"""
+    """element.remove / element.retime 的目标守卫:必须是元素段(assetId 且在覆盖轨
+    video/overlay;M8:补覆盖轨校验,docstring 与实现对齐)。"""
     track, clip = resolve_clip(ctx.doc, op["target"])
     if not clip.get("assetId"):
         _fail("BAD_ADDRESS", f"{op['target']} 不是素材元素段(缺 assetId);"
                              "普通片段用 clip.trim,卡片用 overlay.remove")
+    if not (track.get("kind") == "video" and track.get("name") == "overlay"):
+        _fail("BAD_ADDRESS", f"{op['target']} 不在覆盖轨(video/overlay):"
+                             "元素段必须挂在覆盖轨上,普通片段用 clip.trim")
     return track, clip
 
 
 def op_element_remove(ctx: Ctx, op: dict, idx: int) -> None:
     validate_after(op, idx)
     _element_clip_guard(ctx, op)
+    # M7:op_clip_delete 末尾按 OP_DIRTY[op["op"]] 标脏 —— op 仍是 element.remove,
+    # 已正确标 S4;此处不再重复 add(删元素只标 S4,不多跑 S3 也不重复登记)。
     op_clip_delete(ctx, op, idx)
-    ctx.dirty.add("S4")
 
 
 def op_element_retime(ctx: Ctx, op: dict, idx: int) -> None:
@@ -2400,7 +2405,7 @@ def _clip_params(c: dict) -> str:
     return " ".join(bits) or "—"
 
 
-def _track_table(ti: int, t: dict, is_main: bool) -> str:
+def _track_table(ti: int, t: dict, is_main: bool, shots_by_src: dict | None = None) -> str:
     kind = t.get("kind")
     tid = str(t.get("id") or ({"video": "V", "audio": "A", "text": "T"}
                               .get(kind, "X") + str(ti + 1)))
@@ -2431,18 +2436,107 @@ def _track_table(ti: int, t: dict, is_main: bool) -> str:
         editable = "audio.gain/sfx.remove"
     for c in t.get("clips", []):
         src = Path(str(c.get("src", ""))).name if c.get("src") else "—"
+        if kind == "video":
+            label = _shot_label(shots_by_src or {}, c)      # T3.2:该 clip 属于第几镜、镜头长短
+            if label:
+                src += " · " + label
         fourth = (clip_desc(c) if kind == "video" else (c.get("role") or "—")) or "—"
         lines.append(f"| {cid_of(c)} | {span_of(c)} | {src} | {fourth} "
                      f"| {_clip_params(c)} | {editable} |")
     return "\n".join(lines)
 
 
-def build_context(root: Path, scope: str, budget: int) -> tuple[str, dict]:
+def _shots_for_context(root: Path) -> dict:
+    """shots.json → {素材名: shots 列表}(context 镜号标注用;缺失/坏产物 → {})。"""
+    p = rs_paths.resolve(root, "cut") / "shots.json"
+    if not p.is_file():
+        return {}
+    try:
+        doc = json.loads(p.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError):
+        return {}
+    name = str(doc.get("source") or "")
+    return {name: doc.get("shots") or []} if name and doc.get("shots") else {}
+
+
+def _shot_label(shots_by_src: dict, clip: dict) -> str:
+    """clip → "镜N(2.1s)"(源素材名与 shots.json 匹配且 sourceInMs 落在镜内;否则空)。"""
+    src_name = Path(str(clip.get("src", ""))).name
+    shots = shots_by_src.get(src_name)
+    if not shots or clip.get("sourceInMs") is None:
+        return ""
+    ms = int(clip["sourceInMs"])
+    for s in shots:
+        if int(s["startMs"]) <= ms < int(s["endMs"]):
+            return f"镜{s['index']}({int(s['durMs']) / 1000:.1f}s)"
+    return ""
+
+
+def _vision_section(root: Path, ir: dict) -> str:
+    """画面摘要(--with-vision,T3.10):skeleton 一行/镜 + 该 clip 的镜内描述。
+
+    纯文本化画面事实(运动/亮度档、台词摘要、VLM 描述),供 Agent 改片时说出
+    「这个片段画面是近景人物特写」;仍然**不含任何图片路径**(预算裁剪由调用方
+    统一机械强制,vision 节优先级 3,放不下整节裁掉并声明)。
+    """
+    tl = rs_paths.resolve(root, "timeline")
+    skel = vis = None
+    try:
+        if (tl / "skeleton.json").is_file():
+            skel = json.loads((tl / "skeleton.json").read_text(encoding="utf-8"))
+        if (tl / "vision.json").is_file():
+            vis = json.loads((tl / "vision.json").read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError):
+        pass
+    if not skel and not vis:
+        return ("尚无画面产物(skeleton.json/vision.json 缺失;"
+                "先 rs_shot.py detect,再 rs_vision.py vision / skeleton)")
+    m_names = ("静", "缓", "中", "烈")
+    b_names = ("暗", "偏暗", "偏亮", "亮")
+    r_names = ("开场", "主体", "过渡", "收尾")
+    skel_rows = {int(it.get("i", -1)): it for it in (skel or {}).get("items") or []}
+    caps = {int(r.get("index", -1)): str(r.get("caption") or "")
+            for r in (vis or {}).get("shots") or [] if r.get("caption")}
+    lines = ["| clipId | 镜 | 档位(运动/亮度) | 台词 | 画面描述 |", "|---|---|---|---|---|"]
+    shots_by_src = _shots_for_context(root)
+    vtracks = [t for t in (ir.get("tracks") or []) if t.get("kind") == "video"]
+    main = next((t for t in vtracks if t.get("name") == "main"),
+                vtracks[0] if vtracks else None)
+    n_rows = 0
+    if main:
+        for c in main.get("clips") or []:
+            label = _shot_label(shots_by_src, c)
+            if not label:
+                continue
+            idx = int(label[1:label.index("(")]) if "(" in label else -1
+            it = skel_rows.get(idx) or {}
+            cid = str(c.get("id") or "cf-?")
+            m = m_names[int(it.get("m", 0))] if it else "—"
+            b = b_names[int(it.get("b", 0))] if it else "—"
+            head = str(it.get("h") or "") if it else ""
+            role = r_names[int(it.get("r", 1))] if it and "r" in it else ""
+            lines.append(f"| {cid} | {label}{('·' + role) if role else ''} "
+                         f"| {m}/{b} | {head or '—'} | {caps.get(idx, '') or '—'} |")
+            n_rows += 1
+    if n_rows == 0:                          # 无 IR 映射 → 退骨架逐镜行
+        for i in sorted(skel_rows):
+            it = skel_rows[i]
+            role = r_names[int(it.get("r", 1))] if "r" in it else ""
+            lines.append(f"| — | 镜{i}{('·' + role) if role else ''} "
+                         f"| {m_names[int(it.get('m', 0))]}/{b_names[int(it.get('b', 0))]} "
+                         f"| {str(it.get('h') or '') or '—'} | {caps.get(i, '') or '—'} |")
+    return "\n".join(lines)
+
+
+def build_context(root: Path, scope: str, budget: int, with_vision: bool = False
+                  ) -> tuple[str, dict]:
     """结构化时间线视图(§5.3.2 形态)。零帧路径;超预算按
-    「手法清单→降级项→字幕摘要→保护区→覆盖/音频轨→主轨行」裁剪并声明被裁内容。"""
+    「手法清单→降级项→字幕摘要→保护区→覆盖/音频轨→主轨行」裁剪并声明被裁内容。
+    with_vision=True(T3.10)追加文本化画面摘要节:仍零图片路径,12KB 硬上限不变。"""
     doc = _load_ir(root)
     fps = doc.get("fps") or 30
     rev = read_rev(root)
+    shots_by_src = _shots_for_context(root)
     trimmed: list[str] = []
     tracks = doc.get("tracks", [])
     main_i = next((i for i, t in enumerate(tracks)
@@ -2467,7 +2561,9 @@ def build_context(root: Path, scope: str, budget: int) -> tuple[str, dict]:
         key = {"video": ("main" if is_main else "overlay"), "audio": "audio",
                "text": "subtitle"}.get(kind, kind)
         pri = {"main": 5, "overlay": 4, "audio": 4, "subtitle": 3}.get(key, 3)
-        sections.append((key, _track_table(ti, t, is_main), pri))
+        sections.append((key, _track_table(ti, t, is_main, shots_by_src), pri))
+    if with_vision and scope in ("project", "clip"):
+        sections.append(("vision", _vision_section(root, doc), 3))
     if scope in ("project", "subtitle"):
         s = _subtitle_summary(root, doc)
         if s:
@@ -2543,10 +2639,11 @@ def build_context(root: Path, scope: str, budget: int) -> tuple[str, dict]:
     return out, info
 
 
-def cmd_context(root: Path, as_json: bool, scope: str, budget_s: str) -> int:
+def cmd_context(root: Path, as_json: bool, scope: str, budget_s: str,
+                with_vision: bool = False) -> int:
     budget = _budget_bytes(budget_s)
     try:
-        text, info = build_context(root, scope, budget)
+        text, info = build_context(root, scope, budget, with_vision=with_vision)
     except EditError as exc:
         return emit(False, exc.code, exc.message, exc.data, exit_code=exc.exit_code)
     if not as_json:
@@ -2575,6 +2672,8 @@ def build_argparser() -> argparse.ArgumentParser:
     ap.add_argument("--scope", choices=["clip", "project", "subtitle", "audio"],
                     default="project", help="context 视图范围(默认 project 全景)")
     ap.add_argument("--budget", default="12KB", help="context 视图字节预算硬上限(默认 12KB)")
+    ap.add_argument("--with-vision", dest="with_vision", action="store_true",
+                    help="context:注入文本化画面摘要(skeleton 一行/镜+镜内描述;仍无图片路径)")
     ap.add_argument("--ops", dest="ops_path",
                     help="apply:EditOp 清单 JSON(规则见 rules/edit-op.md)")
     ap.add_argument("--dry-run", dest="dry_run", action="store_true",
@@ -2609,7 +2708,7 @@ def main(argv: list[str] | None = None) -> int:
                     exit_code=EXIT_INPUT)
     try:
         if a.cmd == "context":
-            return cmd_context(root, a.json, a.scope, a.budget)
+            return cmd_context(root, a.json, a.scope, a.budget, a.with_vision)
         if a.cmd == "apply":
             if not a.ops_path:
                 return emit(False, "PRECONDITION_FAILED", "apply 需要 --ops ops.json",

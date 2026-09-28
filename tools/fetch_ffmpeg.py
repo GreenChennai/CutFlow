@@ -1,6 +1,7 @@
 """FFmpeg 一键下载部署(多镜像回退,参考 MomentShift 实现)。
 
-用法:python tools/fetch_ffmpeg.py [目标目录](默认 E:\\Tools\\ffmpeg)
+用法:python tools/fetch_ffmpeg.py [目标目录](缺省 <仓>/models/ffmpeg;
+     下载后 bin 目录会自动写进 config.ffmpeg_dir)
 流程:下载压缩包 → 抽取 ffmpeg.exe/ffprobe.exe → 回写 config.ffmpeg_dir。
 """
 from __future__ import annotations
@@ -63,7 +64,8 @@ def write_config(dest_bin: Path) -> None:
 
 
 def main() -> int:
-    dest_dir = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("E:/Tools/ffmpeg")
+    # T2.4(H4):缺省目标改仓内 models/ffmpeg(个人盘符不作代码内缺省)
+    dest_dir = Path(sys.argv[1]) if len(sys.argv) > 1 else REPO / "models" / "ffmpeg"
     dest_bin = dest_dir / "bin"
     if (dest_bin / "ffmpeg.exe").is_file():
         print(f"ffmpeg 已存在:{dest_bin / 'ffmpeg.exe'}(如需重装请先删除)")

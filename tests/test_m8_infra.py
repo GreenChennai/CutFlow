@@ -324,9 +324,17 @@ def test_shot_perf_budget_sixty_seconds(tmp_path):
 
 # ================================================================ §3 rs_reframe
 
-def test_reframe_static_center_no_stretch(tmp_path):
-    """降级档真实跑通:static-center + 裁切窗比恒等于目标比(裁切不拉伸)。"""
+def test_reframe_static_center_no_stretch(tmp_path, monkeypatch):
+    """降级档真实跑通:static-center + 裁切窗比恒等于目标比(裁切不拉伸)。
+
+    第三册 T3.4 起 vision.track READY=cv2 可用(Haar+帧差真检测);本机装了 opencv,
+    降级路径按三态协议显式模拟 MISSING —— 几何不变量(不拉伸/夹紧)仍走真代码。
+    """
     proj = _mk_project(tmp_path, "rfp", with_ir=True)
+    monkeypatch.setattr(rs_fetchable, "state",
+                        lambda cid: {"component": cid, "state": "MISSING", "degrade": "static-center",
+                                     "size_mb": 0, "backend": "py", "installDir": "",
+                                     "message": "模拟缺组件(测试显式降级)"})
     code, doc = _capture(rs_reframe.main, ["plan", str(proj)])
     assert code == 0
     plan = _read(rs_reframe.reframe_path(proj))
@@ -359,7 +367,7 @@ def test_reframe_subject_violation_downgrades(tmp_path, monkeypatch):
     boxes = [(10.0, 10.0, 300.0, 230.0)] * 30       # 320x240 源里占大半画面 → 9:16 窗必切破
     monkeypatch.setattr(rs_reframe, "ready_tier",
                         lambda: (True, {"track": {"engine": "bytetrack", "degraded": False}}))
-    monkeypatch.setattr(rs_reframe, "ready_subject_boxes", lambda media, max_frames=600: boxes)
+    monkeypatch.setattr(rs_reframe, "ready_subject_boxes", lambda media, src_w, src_h, cfg, max_frames=600: boxes)
     code, _ = _capture(rs_reframe.main, ["plan", str(proj), "--force"])
     assert code == 0
     clip = _read(rs_reframe.reframe_path(proj))["clips"][0]
@@ -374,12 +382,13 @@ def test_reframe_track_path_and_rate_limit(tmp_path, monkeypatch):
     boxes = [(40.0 + i * 1.0, 100.0, 60.0 + i * 1.0, 140.0) for i in range(90)]
     monkeypatch.setattr(rs_reframe, "ready_tier",
                         lambda: (True, {"track": {"engine": "bytetrack", "degraded": False}}))
-    monkeypatch.setattr(rs_reframe, "ready_subject_boxes", lambda media, max_frames=600: boxes)
+    monkeypatch.setattr(rs_reframe, "ready_subject_boxes", lambda media, src_w, src_h, cfg, max_frames=600: boxes)
     code, _ = _capture(rs_reframe.main, ["plan", str(proj), "--force"])
     assert code == 0
     plan = _read(rs_reframe.reframe_path(proj))
     clip = plan["clips"][0]
-    assert clip["mode"] == "track" and len(clip["trajectory"]) >= 60
+    # T3.4 起 READY 档真出轨迹;关键帧抽稀 ≤ TRACK_MAX_KEYS(渲染端表达式深度约束)
+    assert clip["mode"] == "track" and 2 <= len(clip["trajectory"]) <= rs_reframe.TRACK_MAX_KEYS
     max_step = rs_reframe.MAX_SHIFT_PX_PER_SEC / 30.0
     for a, b in zip(clip["trajectory"], clip["trajectory"][1:]):
         step = ((b["anchorX"] - a["anchorX"]) ** 2 + (b["anchorY"] - a["anchorY"]) ** 2) ** 0.5
@@ -630,9 +639,11 @@ def test_bgm_auto_compile_picks_from_library(tmp_path):
     pick_dec = [x for x in doc["decisions"] if x["id"] == "intent:bgm.pick"]
     assert pick_dec and pick_dec[0]["source"] == "library", "选曲必须 source=library 留痕"
     # 纯 pacing 检索 → 索引 id 排序的首条(确定性;M12 起 ids 排序即曲库顺序)
+    # T2.8/M12:file 统一为 manifest 原值(相对 assets/),repoRelPath 由它拼出
     pick = rs_intent.bgm_library_pick("music")
-    assert pick and pick["file"] == "bright_fast_128bpm.mp3"
-    assert rs_intent.bgm_library_pick("slow")["file"] == "ambient_calm_90bpm.mp3"
+    assert pick and pick["file"] == "bgm/bright_fast_128bpm.mp3"
+    assert pick["repoRelPath"] == "skills/cutflow/assets/bgm/bright_fast_128bpm.mp3"
+    assert rs_intent.bgm_library_pick("slow")["file"] == "bgm/ambient_calm_90bpm.mp3"
     # mood 语义参与:闲适(slow)命中闲适慢摇;同一输入必得同一输出
     assert rs_intent.bgm_library_pick("slow", mood="闲适")["id"] == "bgm.chill_slow.01"
     assert (rs_intent.bgm_library_pick("slow", mood="闲适")

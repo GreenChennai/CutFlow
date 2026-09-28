@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 """懒加载三态门禁(ADR-0049 / 方案 §7.1 门禁 14 / §7.3 M5 验收线)。
 
-①映射表门禁:CAPABILITY_DEPS 八条与 ADR-0049 逐字对齐;每条 probe 表达式
+①映射表门禁:CAPABILITY_DEPS 各条与 ADR-0049 逐字对齐(M13 增 fx.glsl;第三册
+  T3.4 起 vision.track READY=cv2 本地检测、增 vision.sense);每条 probe 表达式
   **语法可执行(编译不执行)**;模块/大小/后端/降级档齐全;
 ②清单门禁:tools/deps-manifest.json 与 CAPABILITY_DEPS 自洽(每个能力键有对应
   条目,字段齐全);sha256 留空 + verify=pending = 采用前须一手核实(D4 种子纪律);
@@ -56,8 +57,12 @@ ADR_TABLE = {
     "audio.stem":     ("demucs", 350, "venv-dsp", "import demucs", "none"),
     "vision.shot":    ("scenedetect", 45, "py", "import scenedetect", "frame-diff"),
     "vision.matting": ("rvm", 480, "venv-torch", "import torch; rvm", "none(gate)"),
-    "vision.track":   ("bytetrack", 20, "py", "import bytetrack", "static-center"),
+    # 第三册 T3.4:vision.track READY 重定义为 cv2 本地检测(Haar+帧差,零下载);
+    # 同册新增 vision.sense(vision.json L1 标签层)。opencv-track/opencv-sense 与
+    # vision.cv 的 opencv 是同一 pip 包,模块键分开只为清单 1:1 门禁。
+    "vision.track":   ("opencv-track", 60, "py", "import cv2", "static-center"),
     "vision.cv":      ("opencv", 60, "py", "import cv2", "none"),
+    "vision.sense":   ("opencv-sense", 60, "py", "import cv2", "L0-only"),
     "text.clip":      ("clip", 600, "venv-torch", "import clip", "keyword-match"),
     # M13/ADR-0054(分册02 §1.2 B3):moderngl 预渲 gl-transitions 重叠区
     "fx.glsl":        ("moderngl", 5, "py", "import moderngl", "T1-xfade-fallback"),
@@ -313,9 +318,9 @@ def test_doctor_inventory_entries_are_non_fatal(isolated_env, monkeypatch):
     checks, lines, data = rs_doctor._capability_inventory()
     assert checks and all(c["fatal"] is False for c in checks)
     assert any("基础档可用" in ln for ln in lines)
-    assert data["components"] and len(data["components"]) == 9
+    assert data["components"] and len(data["components"]) == 10
     fresh = data["manifest"]
-    assert fresh["present"] and fresh["pending"] == 9        # D4 机械覆盖:M13 起 9 条待核实
+    assert fresh["present"] and fresh["pending"] == 10       # D4 机械覆盖:T3.4 起 10 条待核实
 
 
 # ================================================================ ⑦ 兼容门禁(fetch_deps 委托 / rollback)
@@ -379,11 +384,11 @@ def test_rollback_cleans_config_writeback_only(isolated_env):
 
 
 def test_update_check_lists_diff_and_never_downloads(monkeypatch, isolated_env, capsys):
-    """update --check:全缺 → 8 条 missing;纯读盘,绝不自动更新。"""
+    """update --check:全缺 → 全部 missing;纯读盘,绝不自动更新。"""
     calls: list[str] = []
     monkeypatch.setattr(rs_fetchable, "_download", lambda *a, **k: calls.append("dl"))
     monkeypatch.setattr(rs_fetchable, "_pip_install", lambda *a, **k: calls.append("pip"))
     assert rs_fetchable.main(["update", "--check"]) == 0
     out = capsys.readouterr().out
-    assert out.count("missing") == 9
+    assert out.count("missing") == 10
     assert "--apply 才更新" in out and calls == []

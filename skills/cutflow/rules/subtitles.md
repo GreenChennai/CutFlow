@@ -1,6 +1,7 @@
 # Subtitles — 字幕(Netflix 规范 + 抖音红线 + 两层切分)
 
 > **ADR-0001(修订) / ADR-0002**。一句话:**卡与卡之间怎么切(segmentation)和一张卡内怎么折行(line break)是两件事,旧版本把它们混成了一件。**
+> **超限理由(第一册 T1.8)**:本册 >150 行——它同时承载 DP 卡切分算法(§4)、卡时间语义(§5)、Karaoke 字形预算(§9)与 Agent override 契约(§10),四块都是断句正确性的单一文档出处,拆册会造成跨册跳读;已按 T1.4 把安全区/对齐偏移数值让给 platforms/verify 分册。
 
 ## 1. 权威依据
 
@@ -56,7 +57,7 @@
 
 > **保护词表(P30-4)**:`segmentation.PROTECTED_WORDS`(周转归还 / 资金往来 / 财务费用科目 等)与 terms 同等强度,**始终**并入词跨度(jieba 在场也不例外)。动宾搭配被切开(「周转 | 归还」「资金 | 往来」)与切词同级,新案例同时补 `PROTECTED_WORDS` + `REGRESSION` 用例。
 
-> **末卡回吸(P30-1)**:DP 出解后追加边界后处理 —— ① 切点把词跨度拦腰截断 → 整词回吸进上一卡(放不下则整词推给下一卡);② 非候选边界 + 下一卡首字是单字词(「利润表 | 中」的「中」)且上一卡顶近字数墙 → 回吸一字。回吸永不超 maxChars、永不制造新词内切点、不吞连词领起字;旧工程按 `pipeline.json` 的 maxChars 复现,不追改。
+> **末卡回吸(P30-1)**:DP 出解后追加边界后处理 —— ① 切点把词跨度拦腰截断 → 整词回吸进上一卡(放不下则整词推给下一卡);② 非候选边界 + 下一卡首字是单字词(「利润表 | 中」的「中」)且上一卡顶近字数墙 → 回吸一字。回吸永不超每卡字数上限(查表值,§4.4)、永不制造新词内切点、不吞连词领起字;旧工程按 `pipeline.json` 记录的上限复现,不追改。
 
 > **词边界两阶段 DP(v0.8.1)**:① 词内位置**全禁**跑 DP;② 只有当全禁无可行解(极端长句在 max_chars 内放不下任何完整词边界)才降级为**词内强惩罚 −3.0** 重跑,并在报告里留痕(`wordFallbackSentences` / degradeReasons)。宁可如实留痕,不可静默切词。新发现的切词案例:优先补进 `segmentation.COMMON_WORDS` 词表 + `REGRESSION` 用例。
 
@@ -85,6 +86,12 @@ DP 目标:在**所有合法切分方案**中最大化**总分数**,同时满足 
 
 ### 4.4 硬约束(不满足即该切分方案非法)
 
+> **机器真相源(第四册 T4.4)**:本节的硬/软分级已落成数据表 `templates/subtitle-policy.json`,
+> 由 `segmentation` / `rs_subtitle` / `rs_verify` 三处共读(读口 `segmentation.load_policy`);
+> **硬** = 超每卡字数 / 卡时间重叠 / 切字内(降级除外)/ 幽灵卡边界;**软** = CPS、
+> 最短·最长时长、卡间距、视觉节拍 —— 软约束违反只报告 + 给替代方案,不阻断交付,
+> 残余项由 Agent 复核通道(`review_queue.json`)承接。本节表格保留人读依据,数值以策略表为准。
+
 | 约束 | 值 | 依据 |
 |---|---|---|
 | 每卡字数 | 9:16 **10–12 字**;16:9 **20–22 字** | Netflix 的 16 字是**横屏**标准;竖屏 CJK 屏宽只有约 60%,行业建议 8–10 字 |
@@ -99,7 +106,7 @@ DP 目标:在**所有合法切分方案**中最大化**总分数**,同时满足 
 > ③ 仍不足则**如实告警**(`sync_report.md` 的"时长过短"栏),但不阻断交付。
 > **起点永远不变**——起点决定对齐精度,不能为了凑时长去挪它。
 
-> **竖屏字数为什么下调**:Netflix 16 字是 16:9 标准,`talkshow-bold` 直接用 16 字在 1080×1920 上会顶满安全区。`maxChars` 不写死,由**比例 + 字号**推导。旧工程按 `pipeline.json` 记录的 `maxChars` 复现,不追改。
+> **竖屏字数为什么下调**:Netflix 16 字是 16:9 标准,`talkshow-bold` 直接用 16 字在 1080×1920 上会顶满安全区。每卡字数上限不写死,**由平台预设查表给定**(`segmentation.MAX_CHARS` / 平台预设字段,文档口径见 `rules/platforms.md` §3)。旧工程按 `pipeline.json` 记录的上限复现,不追改。
 
 ### 4.5 「节奏感」的正解
 
@@ -170,7 +177,7 @@ rs_subtitle.py --from-transcript 02_转写与校对/transcript_corrected.json --
 | tutorial-clean | 教程 | 底部半透明底条(BorderStyle=3) |
 | subtitle-white | 通用白字黑边 | |
 
-安全区(9:16):底 25%、顶 12% 不放字幕;3:4 用底 18%、顶 10%(小红书);16:9 用底 16%、顶 8%。**Logo 同样不得进入字幕带**。
+安全区(9:16 等)**唯一文档口径见 `rules/platforms.md` §3**(机器真相源 `templates/platforms.json` safeArea,勿在此复述数值)。**Logo 同样不得进入字幕带**(排版行为见 `rules/branding.md`)。
 **平台预设见 `rules/platforms.md`** —— `rs_subtitle --platform <douyin|shipinhao|xiaohongshu|bilibili>` 会一次定下比例/画布/字数/风格,显式 `--style/--ratio/--max-chars` 优先。
 
 ## 8. 门禁与验收
@@ -181,7 +188,7 @@ rs_subtitle.py --from-transcript 02_转写与校对/transcript_corrected.json --
 | CPS 合规 | 抽样 20 卡,CPS 全部 ≤ 9 字/秒 |
 | 竖屏可读性 | 9:16 每卡 ≤ 12 字,无顶行 1–2 字 |
 | 单卡时长 | `>7s` 必须为 0(硬失败);`<0.83s` 应尽量为 0,残余项可由 `sync_report.md` 解释 |
-| 对齐偏移(起点) | 中位数 ≤ 40ms、95 分位 ≤ 80ms(由 `rs_sync.py` 断言) |
+| 对齐偏移(起点) | 判据统一见 `rules/verify.md` §2(机器常量 `rs_sync.MEDIAN_MAX/P95_MAX`;由 `rs_sync.py` 断言) |
 | **对齐偏移(终点)**(v0.7.0) | 中位数 ≤ 60ms、95 分位 ≤ 120ms;**「早退」(终点早于末字 >25ms)= 0**;**「滞留过久」(终点晚于末字 >350ms)= 0** |
 | **连词不落卡尾**(v0.7.0) | 抽样 20 句含连词的句子,连词在卡尾的比例 = **0** |
 | **两字词不跨卡**(v0.8.1) | 抽样 20 卡,词跨度(`word_spans`)被切点截断的数量 = **0**(降级留痕除外,须逐条可解释) |
@@ -193,7 +200,7 @@ rs_subtitle.py --from-transcript 02_转写与校对/transcript_corrected.json --
 - 原理:每字一个 ASS `\kf` 标签(时长=厘秒,取自 `chars[]` 字级时间戳,**字间停顿计入前字**);首字从卡头起唱、末字吃到卡尾,`_kar_text` 产出 `{\kf40}你{\kf60}好` 形态。
 - 染色:已唱 primary `&H0000E5FF`(暖黄,**ASS 是 BGR 顺序**,从 RGB 换算后再写)、未唱 secondary 白。
 - **纯标点/空白文本段必须跳过**(`_PUNCT_ONLY` 集合):孤立 `。?!` 不成卡。注意不能拿 `_clean_card` 当 skip 判据——它对 `?` 返回 `?` 是设计(保留语气),不是空卡。
-- **挂字时序铁律(v0.6.0 实测)**:挂字必须在**必并/合规校验之前**(`events_from_wordline(karaoke=True)` 内置)——`_clean_card` 剥掉的标点会在 `\kf` 显示层经 chars 原样带回,预算若只数清洗文本会漏 1-2 字形(实测冒出 13-14 字卡)。挂字后 `e["text"]` = chars 拼接,与 rs_verify 计数同口径;合并事件必须同步拼接 `chars`,否则 `_kar_text` 丢字。
+- **挂字时序铁律(v0.6.0 实测,原 SKILL 铁律 18 下沉)**:挂字必须在**必并/合规校验之前**(`events_from_wordline(karaoke=True)` 内置)——`_clean_card` 剥掉的标点会在 `\kf` 显示层经 chars 原样带回,预算若只数清洗文本会漏 1-2 字形(实测冒出 13-14 字卡)。挂字后 `e["text"]` = chars 拼接,与 rs_verify 计数同口径;合并事件必须同步拼接 `chars`,否则 `_kar_text` 丢字。**任何 ASS Dialogue 文本匹配/计数前必须剥 `{...}` override 标签**(`rs_sync.parse_ass` 已内置;卡拉 OK 行文是 `{\kf..}字..` 形态,不剥标签会全量 unmatched)。
 - **必并线 = MIN_DUR_S(0.83s)**:与单卡时长下限同线。旧 0.8s 线有 0.03s 死区——0.81s 卡既不触发必并、又延不满(下一卡 2 帧间隙就到,延长被 `_enforce_gaps` 收回,L0 硬失败);预算放不下时第二遍**向下一卡吞并**,起点取短卡(对齐精度不动)。
 - 实测锚点:625 字 → 77 卡全 `\kf`,无缺 startMs、无标点孤卡、无领头标点卡、无超 12 字形卡(问题 #3/#8/#10/#11 修复后;rs_verify L0 全过)。
 
@@ -234,7 +241,7 @@ rs_subtitle.py --from-transcript 02_转写与校对/transcript_corrected.json --
   - `textPrefix` + `textSuffix` = 卡首/卡尾原文,适合把若干 DP 卡合并成一张大卡。
 - **部分替换(v0.8.2)**:override 区间未覆盖全部内容字时,以 DP 分组为基底——被 override 压住的卡被替换,其余沿用 DP 结果(`meta.overrideMode = "partial"`)。微调一张卡**不再需要重给全部 span**。
 - **余字自动重组(P30-2)**:被压住的 DP 卡中未被 override 覆盖的余字区间(= 卡区间减去 request 区间的差集)**自动生成重组卡**(`meta.residualRegrouped` 留痕)——Agent 挪走某卡的一段后不再需要手动补 request,治「挪走科目、剩下按净额填列只有直接消失」式丢字。
-- **用户断句方案预检(P30-3)**:超长 request(> maxChars)在**编译期**就被处理:优先在文案本就有停顿的位置(空格/顿号/逗号)拆成 ≤ maxChars 的多张卡(如 19 字拆 10+9),ASCII 词内不落刀;拆分动作与策略写进 `meta.overridePrecheck` 与运行消息留痕。`rs_verify` 的超长硬失败由此前置到回灌时。
+- **用户断句方案预检(P30-3)**:超长 request(超每卡字数上限)在**编译期**就被处理:优先在文案本就有停顿的位置(空格/顿号/逗号)拆成不超上限的多张卡(如 19 字拆 10+9),ASCII 词内不落刀;拆分动作与策略写进 `meta.overridePrecheck` 与运行消息留痕。`rs_verify` 的超长硬失败由此前置到回灌时。
 - **幽灵卡保险(P28-2)**:建卡链最后兜一道——内容字有效时长 < 100ms 的卡必须并卡或丢弃并留痕(`meta.ghostCards`),绝不静默生成 0.06s 级碎卡(根治在 rs_align remap 本体的幽灵字符丢弃,见 rules/align.md §6)。
 - 全部区间必须递增、不重叠、不越界——非法即 `BAD_OVERRIDE` 报错(exit 2),不静默吞;
 - 卡尾标点至多自动带一个(防「。，」连挂);**不覆盖的字符**(纯标点/空白)自动跳过;时间永远由 wordline 字级锚重建,override 文件里写了时间字段也会被忽略。

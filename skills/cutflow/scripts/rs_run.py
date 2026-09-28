@@ -43,7 +43,9 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from rs_common import COVER_PNG, RATIOS, emit  # noqa: E402
+from rs_common import (COVER_PNG, RATIOS, emit, policy_timeout, stages_contract,  # noqa: E402
+                       CAPS_DIR, intent_decisions_of)
+from rs_common import load_capability_descriptors as _load_capability_descriptors  # noqa: E402
 from rs_subtitle import STYLES, load_platforms  # noqa: E402
 import rs_paths  # noqa: E402  — 阶段路径唯一真相源(ADR-0046),本文件禁止目录字面量
 import segmentation  # noqa: E402
@@ -133,10 +135,12 @@ def spec(root: Path | None = None) -> list[dict]:
         # 改 brief 里的每卡字数,字幕重跑产出的卡就真的不一样(不只是账面变脏)。
         # 阶段四 N1:{sub_style}/{ratio} 同理(平台预设/brief 驱动);{final_wordline}
         # 让有粗剪的工程用 remap 后的成片空间 wordline 出字幕(与 S9 对账同一约定)。
-        "paramKeys": ["maxChars", "cpsMax", "ratio"],
+        # T4.6(I2 收口):{terms} 把 brief 术语表(00_制作简报/terms.txt)自动喂给断句。
+        "paramKeys": ["maxChars", "cpsMax", "ratio", "terms"],
         "cmd": ["rs_subtitle.py", "--from-wordline", "{final_wordline}",
                 "--style", "{sub_style}", "--ratio", "{ratio}",
-                "--max-chars", "{max_chars}", "--out", d("output")]},
+                "--max-chars", "{max_chars}", "--terms", "{terms}",
+                "--out", d("output")]},
         # S8 是"手改字幕"的落点:它**只用现有 ass 重新烧录导出**,不重新生成字幕。
         # 没有这一段,改完字幕的一键重建会把用户的修改冲掉(见 OPTIMIZATION-v5 §4.2)。
         {"id": "S8", "name": "烧录导出",
@@ -332,17 +336,8 @@ def log_decision(root: Path, entry: dict) -> None:
     atomic_write_text(p, json.dumps(doc, ensure_ascii=False, indent=1))
 
 
-def intent_decisions_of(root: Path) -> list:
-    """读 00_制作简报/intent_decisions.json(rs_intent compile 产物);坏文件返回空表。"""
-    p = rs_paths.resolve(root, "brief") / "intent_decisions.json"
-    if not p.is_file():
-        return []
-    try:
-        doc = json.loads(p.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError, UnicodeDecodeError):
-        return []
-    out = doc.get("decisions") if isinstance(doc, dict) else None
-    return out if isinstance(out, list) else []
+# intent_decisions_of(T2.14 起)实现下沉 rs_common,由顶部 import 同名提供;
+# rs_intent/rs_ingest 等外部调用方接口不变。
 
 
 def seed_intent_decisions(root: Path) -> int:
@@ -364,36 +359,15 @@ def seed_intent_decisions(root: Path) -> int:
 # 与 capabilities.json(能力目录:Agent 可调用的脚本/命令清单)是两个东西 —— 本目录
 # templates/capabilities/ 是「算法能力表」:引擎的算法能力声明,能力靠登记生效。
 
-# 能力描述符目录(templates/capabilities/);与 rs_intent.load_capability_descriptors 同源
-CAPS_DIR = SCRIPTS_DIR.parent / "templates" / "capabilities"
+# 能力描述符目录(templates/capabilities/):加载器(T2.14 起)实现下沉 rs_common,
+# rs_stylepack/rs_intent 等脚本由此不必反向 import 引擎(rs_intent 从 rs_common 取
+# 加载器、从本模块取 _PLATFORM_ALIASES)。本模块保留同名加载器包装(经本模块
+# CAPS_DIR,tests 的目录注入面不变)。
 
 
 def load_capability_descriptors() -> dict[str, dict]:
-    """算法能力注册表:templates/capabilities/*.json,每能力一文件。
-
-    坏文件(坏 JSON / 缺 id / id 重复)WARN 跳过,绝不崩主流程;`_` 前缀文件是
-    体例样板,不进注册表。rs_intent 从本加载器 import(单一真相源)。
-    """
-    out: dict[str, dict] = {}
-    if not CAPS_DIR.is_dir():
-        return out
-    for f in sorted(CAPS_DIR.glob("*.json")):
-        if f.name.startswith("_"):
-            continue
-        try:
-            desc = json.loads(f.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError, UnicodeDecodeError) as exc:
-            print(f"[WARN] 能力描述符 {f.name} 解析失败,已跳过:{exc}", file=sys.stderr)
-            continue
-        cid = desc.get("id") if isinstance(desc, dict) else None
-        if not cid:
-            print(f"[WARN] 能力描述符 {f.name} 缺 id,已跳过", file=sys.stderr)
-            continue
-        if str(cid) in out:
-            print(f"[WARN] 能力描述符 id 重复:{cid}({f.name}),后者已跳过", file=sys.stderr)
-            continue
-        out[str(cid)] = desc
-    return out
+    """算法能力注册表加载(实现在 rs_common;经本模块 CAPS_DIR 保持可注入)。"""
+    return _load_capability_descriptors(CAPS_DIR)
 
 
 def registry_video_types() -> dict:
@@ -636,6 +610,11 @@ def params_of(root: Path) -> dict:
             pass
     params = dict(stored) if stored else default_params()
     params.update(brief_params(root))
+    # T4.6:brief 术语表(terms.txt)进参数快照 —— S7 的 paramKeys 声明消费 terms,
+    # 改术语表 = 缓存变脏,字幕重跑真正吃到新术语(P12-1 契约:消费的参数进缓存键)。
+    terms = _terms_for(root)
+    if terms:
+        params["terms"] = terms
     return params
 
 
@@ -809,14 +788,100 @@ def cmd_status(root: Path) -> int:
     return emit(True, "STATUS_OK", msg, payload)
 
 
+# ---------------------------------------------------------------- 状态机显式化(T2.11)
+
+# status → 三态判定(rules/pipeline-state.md;--explain 逐阶段给出 verdict 与依据):
+#   keep             可继续 —— 缓存命中,账实相符("为什么不算 stale"给对账明细)
+#   rerun            必须(级联)重跑 —— 内容对账失败即 stale
+#   stop             必须停 —— 缺账(missing)/ 坏账(corrupt)/ 上次失败(failed)/
+#                    上游失败(blocked)/ 人工介入未做(人工阶段无标记)
+#   degrade-continue 可按声明降级继续 —— degradePolicy.action=skip 且条件成立
+#                    (S4 无卡片计划 / S5 无变体声明),状态灯如实亮、流程按声明继续
+VERDICT_OF_STATUS = {"done": "keep", "stale": "rerun", "missing": "stop",
+                     "corrupt": "stop", "failed": "stop", "blocked": "stop"}
+VERDICT_LABEL = {"keep": "可继续(缓存命中)",
+                 "rerun": "必须重跑",
+                 "stop": "必须停",
+                 "degrade-continue": "可降级继续(按声明留痕)"}
+
+
+def _degrade_applicable(root: Path, st: dict) -> bool:
+    """skip 型降级的成立条件(逐阶段显式判定,不猜;无 skip 通道的阶段恒 False)。"""
+    sid = st["id"]
+    if sid == "S4":
+        return not (rs_paths.resolve(root, "brief") / "cards.json").is_file()
+    if sid == "S5":
+        return not (rs_paths.resolve(root, "timeline") / "variants.json").is_file()
+    return False
+
+
+def explain_payload(root: Path, st: dict) -> dict:
+    """--explain 完整载荷(T2.11):不只报 stale,要报"为什么 stale / 为什么不算 stale"。
+
+    · verdict / verdictLabel:三态判定(rules/pipeline-state.md);
+    · compared:逐组对账明细(inputs/tool/external/params/outputs,每组列
+      changed/added/removed)—— done 时全空即"为什么不算 stale"的证据;
+    · contract:templates/stages.json 的阶段契约(gates/timeoutPolicy/
+      degradePolicy/rerunPolicy/preconditions;T2.10 生成器产物,字段与盘面无关)。
+    """
+    r = evaluate(root, st)
+    rec, _problem = load_state(root, st["id"])
+    old_parts = dict((rec or {}).get("parts") or {})
+    live = params_of(root)
+    cur = stage_parts(root, st, live, old_parts.get("external", {}))
+    compared: dict = {}
+    for group in ("inputs", "tool", "external"):
+        old_g, new_g = old_parts.get(group) or {}, cur.get(group) or {}
+        compared[group] = {
+            "count": len(new_g),
+            "changed": [k for k in sorted(set(old_g) | set(new_g))
+                        if old_g.get(k) != new_g.get(k)],
+            "added": sorted(set(new_g) - set(old_g)),
+            "removed": sorted(set(old_g) - set(new_g)),
+        }
+    pk = st.get("paramKeys") or ()
+    old_params = old_parts.get("params") or {}
+    cur_params = {k: live.get(k) for k in pk} if pk else {}
+    compared["params"] = {
+        "declared": list(pk),
+        "current": cur_params,
+        "changed": [k for k in sorted(set(old_params) | set(cur_params))
+                    if old_params.get(k) != cur_params.get(k)],
+    }
+    recorded_oh = (rec or {}).get("outHash")
+    current_oh = outputs_hash(root, st) if rec else None
+    compared["outputs"] = {"count": r.get("outs", 0),
+                           "recordedOutHash": recorded_oh,
+                           "currentOutHash": current_oh,
+                           "outOfBand": bool(recorded_oh and current_oh
+                                             and recorded_oh != current_oh)}
+    raw = stages_contract().get(st["id"]) or {}
+    contract = {"source": "templates/stages.json(tools/gen_stages.py 机械抽取)",
+                "preconditions": raw.get("preconditions") or [],
+                "gates": raw.get("gates") or [],
+                "timeoutPolicy": raw.get("timeoutPolicy"),
+                "degradePolicy": raw.get("degradePolicy"),
+                "rerunPolicy": raw.get("rerunPolicy")}
+    verdict = VERDICT_OF_STATUS.get(str(r["status"]), "stop")
+    if r["status"] == "missing" and _degrade_applicable(root, st) \
+            and (raw.get("degradePolicy") or {}).get("action") == "skip":
+        verdict = "degrade-continue"
+    return {"stage": st["id"], "name": st["name"], **r,
+            "verdict": verdict, "verdictLabel": VERDICT_LABEL[verdict],
+            "compared": compared, "contract": contract}
+
+
 def cmd_explain(root: Path, sid: str) -> int:
     st = next((s for s in spec(root) if s["id"] == sid), None)
     if not st:
         return emit(False, "BAD_STAGE", f"未知阶段:{sid}", exit_code=2)
-    r = evaluate(root, st)
-    return emit(True, "EXPLAIN_OK",
-                f"{sid} = {r['status']}" + ("" if not r["staleReason"] else ": " + "; ".join(r["staleReason"])),
-                {"stage": sid, **r})
+    p = explain_payload(root, st)
+    msg = f"{sid} = {p['status']} → {p['verdictLabel']}"
+    if p.get("staleReason"):
+        msg += ":" + "; ".join(p["staleReason"])
+    elif p["verdict"] == "keep":
+        msg += "(输入/参数/脚本/产物对账一致,明细见 data.compared)"
+    return emit(True, "EXPLAIN_OK", msg, p)
 
 
 # ---------------------------------------------------------------- 备份 / 一键重建
@@ -1006,10 +1071,10 @@ def run_verify(root: Path, level: str) -> tuple[bool, str, dict]:
     cmd = [sys.executable, str(SCRIPTS_DIR / "rs_verify.py"), str(root)]
     if level == "L1":
         cmd += ["--level", "L1"]
-    # R25(v2 M11):子进程此前无超时 —— --auto 可能永久挂起(其余阶段都走
-    # _run_subprocess + stage_timeout)。L1 抽帧留证耗时更长,给 2× 阶段超时。
-    _v_timeout = int(__import__("os").environ.get("CUTFLOW_VERIFY_TIMEOUT",
-                                                  "3600" if level == "L1" else "1800"))
+    # R25(v2 M11):子进程此前无超时 —— --auto 可能永久挂起。L1 抽帧留证耗时更长。
+    # T2.12:限时走 stages.json policies(VERIFY / VERIFY_L1;env=CUTFLOW_VERIFY_TIMEOUT
+    # 显式设置仍完全覆盖),不再手抄 1800/3600。
+    _v_timeout = policy_timeout("VERIFY_L1" if level == "L1" else "VERIFY")
     try:
         p = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8",
                            errors="replace", timeout=_v_timeout)
@@ -1051,17 +1116,22 @@ def verify_policy(root: Path) -> tuple[str, str]:
 # ---------------------------------------------------------------- 执行
 
 # P24-1:阶段子进程限时 —— 卡住的 ffmpeg/ASR 曾让 rs_run 永久挂起。
-# 默认 3600s;长 ASR 阶段(S1)按阶段放宽;环境变量 CUTFLOW_STAGE_TIMEOUT_SEC 可统一调大。
+# T2.12 起:限时统一由 stages.json 的 timeoutPolicy 声明(gen_stages.py 从下面两个
+# 常量机械抽取,env 名一并声明在策略里);policy_timeout 未命中表时回落
+# DEFAULT_STAGE_TIMEOUT_SEC 同值,无表环境行为零漂移。改超时 = 改这里 + 再生契约。
 # 超时 = 阶段明确失败(记 failed 状态、非零退出),绝不静默。
 DEFAULT_STAGE_TIMEOUT_SEC = 3600
 STAGE_TIMEOUTS = {"S1": 4 * 3600}
 
 
 def stage_timeout(st: dict) -> int:
-    env = os.environ.get("CUTFLOW_STAGE_TIMEOUT_SEC", "").strip()
-    if env.isdigit() and int(env) > 0:
-        return int(env)
-    return int(STAGE_TIMEOUTS.get(st["id"], DEFAULT_STAGE_TIMEOUT_SEC))
+    """阶段限时(stages.json timeoutPolicy 单一实现;T2.12)。
+
+    CUTFLOW_STAGE_TIMEOUT_SEC 显式设置仍完全覆盖(策略表 env 字段即本变量);
+    长任务调大 = 改 STAGE_TIMEOUTS/DEFAULT_STAGE_TIMEOUT_SEC 后重跑
+    `python tools/gen_stages.py`(契约与实现永不分叉)。
+    """
+    return policy_timeout(st["id"])
 
 
 def _run_subprocess(cmd: list[str], root: Path, st: dict) -> tuple[subprocess.CompletedProcess | None, str]:
@@ -1133,6 +1203,22 @@ def _sub_style_and_ratio(root: Path) -> tuple[str, str]:
     return str(style), str(ratio)
 
 
+def _terms_for(root: Path) -> str:
+    """T4.6(I2 收口):brief 术语表 → S7 的 --terms(逗号串)。
+
+    来源 = rs_intent 落盘的 00_制作简报/terms.txt(每行一词,# 注释);缺文件/空表
+    返回空串(rs_subtitle --terms "" 为合法空表,行为与接线前一致)。"""
+    p = rs_paths.resolve(root, "brief") / "terms.txt"
+    if not p.is_file():
+        return ""
+    try:
+        lines = [ln.strip() for ln in p.read_text(encoding="utf-8", errors="replace").splitlines()]
+    except OSError:
+        return ""
+    terms = [ln for ln in lines if ln and not ln.startswith("#")]
+    return ",".join(dict.fromkeys(terms))
+
+
 def _token_mapping(root: Path) -> dict:
     """st["cmd"] 占位符 → 实际值(build_cmd / build_cmd_from_argv 共用,防两份漂移)。"""
     mats = expand(root, [rs_paths.rel(root, "materials", "*")])
@@ -1151,7 +1237,8 @@ def _token_mapping(root: Path) -> dict:
             else rs_paths.rel(root, "output", "final", "final_latest.mp4"),
             "{max_chars}": str(_max_chars_for(root)),
             "{sub_style}": sub_style,
-            "{ratio}": ratio}
+            "{ratio}": ratio,
+            "{terms}": _terms_for(root)}
 
 
 def build_cmd_from_argv(root: Path, argv: list[str]) -> list[str] | None:
@@ -1442,18 +1529,40 @@ def auto_skip_reason(root: Path, st: dict) -> str | None:
     return None
 
 
-def bench_evidence(root: Path) -> str | None:
-    """--auto:L1 目测降级为「抽帧留证」—— rs_bench 网格图,文件名即标注
-    「L1 未人工确认」;只作证据,不作判定,失败不阻断(留证尽力而为)。"""
+def _bench_cmd(root: Path) -> tuple[list[str], str, Path]:
+    """L1 抽帧留证命令(T5.6b:S9 装配接价值选帧证据)。
+
+    04_粗剪决策/shots.json 在册 → rs_bench --shots 走**价值选帧**档(第三册 T3.9:
+    镜头中点+运动峰值+字幕起点前 2 帧,替换旧均匀抽帧 —— 抽帧密度根因③的闭环面),
+    并喂 wordline.final(成片空间)供字幕起点选点;shots 缺席回退启发式档。
+    返回 (命令, 模式 value|heuristic, 输出路径)。"""
     finals = _final_videos(root)
-    if not finals:
-        return None
     out = rs_paths.resolve(root, "output") / "L1未人工确认_抽帧留证.png"
     cmd = [sys.executable, str(SCRIPTS_DIR / "rs_bench.py"), str(finals[-1]),
            "--ir", str(rs_paths.project_json(root)), "--out", str(out)]
+    shots = rs_paths.resolve(root, "cut") / "shots.json"
+    mode = "heuristic"
+    if shots.is_file():
+        fw = rs_paths.wordline_json(root, final=True)
+        cmd += ["--shots", str(shots),
+                "--wordline", str(fw if fw.is_file() else rs_paths.wordline_json(root))]
+        mode = "value"
+    return cmd, mode, out
+
+
+def bench_evidence(root: Path) -> str | None:
+    """--auto:L1 目测降级为「抽帧留证」—— rs_bench 网格图,文件名即标注
+    「L1 未人工确认」;只作证据,不作判定,失败不阻断(留证尽力而为)。
+    T5.6b:shots.json 在册时走价值选帧档(选点带字幕起点/镜头边界证据密度),
+    模式落进决策留痕,链路可审计。"""
+    if not _final_videos(root):
+        return None
+    cmd, mode, out = _bench_cmd(root)
     try:
+        # T2.12:留证限时走 stages.json policies.BENCH(留证尽力而为,不阻断)
         p = subprocess.run(cmd, cwd=str(root), capture_output=True, text=True,
-                           encoding="utf-8", errors="replace", timeout=600)
+                           encoding="utf-8", errors="replace",
+                           timeout=policy_timeout("BENCH"))
     except (subprocess.TimeoutExpired, OSError) as exc:
         log_decision(root, auto_decision("verify", "bench", f"抽帧留证失败:{str(exc)[:120]}",
                                          "留证尽力而为,不阻断交付"))
@@ -1463,9 +1572,11 @@ def bench_evidence(root: Path) -> str | None:
             "verify", "bench", f"抽帧留证失败(exit {p.returncode}):{(p.stderr or p.stdout or '')[-120:]}",
             "留证尽力而为,不阻断交付"))
         return None
-    log_decision(root, auto_decision("verify", "bench", f"抽帧留证 → {out.name}",
-                                     "网格图仅作证据不构成目测判定;L1 未人工确认",
-                                     evidence=out.name))
+    log_decision(root, auto_decision("verify", "bench",
+                                     f"抽帧留证({mode} 档) → {out.name}",
+                                     "价值选帧=第三册 T3.9(shots.json 在册);网格图仅作证据"
+                                     "不构成目测判定;L1 未人工确认",
+                                     evidence=out.name, mode=mode))
     return out.name
 
 

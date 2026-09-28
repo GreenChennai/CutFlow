@@ -4,6 +4,9 @@
 
 - 只操作 **5.9**(E:\Jianying\5.9JianyingPro);**11.3 草稿加密,永不读写其草稿**。
 - 写草稿前剪映必须未运行(rs_jy_draft 内置检测);5.9 禁自动更新。
+- **AI 生视频边界(原 SKILL §8 下沉)**:CutFlow 对 AI 生视频**只产提示词**(首帧图 + 5–10s i2v),
+  **绝不调用任何生图/生视频 API**;原 `cutflow-prompt` 技能组已停用并归档到
+  `docs/archive/cutflow-prompt/`。变体标记 `backends`;剪映缺特性自动降级并在交付说明标注。
 - **剪映草稿是半成品出口,不是交付物**(ADR-0052):落点在工程区
   `05_时间线工程/导出/剪映59/`,不进 `成品/`;单向出口、不承诺回环
   (原因见 `rules/editing-roundtrip.md`)。

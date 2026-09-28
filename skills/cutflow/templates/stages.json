@@ -1,0 +1,769 @@
+{
+ "version": 1,
+ "generatedBy": "tools/gen_stages.py —— 除 policies 与各阶段 degradePolicy/rerunPolicy 外均机械抽取,禁止手改;漂移即 tests/test_stages_contract.py 红",
+ "stageCount": 12,
+ "stages": [
+  {
+   "id": "S0",
+   "name": "基础素材",
+   "manual": true,
+   "scripts": [
+    "rs_ingest.py",
+    "rs_greenscreen.py"
+   ],
+   "inputs": [
+    "00_制作简报/brief.md",
+    "01_原始素材/*"
+   ],
+   "outputs": [
+    "01_原始素材/manifest.json"
+   ],
+   "preconditions": [],
+   "gates": [
+    {
+     "check": "check_greenscreen",
+     "level": "L0",
+     "source": "rs_verify.check_greenscreen",
+     "note": "幕布检测(rs_ingest 摄取判据;rules/intake.md)"
+    },
+    {
+     "check": "check_copyright",
+     "level": "L0",
+     "source": "rs_verify.check_copyright",
+     "note": "版权登记占比判据(01_原始素材/copyright.json;rules/verify.md)"
+    },
+    {
+     "check": "check_assets",
+     "level": "L0",
+     "source": "rs_verify.check_assets",
+     "note": "素材四字段 source/license/commercial/attribution"
+    },
+    {
+     "check": "check_matte",
+     "level": "L0",
+     "source": "rs_verify.check_matte",
+     "note": "抠像质量门禁五指标(ADR-0050)"
+    }
+   ],
+   "timeoutPolicy": {
+    "base": 3600,
+    "factor": 0.0,
+    "env": "CUTFLOW_STAGE_TIMEOUT_SEC",
+    "note": "rs_run 阶段子进程限时(P24-1;缺省 3600s)"
+   },
+   "degradePolicy": {
+    "action": "stop",
+    "when": "素材缺失或幕布未预处理",
+    "note": "无素材不能往下;rs_ingest 幕布残留显式报错",
+    "source": "rules/intake.md"
+   },
+   "rerunPolicy": {
+    "mode": "content-key",
+    "force": "rs_run --force --from S0",
+    "source": "rules/incremental.md §3/§4"
+   },
+   "paramKeys": [],
+   "marker": null,
+   "cmd": [
+    "rs_ingest.py",
+    "scan",
+    ".",
+    "--slug",
+    "{slug}"
+   ],
+   "post": null
+  },
+  {
+   "id": "S1",
+   "name": "转写与字级对齐",
+   "manual": false,
+   "scripts": [
+    "rs_align.py"
+   ],
+   "inputs": [
+    "01_原始素材/*"
+   ],
+   "outputs": [
+    "05_时间线工程/wordline.json"
+   ],
+   "preconditions": [
+    "S0"
+   ],
+   "gates": [
+    {
+     "check": "check_wordline",
+     "level": "L0",
+     "source": "rs_verify.check_wordline",
+     "note": "wordline 字段/时长账自洽(P27-2)"
+    }
+   ],
+   "timeoutPolicy": {
+    "base": 14400,
+    "factor": 0.0,
+    "env": "CUTFLOW_STAGE_TIMEOUT_SEC",
+    "note": "rs_run 阶段子进程限时(P24-1;S1 base)"
+   },
+   "degradePolicy": {
+    "action": "stop",
+    "when": "转写/对齐失败或无可抽音频素材",
+    "note": "ASR 超时即明确失败落 failed 账(P24-1)",
+    "source": "rules/incremental.md §2"
+   },
+   "rerunPolicy": {
+    "mode": "content-key",
+    "force": "rs_run --force --from S1",
+    "source": "rules/incremental.md §3/§4"
+   },
+   "paramKeys": [],
+   "marker": null,
+   "cmd": [
+    "rs_align.py",
+    "build",
+    "--media",
+    "{first_material}",
+    "--out",
+    "05_时间线工程/wordline.json"
+   ],
+   "post": [
+    "rs_align.py",
+    "calibrate",
+    "05_时间线工程/wordline.json",
+    "--media",
+    "{first_material}",
+    "--out",
+    "05_时间线工程/wordline.json"
+   ]
+  },
+  {
+   "id": "S2",
+   "name": "粗剪处理",
+   "manual": false,
+   "scripts": [
+    "rs_cut.py"
+   ],
+   "inputs": [
+    "05_时间线工程/wordline.json"
+   ],
+   "outputs": [
+    "04_粗剪决策/cutlist.json"
+   ],
+   "preconditions": [
+    "S1"
+   ],
+   "gates": [
+    {
+     "check": "check_cutlist",
+     "level": "L0",
+     "source": "rs_verify.check_cutlist",
+     "note": "cutlist 结构与 keep 账(S2 产物)"
+    }
+   ],
+   "timeoutPolicy": {
+    "base": 3600,
+    "factor": 0.0,
+    "env": "CUTFLOW_STAGE_TIMEOUT_SEC",
+    "note": "rs_run 阶段子进程限时(P24-1;缺省 3600s)"
+   },
+   "degradePolicy": {
+    "action": "stop",
+    "when": "检测失败;review 刀非 auto 一律停机问人",
+    "note": "--auto 下 review 刀保守保留并留痕(auto:S2:review-keep)",
+    "source": "rules/incremental.md §4.7"
+   },
+   "rerunPolicy": {
+    "mode": "content-key",
+    "force": "rs_run --force --from S2",
+    "note": "只改 cuts[].action 时改跑 rs_cut --apply,勿重跑 S2 detect",
+    "source": "rules/incremental.md §7 例外注"
+   },
+   "paramKeys": [],
+   "marker": null,
+   "cmd": [
+    "rs_cut.py",
+    "05_时间线工程/wordline.json",
+    "--detect",
+    "all",
+    "--out",
+    "04_粗剪决策"
+   ],
+   "post": null
+  },
+  {
+   "id": "S3",
+   "name": "基础合成",
+   "manual": false,
+   "scripts": [
+    "rs_ir.py",
+    "rs_render.py"
+   ],
+   "inputs": [
+    "04_粗剪决策/cutlist.applied.json",
+    "05_时间线工程/wordline.json"
+   ],
+   "outputs": [
+    "05_时间线工程/project.json"
+   ],
+   "preconditions": [
+    "S1",
+    "S2"
+   ],
+   "gates": [
+    {
+     "check": "check_ir",
+     "level": "L0",
+     "source": "rs_verify.check_ir",
+     "note": "IR schema/画幅/轨契约(project.json)"
+    },
+    {
+     "check": "check_effects_usage",
+     "level": "L0",
+     "source": "rs_verify.check_effects_usage",
+     "note": "效果使用率九判据(消费 IR;rules/editing-grammar.md)"
+    }
+   ],
+   "timeoutPolicy": {
+    "base": 3600,
+    "factor": 0.0,
+    "env": "CUTFLOW_STAGE_TIMEOUT_SEC",
+    "note": "rs_run 阶段子进程限时(P24-1;缺省 3600s)"
+   },
+   "degradePolicy": {
+    "action": "stop",
+    "when": "IR 校验失败或检测到手注痕迹",
+    "note": "IR_MANUAL_EDITS 护栏拒绝覆盖手注,除非显式 --force",
+    "source": "rs_ir build --from-cutlist 护栏"
+   },
+   "rerunPolicy": {
+    "mode": "content-key",
+    "force": "rs_run --force --from S3",
+    "source": "rules/incremental.md §3/§4"
+   },
+   "paramKeys": [
+    "ratio"
+   ],
+   "marker": null,
+   "cmd": [
+    "rs_ir.py",
+    "build",
+    "--from-cutlist",
+    "04_粗剪决策/cutlist.applied.json",
+    "--slug",
+    "{slug}",
+    "--ratio",
+    "{ratio}",
+    "--out",
+    "05_时间线工程/project.json"
+   ],
+   "post": null
+  },
+  {
+   "id": "S4",
+   "name": "动画/信息卡",
+   "manual": true,
+   "scripts": [],
+   "inputs": [
+    "05_时间线工程/project.json"
+   ],
+   "outputs": [
+    "03_创作素材/artboard/manifest.json"
+   ],
+   "preconditions": [
+    "S3"
+   ],
+   "gates": [],
+   "timeoutPolicy": {
+    "base": 3600,
+    "factor": 0.0,
+    "env": "CUTFLOW_STAGE_TIMEOUT_SEC",
+    "note": "rs_run 阶段子进程限时(P24-1;缺省 3600s)"
+   },
+   "degradePolicy": {
+    "action": "skip",
+    "when": "无卡片计划(00_制作简报/cards.json 缺)",
+    "note": "--auto 标记无事可做并留痕(auto:S4:no-cards);无 marker 的人工阶段一律判 missing,绝不借上游产物自动 done(P11-1)",
+    "source": "rules/incremental.md §2.5/§4.7"
+   },
+   "rerunPolicy": {
+    "mode": "marker",
+    "marker": "assets/artboard/manifest.json:appliedAt",
+    "force": "rs_artboard --export/--apply 后 rs_run --from S4 --force",
+    "source": "rules/incremental.md §2.5(P11-1)"
+   },
+   "paramKeys": [],
+   "marker": "03_创作素材/artboard/manifest.json:appliedAt",
+   "cmd": null,
+   "post": null
+  },
+  {
+   "id": "S5",
+   "name": "品牌(Logo 变体)",
+   "manual": false,
+   "scripts": [
+    "rs_brand.py"
+   ],
+   "inputs": [
+    "05_时间线工程/project.json",
+    "05_时间线工程/variants.json"
+   ],
+   "outputs": [
+    "06_成片输出/branded/成片_*.mp4"
+   ],
+   "preconditions": [
+    "S3",
+    "S4"
+   ],
+   "gates": [],
+   "timeoutPolicy": {
+    "base": 3600,
+    "factor": 0.0,
+    "env": "CUTFLOW_STAGE_TIMEOUT_SEC",
+    "note": "rs_run 阶段子进程限时(P24-1;缺省 3600s)"
+   },
+   "degradePolicy": {
+    "action": "skip",
+    "when": "工程未声明品牌变体(timeline/variants.json 缺)",
+    "note": "缺声明宁可漏做不猜;状态保持 missing 如实亮灯(auto:S5:skip)",
+    "source": "rules/incremental.md §4.7"
+   },
+   "rerunPolicy": {
+    "mode": "content-key",
+    "force": "rs_run --force --from S5",
+    "source": "rules/incremental.md §3/§4"
+   },
+   "paramKeys": [],
+   "marker": null,
+   "cmd": [
+    "rs_brand.py",
+    "05_时间线工程/project.json",
+    "--variants",
+    "05_时间线工程/variants.json",
+    "--out",
+    "06_成片输出/branded"
+   ],
+   "post": null
+  },
+  {
+   "id": "S6",
+   "name": "音效",
+   "manual": false,
+   "scripts": [
+    "rs_sfx.py"
+   ],
+   "inputs": [
+    "05_时间线工程/project.json"
+   ],
+   "outputs": [
+    "05_时间线工程/sfx_draft.json"
+   ],
+   "preconditions": [
+    "S3",
+    "S5"
+   ],
+   "gates": [],
+   "timeoutPolicy": {
+    "base": 3600,
+    "factor": 0.0,
+    "env": "CUTFLOW_STAGE_TIMEOUT_SEC",
+    "note": "rs_run 阶段子进程限时(P24-1;缺省 3600s)"
+   },
+   "degradePolicy": {
+    "action": "stop",
+    "when": "音效草稿生成失败",
+    "note": "失败落 failed 账,下游 blocked(P25-1)",
+    "source": "rules/incremental.md §2"
+   },
+   "rerunPolicy": {
+    "mode": "content-key",
+    "force": "rs_run --force --from S6",
+    "source": "rules/incremental.md §3/§4"
+   },
+   "paramKeys": [],
+   "marker": null,
+   "cmd": [
+    "rs_sfx.py",
+    "05_时间线工程/project.json",
+    "--auto",
+    "--out",
+    "05_时间线工程/sfx_draft.json"
+   ],
+   "post": null
+  },
+  {
+   "id": "S7",
+   "name": "字幕",
+   "manual": false,
+   "scripts": [
+    "rs_subtitle.py",
+    "textopt.py",
+    "segmentation.py"
+   ],
+   "inputs": [
+    "05_时间线工程/wordline.json"
+   ],
+   "outputs": [
+    "06_成片输出/subtitles.ass"
+   ],
+   "preconditions": [
+    "S1",
+    "S6"
+   ],
+   "gates": [
+    {
+     "check": "check_subtitles",
+     "level": "L0",
+     "source": "rs_verify.check_subtitles",
+     "note": "字幕卡字数/CPS/时长(templates/subtitle-policy.json)"
+    },
+    {
+     "check": "check_safe_area",
+     "level": "L0",
+     "source": "rs_verify.check_safe_area",
+     "note": "ASS 安全区口径(9:16 底 25%/顶 12%)"
+    }
+   ],
+   "timeoutPolicy": {
+    "base": 3600,
+    "factor": 0.0,
+    "env": "CUTFLOW_STAGE_TIMEOUT_SEC",
+    "note": "rs_run 阶段子进程限时(P24-1;缺省 3600s)"
+   },
+   "degradePolicy": {
+    "action": "stop",
+    "when": "断句硬约束无解",
+    "note": "--auto 下断句歧义取 DP 最优并留候选(06_成片输出/segments_candidates.json,auto:S7:ambiguous-auto)",
+    "source": "rules/incremental.md §4.7"
+   },
+   "rerunPolicy": {
+    "mode": "content-key",
+    "force": "rs_run --force --from S7",
+    "note": "手改 subtitles.ass 后勿重跑 S7(会冲掉手改),改跑 06_成片输出/rebuild.py(S8)",
+    "source": "rules/incremental.md §7"
+   },
+   "paramKeys": [
+    "maxChars",
+    "cpsMax",
+    "ratio",
+    "terms"
+   ],
+   "marker": null,
+   "cmd": [
+    "rs_subtitle.py",
+    "--from-wordline",
+    "{final_wordline}",
+    "--style",
+    "{sub_style}",
+    "--ratio",
+    "{ratio}",
+    "--max-chars",
+    "{max_chars}",
+    "--terms",
+    "{terms}",
+    "--out",
+    "06_成片输出"
+   ],
+   "post": null
+  },
+  {
+   "id": "S8",
+   "name": "烧录导出",
+   "manual": false,
+   "scripts": [
+    "rs_render.py"
+   ],
+   "inputs": [
+    "06_成片输出/subtitles.ass",
+    "05_时间线工程/project.json"
+   ],
+   "outputs": [
+    "06_成片输出/final/final_*.mp4"
+   ],
+   "preconditions": [
+    "S3",
+    "S7"
+   ],
+   "gates": [
+    {
+     "check": "check_safe_area_content",
+     "level": "L0",
+     "source": "rs_verify.check_safe_area_content",
+     "note": "成片字幕内容安全区(T4.4 判据)"
+    }
+   ],
+   "timeoutPolicy": {
+    "base": 3600,
+    "factor": 0.0,
+    "env": "CUTFLOW_STAGE_TIMEOUT_SEC",
+    "note": "rs_run 阶段子进程限时(P24-1;缺省 3600s)"
+   },
+   "degradePolicy": {
+    "action": "stop",
+    "when": "烧录/编码失败",
+    "note": "只用现有 ass 重烧录,不重新生成字幕(S8 是手改字幕落点)",
+    "source": "rules/incremental.md §7"
+   },
+   "rerunPolicy": {
+    "mode": "content-key",
+    "force": "rs_run --force --from S8",
+    "source": "rules/incremental.md §3/§4"
+   },
+   "paramKeys": [
+    "ratio"
+   ],
+   "marker": null,
+   "cmd": [
+    "rs_render.py",
+    "05_时间线工程/project.json",
+    "--ratio",
+    "{ratio}",
+    "--profile",
+    "final"
+   ],
+   "post": null
+  },
+  {
+   "id": "S9",
+   "name": "自评与对齐断言",
+   "manual": false,
+   "scripts": [
+    "rs_sync.py"
+   ],
+   "inputs": [
+    "06_成片输出/subtitles.ass"
+   ],
+   "outputs": [
+    "06_成片输出/sync_report.md",
+    "06_成片输出/sync_rows.json"
+   ],
+   "preconditions": [
+    "S7",
+    "S8"
+   ],
+   "gates": [
+    {
+     "check": "check_alignment",
+     "level": "L0",
+     "source": "rs_verify.check_alignment",
+     "note": "对齐偏移中位 ≤40ms(rules/align.md §6)"
+    },
+    {
+     "check": "check_replay_remap",
+     "level": "L0",
+     "source": "rs_verify.check_replay_remap",
+     "note": "Wordline 推导链重放对账(独立对账·产物路,T5.6c)"
+    },
+    {
+     "check": "check_subtitle_speech",
+     "level": "L0",
+     "source": "rs_verify.check_subtitle_speech",
+     "note": "字幕↔成片语音活动独立对账(独立对账·成片实测路,T5.6c)"
+    },
+    {
+     "check": "check_content_gate",
+     "level": "L0",
+     "source": "rs_verify.check_content_gate",
+     "note": "B10 内容闸三态回读(pass/fail/degraded 降级留痕,T5.6a)"
+    },
+    {
+     "check": "check_qc",
+     "level": "L0",
+     "source": "rs_verify.check_qc",
+     "note": "成片 QC:黑帧/冻结/VFR/响度 -14 LUFS"
+    }
+   ],
+   "timeoutPolicy": {
+    "base": 3600,
+    "factor": 0.0,
+    "env": "CUTFLOW_STAGE_TIMEOUT_SEC",
+    "note": "rs_run 阶段子进程限时(P24-1;缺省 3600s)"
+   },
+   "degradePolicy": {
+    "action": "stop",
+    "when": "L0 机械自检未通过",
+    "note": "L0 硬闸不放松(--auto 亦然);L1 目测 --auto 降级为抽帧留证(不判定不阻断,auto:verify:l1-degrade);L2 验收归用户",
+    "source": "rules/incremental.md §4.7 / rules/verify.md"
+   },
+   "rerunPolicy": {
+    "mode": "content-key",
+    "force": "rs_run --force --from S9",
+    "source": "rules/incremental.md §3/§4"
+   },
+   "paramKeys": [],
+   "marker": null,
+   "cmd": [
+    "rs_sync.py",
+    "--wordline",
+    "{final_wordline}",
+    "--ass",
+    "06_成片输出/subtitles.ass",
+    "--out",
+    "06_成片输出",
+    "--video",
+    "{final_video}",
+    "--audio-content",
+    "--qc"
+   ],
+   "post": null
+  },
+  {
+   "id": "S10",
+   "name": "封面与文案",
+   "manual": false,
+   "scripts": [
+    "rs_meta.py"
+   ],
+   "inputs": [
+    "05_时间线工程/wordline.json",
+    "00_制作简报/brief.md"
+   ],
+   "outputs": [
+    "06_成片输出/metadata.json"
+   ],
+   "preconditions": [
+    "S1",
+    "S9"
+   ],
+   "gates": [],
+   "timeoutPolicy": {
+    "base": 3600,
+    "factor": 0.0,
+    "env": "CUTFLOW_STAGE_TIMEOUT_SEC",
+    "note": "rs_run 阶段子进程限时(P24-1;缺省 3600s)"
+   },
+   "degradePolicy": {
+    "action": "stop",
+    "when": "封面文案生成失败",
+    "note": "失败落 failed 账(P25-1)",
+    "source": "rules/incremental.md §2"
+   },
+   "rerunPolicy": {
+    "mode": "content-key",
+    "force": "rs_run --force --from S10",
+    "source": "rules/incremental.md §3/§4"
+   },
+   "paramKeys": [],
+   "marker": null,
+   "cmd": [
+    "rs_meta.py",
+    "--wordline",
+    "05_时间线工程/wordline.json",
+    "--brief",
+    "00_制作简报/brief.md",
+    "--platform",
+    "douyin,bili",
+    "--out",
+    "06_成片输出"
+   ],
+   "post": null
+  },
+  {
+   "id": "S11",
+   "name": "交付",
+   "manual": true,
+   "scripts": [],
+   "inputs": [
+    "06_成片输出/metadata.json"
+   ],
+   "outputs": [
+    "06_成片输出/deliverables.md"
+   ],
+   "preconditions": [
+    "S10"
+   ],
+   "gates": [
+    {
+     "check": "check_artifacts",
+     "level": "L0",
+     "source": "rs_verify.check_artifacts",
+     "note": "交付清单齐套(成片/字幕/封面/文案/说明书)"
+    }
+   ],
+   "timeoutPolicy": {
+    "base": 3600,
+    "factor": 0.0,
+    "env": "CUTFLOW_STAGE_TIMEOUT_SEC",
+    "note": "rs_run 阶段子进程限时(P24-1;缺省 3600s)"
+   },
+   "degradePolicy": {
+    "action": "stop",
+    "when": "交付对账缺硬项(成片/字幕/文案)",
+    "note": "封面/占位文案属 Agent 语义产物:--auto 不代劳、留痕(auto:S11:deliverables);硬项缺失即失败",
+    "source": "rules/incremental.md §4.7"
+   },
+   "rerunPolicy": {
+    "mode": "content-key",
+    "force": "rs_run --force --from S11",
+    "note": "S11 无注册命令,人工交付后 rs_run --mark S11",
+    "source": "rules/incremental.md §4"
+   },
+   "paramKeys": [],
+   "marker": null,
+   "cmd": null,
+   "post": null
+  }
+ ],
+ "policies": {
+  "VERIFY": {
+   "base": 1800,
+   "factor": 0.0,
+   "env": "CUTFLOW_VERIFY_TIMEOUT",
+   "note": "rs_run --verify 的 L0 机械自检",
+   "source": "rs_run.run_verify v0.20 字面 1800"
+  },
+  "VERIFY_L1": {
+   "base": 3600,
+   "factor": 0.0,
+   "env": "CUTFLOW_VERIFY_TIMEOUT",
+   "note": "rs_run --verify 的 L1(含抽帧留证,耗时更长)",
+   "source": "rs_run.run_verify v0.20 字面 3600"
+  },
+  "SEG": {
+   "base": 1800,
+   "factor": 4.0,
+   "env": "CUTFLOW_SEG_TIMEOUT",
+   "note": "rs_render 段渲超时(时长×4,下限 1800s;R40)",
+   "source": "rs_render 段计划 v0.20 手抄常量"
+  },
+  "STEP": {
+   "base": 3600,
+   "factor": 4.0,
+   "env": "CUTFLOW_STEP_TIMEOUT",
+   "note": "rs_render 拼接/合成/混音/字幕烧录步(R40)",
+   "source": "rs_render 五处 v0.20 手抄 floor=3600"
+  },
+  "ENCODE": {
+   "base": 7200,
+   "factor": 4.0,
+   "env": "CUTFLOW_ENCODE_TIMEOUT",
+   "note": "rs_render 终编码(最慢一步,下限抬高到 7200s)",
+   "source": "rs_render 编码步 v0.20 手抄 floor=7200"
+  },
+  "PROBE": {
+   "base": 3600,
+   "factor": 0.0,
+   "env": "",
+   "note": "rs_render loudnorm 探测 / 抠像预合成的平超时",
+   "source": "rs_render v0.20 字面 3600(有意不平超时比例化)"
+  },
+  "ASR": {
+   "base": 3600,
+   "factor": 0.0,
+   "env": "CUTFLOW_ASR_TIMEOUT",
+   "note": "rs_align 自带 ASR 子进程",
+   "source": "rs_align v0.20 字面 3600"
+  },
+  "GREEN": {
+   "base": 60,
+   "factor": 0.0,
+   "env": "CUTFLOW_GREEN_TIMEOUT",
+   "note": "rs_greenscreen 幕布检测单帧判定",
+   "source": "rs_greenscreen v0.20 字面 60"
+  },
+  "BENCH": {
+   "base": 600,
+   "factor": 0.0,
+   "env": "",
+   "note": "rs_run --auto 抽帧留证(rs_bench 网格图)",
+   "source": "rs_run.bench_evidence v0.20 字面 600"
+  }
+ }
+}

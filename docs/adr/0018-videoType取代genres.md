@@ -29,7 +29,7 @@
    - **纯动画**:无真人画面,场景卡 + 6s 循环背景;**声音来源二选一(必在 brief 声明)**:音色卡 TTS(`rs_tts`)或视频中人物原声(抽轨重采样);TTS 无字级时间戳时标 `charTimingEstimated`,不得当字级用。
 3. **信息先并入再删除**:题材类红线(新闻采访的"硬新闻不配乐/不改语义"、短剧的"3s 一钩子/分类分层审核"、影视解说的"版权四要素")收进 `rules/video-types/_通用规则.md` 的「类型补充」小节并标注"暂停维护",`rules/genres/` 随后删除。
 4. **同步更新**:`templates/brief.md`(类型 → `videoType` + 声音来源)、`rules/intake.md` 项 0、`SKILL.md` 路由表与 Hard Rule 17、`README.md`、`CONTEXT.md`(术语表新增 videoType 与平台/画幅两节)。
-5. **第二个技能组**:`skills/cutflow-prompt/` 归档到 `docs/archive/cutflow-prompt/` 后删除;`tools/install.ps1` 只安装 `cutflow`;`docs/PLAN.md` 加停用横幅(历史段落不改写)。
+5. **第二个技能组**:`skills/cutflow-prompt/` 归档到 `docs/archive/cutflow-prompt/` 后删除;`tools/install.ps1` 只安装 `cutflow`;`docs/archive/PLAN.md` 加停用横幅(历史段落不改写)。
 
 ## 后果
 
@@ -44,4 +44,4 @@
 
 - `rules/video-types/{纯口播,口播+动画,纯动画,_通用规则}.md`、`rules/intake.md`、`templates/brief.md`、`SKILL.md`、`CONTEXT.md`
 - 取代 ADR-0010(六册题材分类);保留 ADR-0003(绿幕管线)、ADR-0004(穿插动画视觉节拍)、ADR-0006(双声源/成片 B)、ADR-0009(视频卡安全区)
-- `docs/OPTIMIZATION-v7.md` #5 / #6
+- `docs/archive/OPTIMIZATION-v7.md` #5 / #6

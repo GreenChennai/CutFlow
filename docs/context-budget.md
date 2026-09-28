@@ -1,6 +1,32 @@
-# 上下文预算与度量(阶段五 T6)
+# 上下文预算与度量(阶段五 T6;第一册 T1.8 门禁化)
 
-> 目的:把"省 Token"从口号变成可记录的趋势。正确性不降是前提(L0 全绿、e2e 全绿),本文件只管"读得多不多"。
+> 目的:把"省 Token"从口号变成可记录的趋势与**可断言的门禁**。正确性不降是前提(L0 全绿、e2e 全绿),本文件只管"读得多不多"。
+> 门禁:`tests/test_context_budget.py`(SKILL ≤200 行 / 分册 ≤150 行-可声明超限理由 / SKILL+README ≤470 行);数值单一化见 `tests/test_doc_single_source.py`;分册重复段落见 `tests/test_rules_no_dup_paragraphs.py`。
+
+## 结构预算实测(第一册 T1.1–T1.4 治理后,2026-09-27)
+
+| 项 | 治理前(基线 v0.20) | 治理后 | 门禁 |
+|---|---|---|---|
+| `skills/cutflow/SKILL.md` | 270 行 | **168 行** | ≤200(`test_context_budget.py`) |
+| `README.md` | 296 行 | **279 行**(手写命令表 → capabilities.json) | 合计 ≤470 |
+| SKILL + README | ≈566 行 | **447 行** | ≤470 ✓ |
+| docs/ 顶层 md | 20 个 | **6 个**(历史 15 份 + BASELINE-v0.19 归档 `docs/archive/`,3333+ 行) | ≤8 |
+| 分册(rules/) | 24 册 3005 行 | 24 册 3077 行(下沉铁律 +8 册头标注;去重让位数值) | 每册 ≤150(超限需册头「超限理由」) |
+| video-types/_通用规则.md | 49 行(含 genres 遗留段) | **40 行**(响度/安全区/字数让位 compose/platforms 分册) | — |
+
+## 最小必读行数(按新路由表 SKILL.md §1.2 逐任务实测)
+
+| 任务 | 必读清单 | 行数 |
+|---|---|---|
+| 给成片加字幕 | SKILL(168)+ subtitles(245)+ platforms(73) | **486** |
+| 一句提示词 → 竖版口播成片 | SKILL + intake + asr + align + roughcut + tts + compose + subtitles + platforms + verify + selfcheck + cover + meta + video-types/纯口播(14 册) | **1469**(治理前同口径 1552) |
+
+> 与第一册册目标「≤450 行」的差距如实记录:单册任务(加字幕)距 450 还差 36 行,主要卡在
+> `subtitles.md`(245 行,已声明超限理由——DP 算法 + override 契约是断句正确性唯一出处);
+> 全流水线任务读 14 册的口径本就超出 L0+1~2 册模型,真实差距在**分册未拆薄**。
+> 后续路径:第四册(字幕重构)顺带把 subtitles.md 拆为「卡切分」+「override 契约」两册;
+> 编排类任务(incremental/edit-op/editing-grammar)按需加载,不计入常规任务必读。
+
 
 ## 指标定义
 

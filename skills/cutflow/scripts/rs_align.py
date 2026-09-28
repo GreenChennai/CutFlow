@@ -242,6 +242,94 @@ def compute_gaps(chars: list[dict], min_ms: int = GAP_MIN_MS) -> list[dict]:
     return gaps
 
 
+# ---------------------------------------------------------------- 标点恢复(T4.10,可选件)
+
+PUNC_MODEL = "ct-punc-c"      # FunASR 同源小模型(与自带 ASR 同一依赖通道,ADR-0024)
+PUNCT_SET = "。,?!?,.;:、!?,.;:-—…《》〔〕()()"
+
+
+def _load_punc_model():
+    """标点恢复模型懒加载(可选依赖;未部署抛 ImportError → 调用方降级留痕)。"""
+    from funasr import AutoModel
+    return AutoModel(model=PUNC_MODEL)
+
+
+def _insert_punct_chars(wl: dict, old_text: str, new_text: str) -> tuple[dict, int]:
+    """把恢复出的标点按 difflib 对齐插回 chars:**只插标点**,锚 = 前字 endMs(零宽)。
+
+    与 retext 同一 opcode 思路,但方向相反:不动任何既有字的时间,只在插入点
+    补零宽标点条目(endMs = startMs = 前字 endMs,满足严格单调)。
+    """
+    from difflib import SequenceMatcher
+    chars = wl.get("chars") or []
+    sm = SequenceMatcher(None, old_text, new_text, autojunk=False)
+    out: list[dict] = []
+    inserted = 0
+    for tag, i1, i2, j1, j2 in sm.get_opcodes():
+        if tag == "equal":
+            out.extend(chars[i1:i2])
+            continue
+        if tag == "insert":
+            for ch in new_text[j1:j2]:
+                if ch not in PUNCT_SET:
+                    continue                     # 只补标点,绝不补字(不臆测内容)
+                anchor = out[-1]["endMs"] if out else int(chars[0]["startMs"])
+                out.append({"i": 0, "ch": ch, "startMs": int(anchor), "endMs": int(anchor),
+                            "srcStartMs": int(anchor), "srcEndMs": int(anchor),
+                            "conf": 0.85, "inserted": True})
+                inserted += 1
+            continue
+        # delete/replace:restore 模型只会插标点;出现删改 = 对不上,按旧文本保守保留
+        out.extend(chars[i1:i2])
+    for k, c in enumerate(out):
+        c["i"] = k
+    doc = dict(wl)
+    doc["chars"] = out
+    doc["sentences"] = _resplit_sentences(out)
+    doc["gaps"] = compute_gaps(out)
+    return doc, inserted
+
+
+def restore_punctuation(wl: dict, *, model=None) -> tuple[dict, dict]:
+    """降级路径标点恢复(T4.10):**只在降级且缺标点的 wordline 上启用**。
+
+    正常路径(有字级时间戳、非降级)绝不调用本函数,也不加载模型 —— 零第三方
+    依赖克制由 tests/test_punc_restore.py 断言。模型不可用 → 显式降级留痕,绝不静默。
+    成功 → `wl.punctuation = "restored"` + punctuationRestore 留痕。
+    """
+    report = {"applied": False, "model": PUNC_MODEL, "reason": "", "inserted": 0}
+    chars = wl.get("chars") or []
+    hard = [c for c in chars if str(c.get("ch", "")).strip()]
+    if not hard:
+        report["reason"] = "wordline 无内容字,无标点可恢复"
+        return wl, report
+    if not (wl.get("degraded") or wl.get("charTimingEstimated")):
+        report["reason"] = "非降级路径,不启用标点恢复(正常路径零新依赖)"
+        return wl, report
+    n_punct = sum(1 for c in hard if c["ch"] in PUNCT_SET)
+    if n_punct >= max(1, len(hard) // 40):
+        report["reason"] = f"文本已含 {n_punct} 个标点,无需恢复"
+        return wl, report
+    try:
+        m = model or _load_punc_model()
+        res = m.generate(input="".join(c["ch"] for c in hard))
+        payload = res[0] if isinstance(res, list) else res
+        new_text = str((payload or {}).get("text") or "")
+    except Exception as exc:  # noqa: BLE001 — 缺依赖/模型失败:降级留痕,不抛出
+        report["reason"] = f"标点恢复模型不可用,跳过({type(exc).__name__}: {str(exc)[:80]})"
+        doc = dict(wl)
+        doc["punctuationRestore"] = report
+        return doc, report
+    doc, inserted = _insert_punct_chars(wl, "".join(c["ch"] for c in hard), new_text or "")
+    report["applied"] = inserted > 0
+    report["inserted"] = inserted
+    report["reason"] = "" if inserted else "模型未产出任何标点(文本原样保留)"
+    if inserted:
+        doc["punctuation"] = "restored"            # T4.10 契约标注
+    doc["punctuationRestore"] = report
+    return doc, report
+
+
 
 
 # ---------------------------------------------------------------- 能量校准(v0.13 FMSmartSnap)
@@ -737,8 +825,10 @@ def _from_media(media: Path, cfg: dict, backend: str = "auto",
     if hotwords:
         cmd += ["--hotwords", hotwords]
     # R26(v2 M11):直调 --media 的 ASR 此前无超时,后端挂死会永久阻塞(rs_run 的 S1
-    # 有阶段超时兜底,直调没有)。超时按素材时长比例 + 底数(M14 R40 的先行最小实现)。
-    _asr_timeout = int(__import__("os").environ.get("CUTFLOW_ASR_TIMEOUT", "3600"))
+    # 有阶段超时兜底,直调没有)。T2.12:限时走 stages.json policies.ASR
+    # (CUTFLOW_ASR_TIMEOUT 显式设置仍完全覆盖;值 = v0.20 字面 3600)。
+    from rs_common import policy_timeout
+    _asr_timeout = policy_timeout("ASR")
     try:
         p = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8",
                            errors="replace", timeout=_asr_timeout)
@@ -793,6 +883,10 @@ def main() -> int:
                     help="calibrate:小于该偏移不修正 ms(默认 20,抗噪声抖动)")
     ap.add_argument("--max-end-sil", dest="max_end_sil", type=int, default=0,
                     help="VAD 静音切分阈值 ms(0=用工具默认 400)")
+    ap.add_argument("--restore-punct", dest="restore_punct", action="store_true",
+                    help="T4.10 标点恢复(可选件):仅**降级路径**(无字级时间戳/降级 wordline)"
+                         "且缺标点时接入 FunASR 同源小模型补标点(punctuation: restored);"
+                         "正常路径不受影响、零新依赖;模型未部署时显式降级留痕")
     ap.add_argument("--cutlist")
     ap.add_argument("--force-remap", dest="force_remap", action="store_true",
                     help="P29-1:wordline 已在 final 域时仍强行二次重映射"
@@ -1086,6 +1180,14 @@ def main() -> int:
     doc = build_wordline(segments, source, fps=a.fps, degraded=degraded,
                          media_duration_ms=measured_ms)
     doc["asr"] = asr_meta
+    punc_note = ""
+    if a.restore_punct:
+        # T4.10:只在降级 wordline 上生效;模型未部署 → 显式降级留痕(不阻塞 build)
+        doc, punc_rep = restore_punctuation(doc)
+        if punc_rep.get("applied"):
+            punc_note = f";标点恢复 +{punc_rep['inserted']} 个(punctuation: restored)"
+        elif punc_rep.get("reason"):
+            punc_note = f";标点恢复跳过({punc_rep['reason']})"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(doc, ensure_ascii=False, indent=1), encoding="utf-8")
     st = doc["stats"]
@@ -1094,6 +1196,8 @@ def main() -> int:
            f";srcDurationMs={doc['srcDurationMs']}({doc['durationProvenance']})")
     if probe_note:
         msg += f" {probe_note}"
+    if punc_note:
+        msg += punc_note
     clamp = doc.get("endClampSuspect")
     if clamp:
         msg += (f" ⚠ 疑似钳制:末字 endMs({clamp['lastCharEndMs']})与记录总时长重合"

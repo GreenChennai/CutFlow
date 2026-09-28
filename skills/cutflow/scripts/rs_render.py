@@ -34,14 +34,14 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 from rs_common import (RATIOS, IrError, die, emit, ffmpeg_bin, ffprobe_json,  # noqa: E402
                        load_config, load_ir_path, media_duration_s,
-                       proportional_timeout, ratio_for_canvas, run)
+                       policy_timeout, ratio_for_canvas, run)  # T2.12:超时单一入口
 import rs_paths  # noqa: E402  — 阶段路径唯一真相源(ADR-0046),本文件禁止目录字面量
 
 RATIO = dict(RATIOS)             # 画幅唯一真相源在 rs_common(新增画幅只改那里)
 LOUDNORM_BUS = "loudnorm=I=-14:TP=-1.0:LRA=11"
 LOUDNORM_VOICE = "loudnorm=I=-16:TP=-1.5:LRA=11"
 LOUDNESS_TARGET = {"I": -14.0, "TP": -1.0, "LRA": 11.0}   # 硬规则 11;出处 ITERATION-GUIDE §8.2
-CACHE_VER = "v10"                # 渲染语义变更时 +1,防旧缓存幽灵命中(v9:M9 matte;v10:M13 fxId 注册表——fx 段/边界副效进段内容)
+CACHE_VER = "v11"                # 渲染语义变更时 +1,防旧缓存幽灵命中(v10:M13 fxId 注册表;v11:H6 ASS 帧网格对齐前移 S7,烧录期平移废止)
 SEG_CACHE_KEEP = 400             # segcache 最大保留文件数(超出按 mtime 淘汰)
 
 
@@ -161,7 +161,8 @@ def matte_precompose(clip: dict, src: Path, pr: dict, build: Path, base_dir: Pat
            "-filter_complex", vf,
            "-pix_fmt", "yuv420p", str(out_tmp)]
     p = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8",
-                       errors="replace", timeout=3600)
+                       errors="replace",
+                       timeout=policy_timeout("PROBE"))  # T2.12:policies.PROBE(平 3600s)
     if p.returncode != 0:
         warnings.append(f"segment:matte 预合成失败:{p.stderr[-200:]} → 按未抠像渲染")
         return None
@@ -488,8 +489,7 @@ def _boundary_plans(base_clips: list[dict], joins: dict[int, dict],
             digest_parts.append(f"in:{f.get('color', 'white')}:{dur:.3f}")
         res_out = joins.get(i + 1)
         if res_out and (res_out.get("boundary") or {}):
-            b = res_out["boundary"] or {}
-            b = res_out["boundary"]
+            b = res_out["boundary"]          # M9:删除紧随其后的重复赋值
             tdur = tails[i] if i < len(tails) else 0.0
             if b.get("outFlash") and tdur > 0:
                 f = b["outFlash"]
@@ -792,14 +792,11 @@ def step_segment(doc: dict, ratio: str, build: Path, base_dir: Path, cfg: dict,
         cmd += ["-t", f"{take_s:.3f}",
                 "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
                 "-r", str(fps), "-video_track_timescale", "15360", str(tmp)]
-        # R40:段超时按素材时长比例计算(常量下限 1800s;CUTFLOW_SEG_TIMEOUT 显式覆盖)
+        # R40:段超时按素材时长比例计算 —— T2.12:下限/系数/env 走 stages.json
+        # policies.SEG(CUTFLOW_SEG_TIMEOUT 显式设置仍完全覆盖)
         plan.append({"i": i, "cmd": cmd, "tmp": tmp, "cached": cached,
                      "out_ms": out_ms, "take_s": take_s, "tag": plan_tag,
-                     "timeout": proportional_timeout(
-                         take_s + out_ms / 1000.0,
-                         floor=int(__import__('os').environ.get(
-                             'CUTFLOW_SEG_TIMEOUT', '1800')),
-                         env="CUTFLOW_SEG_TIMEOUT")})
+                     "timeout": policy_timeout("SEG", take_s + out_ms / 1000.0)})
 
     if plan and not dry_run:
         cache_dir.mkdir(parents=True, exist_ok=True)
@@ -925,7 +922,9 @@ def resolve_joins(base_clips: list[dict], fps: float, doc: dict,
         cap = min(base_clips[i - 1]["durationMs"] / 2000.0,
                   base_clips[i]["durationMs"] / 2000.0)
         reason = str(tr.get("reason", "")).lower()
-        if reason == "jumpcut":
+        if reason == "jumpcut" or reason == "shot-change":
+            # 第三册 T3.2:shot-change = 刀口恰在镜头边界(shots.json),视觉即真切 →
+            # 与 jumpcut 同档亚帧软切(吃掉单帧 pop/音频爆音,视觉仍为硬切)
             tdur = min(frame_s, cap)             # 软切:至多 1 帧
         elif reason == "topic":
             # v0.11(ADR-0026)三级语法:topic = 真话题/章节切换 → 按 durMs 溶解(默认 500ms)
@@ -1080,7 +1079,7 @@ def step_concat(doc: dict, seg_files: list[Path], build: Path, cfg: dict,
     cmd += ["-map", f"[{lasta}]", "-c:a", "aac", "-b:a", "192k"] if all_have_audio else ["-an"]
     cmd += ["-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
             "-r", str(fps), "-t", f"{total_s:.3f}", str(base)]
-    p = run(cmd, timeout=proportional_timeout(total_s, floor=3600, env="CUTFLOW_STEP_TIMEOUT"))
+    p = run(cmd, timeout=policy_timeout("STEP", total_s))  # T2.12:policies.STEP
     if p.returncode != 0:
         die(4, "CONCAT_XFADE_FAIL", f"转场拼接失败:{(p.stderr or '')[-500:]}")
     return base
@@ -1288,8 +1287,7 @@ def _concat_splice(doc: dict, seg_files: list[Path], build: Path, cfg: dict,
     total_s = sum(qframes) / fps
     cmd += ["-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
             "-r", str(fps), "-t", f"{total_s:.3f}", str(base)]
-    p = run(cmd, timeout=proportional_timeout(total_s, floor=3600,
-                                              env="CUTFLOW_STEP_TIMEOUT"))
+    p = run(cmd, timeout=policy_timeout("STEP", total_s))  # T2.12:policies.STEP
     if p.returncode != 0:
         die(4, "CONCAT_SPLICE_FAIL", f"拼接图合成失败:{(p.stderr or '')[-500:]}")
     return base
@@ -1418,8 +1416,7 @@ def step_compose(doc: dict, ratio: str, base: Path, build: Path, base_dir: Path,
     total_ms = sum(int(c.get("durationMs") or 0)
                    for tr in doc["tracks"] if tr.get("kind") == "video"
                    for c in tr.get("clips", []))
-    p = run(cmd, timeout=proportional_timeout(total_ms / 1000.0,
-                                              floor=3600, env="CUTFLOW_STEP_TIMEOUT"))
+    p = run(cmd, timeout=policy_timeout("STEP", total_ms / 1000.0))  # T2.12:policies.STEP
     if p.returncode != 0:
         die(4, "COMPOSE_FAIL", f"合成失败:{(p.stderr or '')[-500:]}")
     return out
@@ -1538,8 +1535,7 @@ def step_mix(doc: dict, src: Path, build: Path, base_dir: Path, cfg: dict) -> Pa
     graph += (";[mix]atrim=0:" + f"{total_s:.3f}" + ",asetpts=PTS-STARTPTS[mixc]")
     cmd += ["-filter_complex", graph, "-map", "0:v", "-map", "[mixc]",
             "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", str(out)]
-    p = run(cmd, timeout=proportional_timeout(total_s, floor=3600,
-                                              env="CUTFLOW_STEP_TIMEOUT"))
+    p = run(cmd, timeout=policy_timeout("STEP", total_s))  # T2.12:policies.STEP
     if p.returncode != 0:
         die(4, "MIX_FAIL", f"混音失败:{(p.stderr or '')[-500:]}")
     return out
@@ -1562,17 +1558,16 @@ def step_subtitle(doc: dict, src: Path, build: Path, cfg: dict,
     p = Path(ass)
     if not p.is_absolute():
         p = Path(doc.get("_base_dir", ".")) / p
-    # 实剪②修复(字幕侧):视频按帧取整拼接,名义 ASS 时间会与画面累积错位
-    #(23 段尾部 386ms)。按「名义段起点 → 帧取整段起点」的分段 delta 平移事件。
-    p = _shift_ass_for_frame_grid(p, build, doc)
+    # T2.6/H6:帧网格对齐已前移到 S7 生成期(rs_subtitle.align_events_to_frame_grid),
+    # 盘上的 subtitles.ass 就是烧录时间基准(单一真相源)。旧口径在此按段平移另写
+    # `_build/subtitled_aligned.ass`、盘面不动 → S9 对账与交付 ASS 分叉,已废止。
     out = build / "subtitled.mp4"
     cmd = [ffmpeg_bin(cfg), "-v", "error", "-y", "-i", str(src),
            "-vf", f"ass='{esc_sub(p)}'", "-c:v", "libx264", "-preset", "veryfast",
            "-crf", "18", "-c:a", "copy", str(out)]
     # R40:烧录时长 ≈ 源时长;用源容器时长(探测已缓存)按比例给限时
     dur_s = probe_duration_s(src, cfg)
-    r = run(cmd, timeout=proportional_timeout(dur_s, floor=3600,
-                                              env="CUTFLOW_STEP_TIMEOUT"))
+    r = run(cmd, timeout=policy_timeout("STEP", dur_s))  # T2.12:policies.STEP
     if r.returncode != 0:
         die(4, "SUBTITLE_FAIL", f"字幕烧录失败:{(r.stderr or '')[-400:]}")
     return out
@@ -1590,7 +1585,8 @@ def measure_loudness(src: Path, cfg: dict) -> dict | None:
         [ffmpeg_bin(cfg), "-v", "info", "-i", str(src),
          "-af", "loudnorm=I=-14:TP=-1.0:LRA=11:print_format=json",
          "-vn", "-f", "null", "-"], capture_output=True, text=True,
-        encoding="utf-8", errors="replace", timeout=3600)
+        encoding="utf-8", errors="replace",
+        timeout=policy_timeout("PROBE"))  # T2.12:policies.PROBE(平 3600s)
     if p.returncode != 0:
         return None
     m = re.findall(r'\{[^{}]*"input_i"[^{}]*\}', p.stderr or "")
@@ -1603,62 +1599,6 @@ def measure_loudness(src: Path, cfg: dict) -> dict | None:
         return d
     except (json.JSONDecodeError, ValueError):
         return None
-
-
-def _shift_ass_for_frame_grid(ass_path: Path, build: Path, doc: dict) -> Path:
-    """ASS 事件时间按帧取整分段映射平移(零漂移的字幕侧)。
-
-    视频 = Σ 帧取整段长;名义 = Σ durationMs。每段 delta_k = 实际起点 − 名义起点;
-    落在段 k 的事件整体平移 delta_k。无差异(全部 |delta| < 1ms)时原样返回。
-    """
-    fps = doc.get("fps", 30)
-    clips = _main_video_clips(doc)
-    segs: list[tuple[int, int, int]] = []          # (nom_start, nom_end, delta_ms)
-    acc_nom, acc_act = 0.0, 0.0
-    for c in clips:
-        qf = max(1, round(c["durationMs"] / 1000.0 * fps))
-        nom_start, act_start = int(acc_nom), int(round(acc_act * 1000))
-        segs.append((nom_start, nom_start + c["durationMs"],
-                     act_start - nom_start))
-        acc_nom += c["durationMs"]
-        acc_act += qf / fps
-    if all(d == 0 for _, _, d in segs):
-        return ass_path
-
-    import re as _re  # noqa: PLC0415
-
-    def _ass2ms(ts: str) -> int:
-        h, m, s = ts.split(":")
-        return int((int(h) * 3600 + int(m) * 60 + float(s)) * 1000)
-
-    def _ms2ass(ms: int) -> str:
-        ms = max(0, ms)
-        h, rem = divmod(ms, 3600000)
-        m, rem = divmod(rem, 60000)
-        s = rem / 1000
-        return f"{h:d}:{m:02d}:{s:05.2f}"
-
-    def _delta(ms: int) -> int:
-        for a, b, d in segs:
-            if a <= ms < b:
-                return d
-        return segs[-1][2] if segs else 0
-
-    out = build / "subtitled_aligned.ass"
-    lines = ass_path.read_text(encoding="utf-8", errors="replace").splitlines()
-    res = []
-    for ln in lines:
-        if ln.startswith("Dialogue:"):
-            head, _, rest = ln.partition(":")
-            cols = rest.split(",")
-            if len(cols) >= 10:
-                a_ms, b_ms = _ass2ms(cols[1]), _ass2ms(cols[2])
-                cols[1] = _ms2ass(a_ms + _delta(a_ms))
-                cols[2] = _ms2ass(b_ms + _delta(b_ms))
-                ln = head + ":" + ",".join(cols)
-        res.append(ln)
-    out.write_text(chr(10).join(res) + chr(10), encoding="utf-8")
-    return out
 
 
 def step_encode(src: Path, out: Path, profile: str, cfg: dict, fps: int,
@@ -1682,8 +1622,8 @@ def step_encode(src: Path, out: Path, profile: str, cfg: dict, fps: int,
            "-pix_fmt", "yuv420p", "-r", str(fps), "-c:a", "aac", "-b:a", "192k",
            "-movflags", "+faststart", str(out)]
     # R40:编码是最慢一步 —— 下限抬高到 7200s,长片按时长×4 比例放宽
-    p = run(cmd, timeout=proportional_timeout(probe_duration_s(src, cfg),
-                                              floor=7200, env="CUTFLOW_ENCODE_TIMEOUT"))
+    # (T2.12:值/env 走 stages.json policies.ENCODE)
+    p = run(cmd, timeout=policy_timeout("ENCODE", probe_duration_s(src, cfg)))
     if p.returncode != 0:
         die(4, "ENCODE_FAIL", f"编码失败:{(p.stderr or '')[-400:]}")
 

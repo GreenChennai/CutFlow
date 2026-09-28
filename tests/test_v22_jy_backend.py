@@ -479,7 +479,12 @@ def test_j6_cutforge_export_jianying_uses_same_script():
     lib = CUTFORGE / "crates" / "cutforge-mcp" / "src" / "lib.rs"
     if not lib.is_file():
         pytest.skip("cutforge 仓库不在同级(CI 由 cutforge 侧桥测试覆盖)")
-    src = lib.read_text(encoding="utf-8")
+    # cutforge A1 重构(A1 巨石拆分)后编排映射可能落在 crate 内任意模块(dispatch.rs/orchestrate.rs),
+    # 跨全部 rs 文件搜索——"同一脚本同一映射"的意图不变,不绑定具体文件布局
+    src = "\n".join(
+        p.read_text(encoding="utf-8")
+        for p in sorted((CUTFORGE / "crates" / "cutforge-mcp" / "src").rglob("*.rs"))
+    )
     m = re.search(r'"stage_run"[^\n]*\n(?:.*\n){0,12}?.*_ => "rs_jy_draft\.py"', src)
     assert m, "export_jianying 编排组必须落 rs_jy_draft.py(同一脚本同一映射)"
     assert "export_jianying" in m.group(0), "export_jianying 必须在同一编排组内"

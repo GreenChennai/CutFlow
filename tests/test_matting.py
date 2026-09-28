@@ -214,9 +214,9 @@ class TestWiring:
     """IR matte 块 + 渲染预合成 + S0 分流 + 剪映降级标注 + CACHE_VER。"""
 
     def test_cache_ver_v9(self):
-        # v10:M13 fxId 注册表(fx 声明/转场边界副效进段内容)再次失效旧 segcache
-        # (语义变更必须失效旧 segcache;v9 前史见 ADR-0050)
-        assert rs_render.CACHE_VER == "v10", "渲染语义变更必须失效旧 segcache"
+        # v11:第二册 H6 帧网格对齐前移 S7(subtitles.ass 生成即按帧网格对齐),
+        # 烧录输入语义变更必须再次失效旧 segcache(v10 前史见 ADR-0050)
+        assert rs_render.CACHE_VER == "v11", "渲染语义变更必须失效旧 segcache"
 
     def test_verify_l0_matte_check(self, tmp_path):
         """rs_verify L0 抠像判据:无报告 skipped;fail 红;warn 绿但留提示。"""

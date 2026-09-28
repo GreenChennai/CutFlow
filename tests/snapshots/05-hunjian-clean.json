@@ -1,0 +1,609 @@
+{
+ "meta": {
+  "board": "05-hunjian-clean",
+  "videoType": "混剪",
+  "state": "干净盘面",
+  "desc": "三素材混剪工程(含品牌变体),账实相符。",
+  "regen": "python tests/test_snapshots.py"
+ },
+ "status": {
+  "exitCode": 0,
+  "code": "STATUS_OK",
+  "data": {
+   "stages": [
+    {
+     "id": "S0",
+     "name": "基础素材",
+     "status": "done",
+     "staleReason": [],
+     "outs": 1
+    },
+    {
+     "id": "S1",
+     "name": "转写与字级对齐",
+     "status": "done",
+     "staleReason": [],
+     "outs": 1
+    },
+    {
+     "id": "S2",
+     "name": "粗剪处理",
+     "status": "done",
+     "staleReason": [],
+     "outs": 1
+    },
+    {
+     "id": "S3",
+     "name": "基础合成",
+     "status": "done",
+     "staleReason": [],
+     "outs": 1
+    },
+    {
+     "id": "S4",
+     "name": "动画/信息卡",
+     "status": "done",
+     "staleReason": [],
+     "outs": 0
+    },
+    {
+     "id": "S5",
+     "name": "品牌(Logo 变体)",
+     "status": "done",
+     "staleReason": [],
+     "outs": 1
+    },
+    {
+     "id": "S6",
+     "name": "音效",
+     "status": "done",
+     "staleReason": [],
+     "outs": 1
+    },
+    {
+     "id": "S7",
+     "name": "字幕",
+     "status": "done",
+     "staleReason": [],
+     "outs": 1
+    },
+    {
+     "id": "S8",
+     "name": "烧录导出",
+     "status": "done",
+     "staleReason": [],
+     "outs": 1
+    },
+    {
+     "id": "S9",
+     "name": "自评与对齐断言",
+     "status": "done",
+     "staleReason": [],
+     "outs": 2
+    },
+    {
+     "id": "S10",
+     "name": "封面与文案",
+     "status": "done",
+     "staleReason": [],
+     "outs": 1
+    },
+    {
+     "id": "S11",
+     "name": "交付",
+     "status": "done",
+     "staleReason": [],
+     "outs": 1
+    }
+   ]
+  }
+ },
+ "explain": {
+  "S0": {
+   "stage": "S0",
+   "name": "基础素材",
+   "status": "done",
+   "staleReason": [],
+   "outs": 1,
+   "verdict": "keep",
+   "verdictLabel": "可继续(缓存命中)",
+   "compared": {
+    "inputs": {
+     "count": 5,
+     "changed": [],
+     "added": [],
+     "removed": []
+    },
+    "tool": {
+     "count": 2,
+     "changed": [],
+     "added": [],
+     "removed": []
+    },
+    "external": {
+     "count": 1,
+     "changed": [],
+     "added": [],
+     "removed": []
+    },
+    "params": {
+     "declared": [],
+     "current": {},
+     "changed": []
+    },
+    "outputs": {
+     "count": 1,
+     "recordedOutHash": "<hash>",
+     "currentOutHash": "<hash>",
+     "outOfBand": false
+    }
+   }
+  },
+  "S1": {
+   "stage": "S1",
+   "name": "转写与字级对齐",
+   "status": "done",
+   "staleReason": [],
+   "outs": 1,
+   "verdict": "keep",
+   "verdictLabel": "可继续(缓存命中)",
+   "compared": {
+    "inputs": {
+     "count": 4,
+     "changed": [],
+     "added": [],
+     "removed": []
+    },
+    "tool": {
+     "count": 1,
+     "changed": [],
+     "added": [],
+     "removed": []
+    },
+    "external": {
+     "count": 1,
+     "changed": [],
+     "added": [],
+     "removed": []
+    },
+    "params": {
+     "declared": [],
+     "current": {},
+     "changed": []
+    },
+    "outputs": {
+     "count": 1,
+     "recordedOutHash": "<hash>",
+     "currentOutHash": "<hash>",
+     "outOfBand": false
+    }
+   }
+  },
+  "S2": {
+   "stage": "S2",
+   "name": "粗剪处理",
+   "status": "done",
+   "staleReason": [],
+   "outs": 1,
+   "verdict": "keep",
+   "verdictLabel": "可继续(缓存命中)",
+   "compared": {
+    "inputs": {
+     "count": 1,
+     "changed": [],
+     "added": [],
+     "removed": []
+    },
+    "tool": {
+     "count": 1,
+     "changed": [],
+     "added": [],
+     "removed": []
+    },
+    "external": {
+     "count": 1,
+     "changed": [],
+     "added": [],
+     "removed": []
+    },
+    "params": {
+     "declared": [],
+     "current": {},
+     "changed": []
+    },
+    "outputs": {
+     "count": 1,
+     "recordedOutHash": "<hash>",
+     "currentOutHash": "<hash>",
+     "outOfBand": false
+    }
+   }
+  },
+  "S3": {
+   "stage": "S3",
+   "name": "基础合成",
+   "status": "done",
+   "staleReason": [],
+   "outs": 1,
+   "verdict": "keep",
+   "verdictLabel": "可继续(缓存命中)",
+   "compared": {
+    "inputs": {
+     "count": 2,
+     "changed": [],
+     "added": [],
+     "removed": []
+    },
+    "tool": {
+     "count": 2,
+     "changed": [],
+     "added": [],
+     "removed": []
+    },
+    "external": {
+     "count": 1,
+     "changed": [],
+     "added": [],
+     "removed": []
+    },
+    "params": {
+     "declared": [
+      "ratio"
+     ],
+     "current": {
+      "ratio": null
+     },
+     "changed": []
+    },
+    "outputs": {
+     "count": 1,
+     "recordedOutHash": "<hash>",
+     "currentOutHash": "<hash>",
+     "outOfBand": false
+    }
+   }
+  },
+  "S4": {
+   "stage": "S4",
+   "name": "动画/信息卡",
+   "status": "done",
+   "staleReason": [],
+   "outs": 0,
+   "verdict": "keep",
+   "verdictLabel": "可继续(缓存命中)",
+   "compared": {
+    "inputs": {
+     "count": 1,
+     "changed": [],
+     "added": [],
+     "removed": []
+    },
+    "tool": {
+     "count": 0,
+     "changed": [],
+     "added": [],
+     "removed": []
+    },
+    "external": {
+     "count": 1,
+     "changed": [],
+     "added": [],
+     "removed": []
+    },
+    "params": {
+     "declared": [],
+     "current": {},
+     "changed": []
+    },
+    "outputs": {
+     "count": 0,
+     "recordedOutHash": null,
+     "currentOutHash": null,
+     "outOfBand": false
+    }
+   }
+  },
+  "S5": {
+   "stage": "S5",
+   "name": "品牌(Logo 变体)",
+   "status": "done",
+   "staleReason": [],
+   "outs": 1,
+   "verdict": "keep",
+   "verdictLabel": "可继续(缓存命中)",
+   "compared": {
+    "inputs": {
+     "count": 2,
+     "changed": [],
+     "added": [],
+     "removed": []
+    },
+    "tool": {
+     "count": 1,
+     "changed": [],
+     "added": [],
+     "removed": []
+    },
+    "external": {
+     "count": 1,
+     "changed": [],
+     "added": [],
+     "removed": []
+    },
+    "params": {
+     "declared": [],
+     "current": {},
+     "changed": []
+    },
+    "outputs": {
+     "count": 1,
+     "recordedOutHash": "<hash>",
+     "currentOutHash": "<hash>",
+     "outOfBand": false
+    }
+   }
+  },
+  "S6": {
+   "stage": "S6",
+   "name": "音效",
+   "status": "done",
+   "staleReason": [],
+   "outs": 1,
+   "verdict": "keep",
+   "verdictLabel": "可继续(缓存命中)",
+   "compared": {
+    "inputs": {
+     "count": 1,
+     "changed": [],
+     "added": [],
+     "removed": []
+    },
+    "tool": {
+     "count": 1,
+     "changed": [],
+     "added": [],
+     "removed": []
+    },
+    "external": {
+     "count": 1,
+     "changed": [],
+     "added": [],
+     "removed": []
+    },
+    "params": {
+     "declared": [],
+     "current": {},
+     "changed": []
+    },
+    "outputs": {
+     "count": 1,
+     "recordedOutHash": "<hash>",
+     "currentOutHash": "<hash>",
+     "outOfBand": false
+    }
+   }
+  },
+  "S7": {
+   "stage": "S7",
+   "name": "字幕",
+   "status": "done",
+   "staleReason": [],
+   "outs": 1,
+   "verdict": "keep",
+   "verdictLabel": "可继续(缓存命中)",
+   "compared": {
+    "inputs": {
+     "count": 1,
+     "changed": [],
+     "added": [],
+     "removed": []
+    },
+    "tool": {
+     "count": 3,
+     "changed": [],
+     "added": [],
+     "removed": []
+    },
+    "external": {
+     "count": 1,
+     "changed": [],
+     "added": [],
+     "removed": []
+    },
+    "params": {
+     "declared": [
+      "maxChars",
+      "cpsMax",
+      "ratio",
+      "terms"
+     ],
+     "current": {
+      "maxChars": 12,
+      "cpsMax": 9,
+      "ratio": null,
+      "terms": null
+     },
+     "changed": []
+    },
+    "outputs": {
+     "count": 1,
+     "recordedOutHash": "<hash>",
+     "currentOutHash": "<hash>",
+     "outOfBand": false
+    }
+   }
+  },
+  "S8": {
+   "stage": "S8",
+   "name": "烧录导出",
+   "status": "done",
+   "staleReason": [],
+   "outs": 1,
+   "verdict": "keep",
+   "verdictLabel": "可继续(缓存命中)",
+   "compared": {
+    "inputs": {
+     "count": 2,
+     "changed": [],
+     "added": [],
+     "removed": []
+    },
+    "tool": {
+     "count": 1,
+     "changed": [],
+     "added": [],
+     "removed": []
+    },
+    "external": {
+     "count": 1,
+     "changed": [],
+     "added": [],
+     "removed": []
+    },
+    "params": {
+     "declared": [
+      "ratio"
+     ],
+     "current": {
+      "ratio": null
+     },
+     "changed": []
+    },
+    "outputs": {
+     "count": 1,
+     "recordedOutHash": "<hash>",
+     "currentOutHash": "<hash>",
+     "outOfBand": false
+    }
+   }
+  },
+  "S9": {
+   "stage": "S9",
+   "name": "自评与对齐断言",
+   "status": "done",
+   "staleReason": [],
+   "outs": 2,
+   "verdict": "keep",
+   "verdictLabel": "可继续(缓存命中)",
+   "compared": {
+    "inputs": {
+     "count": 1,
+     "changed": [],
+     "added": [],
+     "removed": []
+    },
+    "tool": {
+     "count": 1,
+     "changed": [],
+     "added": [],
+     "removed": []
+    },
+    "external": {
+     "count": 1,
+     "changed": [],
+     "added": [],
+     "removed": []
+    },
+    "params": {
+     "declared": [],
+     "current": {},
+     "changed": []
+    },
+    "outputs": {
+     "count": 2,
+     "recordedOutHash": "<hash>",
+     "currentOutHash": "<hash>",
+     "outOfBand": false
+    }
+   }
+  },
+  "S10": {
+   "stage": "S10",
+   "name": "封面与文案",
+   "status": "done",
+   "staleReason": [],
+   "outs": 1,
+   "verdict": "keep",
+   "verdictLabel": "可继续(缓存命中)",
+   "compared": {
+    "inputs": {
+     "count": 2,
+     "changed": [],
+     "added": [],
+     "removed": []
+    },
+    "tool": {
+     "count": 1,
+     "changed": [],
+     "added": [],
+     "removed": []
+    },
+    "external": {
+     "count": 1,
+     "changed": [],
+     "added": [],
+     "removed": []
+    },
+    "params": {
+     "declared": [],
+     "current": {},
+     "changed": []
+    },
+    "outputs": {
+     "count": 1,
+     "recordedOutHash": "<hash>",
+     "currentOutHash": "<hash>",
+     "outOfBand": false
+    }
+   }
+  },
+  "S11": {
+   "stage": "S11",
+   "name": "交付",
+   "status": "done",
+   "staleReason": [],
+   "outs": 1,
+   "verdict": "keep",
+   "verdictLabel": "可继续(缓存命中)",
+   "compared": {
+    "inputs": {
+     "count": 1,
+     "changed": [],
+     "added": [],
+     "removed": []
+    },
+    "tool": {
+     "count": 0,
+     "changed": [],
+     "added": [],
+     "removed": []
+    },
+    "external": {
+     "count": 1,
+     "changed": [],
+     "added": [],
+     "removed": []
+    },
+    "params": {
+     "declared": [],
+     "current": {},
+     "changed": []
+    },
+    "outputs": {
+     "count": 1,
+     "recordedOutHash": "<hash>",
+     "currentOutHash": "<hash>",
+     "outOfBand": false
+    }
+   }
+  }
+ },
+ "rebuild": {
+  "cascadeFrom": null,
+  "rerun": [],
+  "stop": [],
+  "degrade": [],
+  "keepCount": 12,
+  "action": "缓存全命中,无需重跑"
+ }
+}

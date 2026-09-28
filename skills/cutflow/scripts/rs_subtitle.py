@@ -39,6 +39,11 @@ def load_platforms() -> dict:
         return {}
 
 
+def resolve_max_chars(explicit: int | None, preset: dict, ratio: str) -> int:
+    """生效的每卡字数:显式参数 > 平台预设 > 策略表(T4.4,segmentation.max_chars_for 共读)。"""
+    return explicit or preset.get("maxChars") or segmentation.max_chars_for(ratio)
+
+
 def resolve_platform(name: str | None) -> dict:
     """平台名 → 预设;未知名直接报错(不静默退回默认,否则会出一版错规格的片子)。"""
     if not name:
@@ -76,20 +81,16 @@ QUOTE_COLOR = "&H0000E5FF"                     # 暖黄(BGR);与白字解说体�
 # 唯一真相源 = artboard 的 fonts/;本仓只存索引与对拍表 templates/fonts.json
 # (由 tools/synth_assets.py --fonts-only 生成,**禁手改**)。STYLES 的 font 字段
 # 恒为 None 哨兵,写入 ASS 时经 resolve_font() 查表——不再硬编码任何系统字体名。
-FONTS_JSON = Path(__file__).resolve().parents[1] / "templates" / "fonts.json"
+# M14:FONTS_JSON 读口统一 rs_common.FONTS_JSON(三处合一),本模块不再自持路径。
 FONT_FALLBACK = "Noto Sans SC"    # 内置兜底(开源可嵌;fonts.json 缺失/坏表时 + WARN)
 _font_state: dict = {"family": None, "degraded": False, "reason": ""}
 
 
 def load_fonts() -> dict | None:
-    """读字体索引表;缺失/损坏 → None(调用方降级 + 留痕,不臆测)。"""
-    if not FONTS_JSON.is_file():
-        return None
-    try:
-        doc = json.loads(FONTS_JSON.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError, UnicodeDecodeError):
-        return None
-    return doc if isinstance(doc, dict) and isinstance(doc.get("fonts"), list) else None
+    """读字体索引表;缺失/损坏 → None(调用方降级 + 留痕,不臆测)。
+
+    M14:读表委托 rs_common.load_fonts_doc()(三处合一的共享读口)。"""
+    return rs_common.load_fonts_doc()
 
 
 def resolve_font() -> str:
@@ -98,18 +99,20 @@ def resolve_font() -> str:
     链条:fonts.json 的 default.subtitle(artboard 字体目录名)→ 该目录代表款
     的字体内部家族名(family 字段,生成时由 FreeType 实读)。查表任何一步落空
     → FONT_FALLBACK + WARN(fontDegraded 留痕;回滚档:删 fonts.json 即回到此)。
+    M14:查表逻辑委托 rs_common.resolve_font_family(),本侧只保留缓存/WARN/
+    代表款在盘校验等字幕链自己的口径。
     """
     if _font_state["family"] is not None:
         return _font_state["family"]
     fonts = load_fonts()
     family = None
     if fonts:
-        dkey = (fonts.get("default") or {}).get("subtitle")
-        hit = next((f for f in fonts["fonts"] if f.get("dir") == dkey), None) if dkey else None
-        if hit and hit.get("family"):
-            family = str(hit["family"])
-            if not hit.get("file") or not (Path(str(fonts.get("artboardLockedPath", "")))
-                                           / "fonts" / dkey / str(hit["file"])).is_file():
+        family = rs_common.resolve_font_family()
+        if family:
+            dkey = (fonts.get("default") or {}).get("subtitle")
+            hit = next((f for f in fonts["fonts"] if f.get("dir") == dkey), None) if dkey else None
+            base = rs_common.artboard_dir() or Path(str(fonts.get("artboardLockedPath", "")))
+            if not hit.get("file") or not (base / "fonts" / dkey / str(hit["file"])).is_file():
                 # 代表款本地缺席(artboard 按需下载机制):仍写家族名(装上即生效),但留痕
                 _font_state["reason"] = f"artboard 代表款未下载:{dkey}/{hit.get('file')}(fetch_font 可补)"
                 print(f"[rs_subtitle] WARN fontDegraded-pending {_font_state['reason']}",
@@ -133,19 +136,19 @@ STYLES = {
     "talkshow-bold": {
         "font": None, "size": {"9x16": 78, "3x4": 72, "16x9": 64},
         "primary": "&H00FFFFFF", "outline": "&H00101010", "back": "&H80000000",
-        "outline_w": 3, "shadow": 1, "margin_v": {"9x16": 500, "3x4": 400, "16x9": 120},
+        "outline_w": 3, "shadow": 1, "margin_v": {"9x16": 500, "3x4": 400, "16x9": 180},
         "align": 2, "bold": 1,
     },
     "tutorial-clean": {
         "font": None, "size": {"9x16": 62, "3x4": 58, "16x9": 56},
         "primary": "&H00FFFFFF", "outline": "&H00000000", "back": "&H60000000",
-        "outline_w": 2, "shadow": 0, "margin_v": {"9x16": 520, "3x4": 430, "16x9": 90},
+        "outline_w": 2, "shadow": 0, "margin_v": {"9x16": 520, "3x4": 430, "16x9": 180},
         "align": 2, "bold": 0, "border_style": 3,
     },
     "subtitle-white": {
         "font": None, "size": {"9x16": 68, "3x4": 64, "16x9": 58},
         "primary": "&H00FFFFFF", "outline": "&H00000000", "back": "&H00000000",
-        "outline_w": 2, "shadow": 1, "margin_v": {"9x16": 320, "3x4": 280, "16x9": 110},
+        "outline_w": 2, "shadow": 1, "margin_v": {"9x16": 320, "3x4": 280, "16x9": 180},
         "align": 2, "bold": 1,
     },
 }
@@ -270,18 +273,23 @@ def _to_cards(events: list[dict]) -> list[dict]:
 
 
 def _dp_events(wl: dict, max_chars: int, *, terms=(), top: int = 3,
-               mode: str = "dp", dual_style: bool = False) -> tuple[list[dict], list[dict], list[str], int]:
+               mode: str = "dp", dual_style: bool = False,
+               engine: str | None = None,
+               degrade_notes: list | None = None) -> tuple[list[dict], list[dict], list[str], int, list[dict]]:
     """逐句 DP 切分 → 原始事件(未必并/未延长/未间距),附候选与降级留痕。
 
     events_from_wordline 与 override 的 partial 模式共用(B7:部分替换需要
     DP 分组做基底)。
     dual_style=True 时:对白句的切分预算按 max_chars−QUOTE_RESERVE_CHARS 收紧
     (引号在出卡时补上,显示字形不超每卡上限);事件携带 voice 标记。
+    第四册 T4.6:候选里输出 termsHit(术语命中)与 cuts(每句选中切点,
+    segscore / review queue 的输入)。
     """
     events: list[dict] = []
     candidates: list[dict] = []
     seg_degrade: list[str] = []      # 单句 DP 失败 → 退回长度算法,但必须留痕
     word_fb_count = 0                # 词内全禁无可行解、走了词内强惩罚的句数(留痕)
+    seg_infos: list[dict] = []       # T4.7 segscore 输入:每句 {text, cuts, gaps}
     for text, idxmap, gaps, voice in _sentence_slices(wl):
         if all(ch in _PUNCT_ONLY or not ch.strip() for ch in text):
             continue          # 纯标点句跳过:DP 对它产卡缺 startMs(会以 0.0s 污染排序)
@@ -293,19 +301,26 @@ def _dp_events(wl: dict, max_chars: int, *, terms=(), top: int = 3,
             cards = [{"i": i, "text": c, "start": None, "end": None}
                      for i, c in enumerate(textopt.card_split(text, eff_max, mode="length"))]
             plan = {"cards": cards, "violations": [], "ambiguous": False}
+            cuts: list[int] = []
         else:
             try:
                 plan = segmentation.segment(text, eff_max, gaps=gaps, index_map=idxmap,
-                                            char_times=wl.get("chars"), terms=terms, top=top)
+                                            char_times=wl.get("chars"), terms=terms, top=top,
+                                            engine=engine, degrade=degrade_notes)
             except Exception as exc:  # noqa: BLE001 — 单句分段失败不该炸掉整条字幕
                 seg_degrade.append(f"句「{text[:12]}」DP 分段失败,退回长度算法"
                                    f"({type(exc).__name__}: {exc})")
                 plan = {"cards": [{"i": i, "text": c, "startMs": None, "endMs": None}
                                   for i, c in enumerate(textopt.card_split_length(text, eff_max))],
                         "violations": [], "ambiguous": False, "plans": []}
+            cuts = list(plan.get("cuts") or [])
         word_fb_count += 1 if plan.get("wordFallback") else 0
+        seg_infos.append({"text": text, "cuts": cuts, "gaps": dict(gaps),
+                          "semanticHits": plan.get("semanticHits") or []})
         candidates.append({"sentence": text, "ambiguous": plan.get("ambiguous", False),
                            "voice": voice,
+                           "termsHit": [t for t in terms if t and t in text],
+                           "cuts": cuts,
                            "plans": [{"score": p["score"], "cards": [c["text"] for c in p["cards"]]}
                                      for p in plan.get("plans", [])]})
         for c in plan["cards"]:
@@ -325,24 +340,31 @@ def _dp_events(wl: dict, max_chars: int, *, terms=(), top: int = 3,
             if dual_style:
                 ev["voice"] = voice
             events.append(ev)
-    return events, candidates, seg_degrade, word_fb_count
+    return events, candidates, seg_degrade, word_fb_count, seg_infos
 
 
 def events_from_wordline(wl: dict, max_chars: int, *, terms=(), top: int = 3,
                          mode: str = "dp", karaoke: bool = False,
                          cps_max: float | None = None,
-                         dual_style: bool = False) -> tuple[list[dict], dict]:
+                         dual_style: bool = False,
+                         engine: str | None = None) -> tuple[list[dict], dict]:
     """Wordline → 字幕事件。卡时间 = 首字/末字时间戳聚合(align.md §4)。
 
     `wl.charTimingEstimated`(无字级时间戳)时,卡内位置是**估算**的:仍按 max_chars
     出卡以保证可读性,但在 `degradeReasons` 里显式标注"卡内位置为估算",并由
     `meta["charTimingEstimated"]` 告知上游 —— 真正的字级时间由 `rs_dub align`(#10)补齐。
 
+    第四册 T4.1/T4.2/T4.3:有真实字级时间时,后处理**只调时间不碰文本**(time-only);
+    字级信息缺失/降级才保留旧可读性后处理(legacy-readability),且必须留痕。
+    meta 增:postProcess / unsatisfied / segscore(T4.7)/ reviewQueue(T4.12)。
+
     dual_style=True(方案 §5.5.3):对白句(voice=dialogue)切分预算预留引号位,
     事件携带 voice;并卡/吞卡不跨声轨(解说卡与对白卡不合并)。
     """
-    events, candidates, seg_degrade, word_fb_count = _dp_events(
-        wl, max_chars, terms=terms, top=top, mode=mode, dual_style=dual_style)
+    degrade_notes: list[str] = []
+    events, candidates, seg_degrade, word_fb_count, seg_infos = _dp_events(
+        wl, max_chars, terms=terms, top=top, mode=mode, dual_style=dual_style,
+        engine=engine, degrade_notes=degrade_notes)
 
     events.sort(key=lambda e: e["start"])
     kar_attached = 0
@@ -352,21 +374,23 @@ def events_from_wordline(wl: dict, max_chars: int, *, terms=(), top: int = 3,
         # 清洗文本会漏掉这笔预算 → ASS 里冒出 13-14 字卡。挂字后把文本刷新为
         # chars 拼接,合并预算与 rs_verify 从此同口径(显示字形,含标点)。
         kar_attached = _apply_karaoke_chars(events, wl)
-    events, merged_short = _merge_short(events, max_chars)
-    extended = _extend_short(events)
-    _enforce_gaps(events)
-    # P28-2 保险:remap 边界上坍缩出的 <100ms 幽灵卡必须并卡或丢弃(不静默出卡)
-    events, ghost_merged, ghost_dropped = _drop_ghost_cards(events, max_chars)
-    if ghost_merged:
-        _enforce_gaps(events)
+    # 字级时间是否可信(决定后处理档位):估算/降级 → 旧可读性后处理 + 留痕
+    char_known = not bool(wl.get("charTimingEstimated")) and not bool(wl.get("degraded"))
+    post = _postprocess_events(events, max_chars, known_time=char_known)
     # 约束校验必须在**可读性调整之后**做,否则报的是已经不存在的问题
     final_cards = _to_cards(events)
     violations = segmentation.check_constraints(
         final_cards, max_chars, cps_max or segmentation.cps_max_for(max_chars))
-    reasons = list(wl.get("degradeReasons", [])) + seg_degrade
-    if ghost_dropped:
-        reasons.append(f"P28-2 幽灵卡保险:丢弃 {len(ghost_dropped)} 张 <{GHOST_MIN_MS}ms 卡"
-                       f"(并卡 {ghost_merged} 张):{'、'.join(ghost_dropped[:3])}")
+    violations += _unsatisfied_to_violations(post["unsatisfied"])
+    reasons = list(wl.get("degradeReasons", [])) + seg_degrade + list(degrade_notes)
+    if post["ghostDropped"]:
+        reasons.append(f"P28-2 幽灵卡保险:丢弃 {len(post['ghostDropped'])} 张 "
+                       f"<{GHOST_MIN_MS}ms 卡(并卡 {post['ghostMerged']} 张):"
+                       f"{'、'.join(post['ghostDropped'][:3])}")
+    if not char_known:
+        # T4.1c 留痕:字级信息缺失/降级,DP 约束缺席,旧后处理在场
+        reasons.append("字级信息缺失/降级:DP 时长/幽灵卡约束缺席,保留旧可读性后处理"
+                       "(必并/幽灵卡保险);补齐字级时间后自动切换 time-only")
     estimated = bool(wl.get("charTimingEstimated"))
     if estimated and not any("估算" in r for r in reasons):
         reasons.append("卡内位置为估算(无字级时间戳),建议 rs_dub align 补字级")
@@ -383,15 +407,26 @@ def events_from_wordline(wl: dict, max_chars: int, *, terms=(), top: int = 3,
         else:
             reasons.append("双 Style 降级:wordline 无原声对白标记,按单 Style 出卡"
                            "(sub.pair 降级档:单 Style + 引号标注)")
+    # T4.7 断句质量分(机械可算、同输入同分)
+    score = segmentation.segscore(
+        seg_infos,
+        [max(0.0, e["end"] - e["start"]) for e in events],
+        len(violations))
     meta = {"degraded": bool(wl.get("degraded")) or any(e.get("degraded") for e in events),
             "degradeReasons": reasons,
             "charTimingEstimated": estimated,
             "violations": violations, "candidates": candidates,
-            "mergedShort": merged_short, "extendedShort": extended,
-            "ghostCards": {"merged": ghost_merged, "dropped": ghost_dropped},
+            "mergedShort": post["mergedShort"], "extendedShort": post["extendedShort"],
+            "ghostCards": {"merged": post["ghostMerged"], "dropped": post["ghostDropped"]},
+            "unsatisfied": post["unsatisfied"], "postProcess": post["mode"],
+            "segscore": score,
             "karaokeAttached": kar_attached,
             "wordFallbackSentences": word_fb_count,
-            "ambiguous": sum(1 for c in candidates if c["ambiguous"])}
+            "ambiguous": sum(1 for c in candidates if c["ambiguous"]),
+            "reviewQueue": _build_review_queue(candidates=candidates,
+                                               unsatisfied=post["unsatisfied"],
+                                               violations=violations,
+                                               seg_infos=seg_infos)}
     if dual_meta:
         meta["dualStyle"] = dual_meta
     return events, meta
@@ -471,16 +506,19 @@ def _resolve_override_requests(ov: dict, chars: list[dict], s: str, idx: list[in
 
 # 自然停顿字符(P30-3 拆分建议优先级:空格/顿号/逗号/分号 = 用户文案本就有的停顿)
 _PRECHECK_PAUSE = " \u3000,，、;；:："
+PRECHECK_GAP_MS = 200        # T4.13:字级停顿(gap ≥200ms)是比标点更可靠的切分点
 
 
 def _precheck_split_requests(requests: list[dict], chars: list[dict], idx: list[int],
-                             max_chars: int) -> tuple[list[dict], list[dict]]:
-    """P30-3 用户断句方案预检:超长 request 在「文案本就有的停顿处」拆分并留痕。
+                             max_chars: int, *, allow_gap: bool = True,
+                             review: list[dict] | None = None
+                             ) -> tuple[list[dict], list[dict]]:
+    """P30-3/T4.13 用户断句方案预检:超长 request 按「字级停顿 → 自然停顿」拆分并留痕。
 
-    用户断句方案也要过 maxChars/CPS——旧流程要到 rs_verify 才硬失败(20260920 坑 #3:
-    「依据财税〔2003〕 158号文件的规定」19 字 > 12,在空格处拆 10+9)。这里把处理前置到
-    回灌时:**只在自然停顿处(空格/顿号/逗号等)下刀**;文案里找不到停顿就不强拆
-    (强拆必破坏词边界,比超长更糟),留痕后仍由 rs_verify 硬闸把关。
+    拆分点优先级(T4.13):① **字级停顿**(相邻字 gap ≥200ms——字级时间总是存在,
+    比标点更可靠);② 文案本就有的停顿符(空格/顿号/逗号等,旧 P30-3 行为);
+    ③ 拆不动 → **不再等 rs_verify 才红**:就地记 review 队列(带最长可容字卡数)
+    并把违规写进预检 notes,由调用方进 violations / review_queue。
     返回 (新 requests, notes)。
     """
     notes: list[dict] = []
@@ -492,8 +530,8 @@ def _precheck_split_requests(requests: list[dict], chars: list[dict], idx: list[
             out.append(r)
             continue
         raw_first, raw_last = idx[ca], idx[cb - 1]
-        # 停顿位置:① 内容字本身是停顿符(顿号/逗号);② 相邻内容字之间的 raw 间隙
-        # 里有空格等停顿符(用户的空格不进内容串,但正是"文案本就有的停顿")
+        # 拆分点集合:① 字级停顿 gap ≥200ms;② 停顿符(内容字本身/相邻 raw 间隙里)
+        gaps: set[int] = set()
         pauses: set[int] = set()
         for p in range(ca + 1, cb):
             prev_ch = str(chars[idx[p - 1]]["ch"])
@@ -502,26 +540,42 @@ def _precheck_split_requests(requests: list[dict], chars: list[dict], idx: list[
                             for k in range(idx[p - 1] + 1, idx[p]))
             if prev_ch in _PRECHECK_PAUSE or next_ch in _PRECHECK_PAUSE or gap_pause:
                 pauses.add(p)
+            if allow_gap:
+                gap_ms = int(chars[idx[p]]["startMs"]) - int(chars[idx[p - 1]]["endMs"])
+                if gap_ms >= PRECHECK_GAP_MS:
+                    gaps.add(p)
         text = "".join(chars[idx[p]]["ch"] for p in range(ca, cb))
         pieces: list[tuple[int, int]] = []
-        start, splittable = ca, True
+        start, strategy = ca, "gap"
         while cb - start > max_chars:
             limit = start + max_chars
-            cut = max((p for p in pauses if start + segmentation.MIN_CHARS <= p <= limit),
+            cut = max((p for p in gaps if start + segmentation.MIN_CHARS <= p <= limit),
                       default=None)
             if cut is None:
-                splittable = False
+                strategy = "pause"
+                cut = max((p for p in pauses if start + segmentation.MIN_CHARS <= p <= limit),
+                          default=None)
+            if cut is None:
+                strategy = "review"
                 break
             pieces.append((start, cut))
             start = cut
-        if not splittable:
-            # 无自然停顿可拆:保持原卡,交 rs_verify 硬闸(拆分建议已无法不破坏词边界)
+        if strategy == "review":
+            # T4.13:拆不动 → 进复核队列 + 给出最长可容字卡数,编译期就红,
+            # 不再「留痕后等 rs_verify 硬失败」(R3 的打回式收尾)。
             out.append(r)
-            notes.append({"text": text, "chars": n, "maxChars": max_chars,
-                          "splitInto": [], "strategy": "none",
-                          "note": "P30-3 预检:超长卡在文案中未找到自然停顿(空格/顿号/逗号),"
-                                  "不强行拆分(强拆破坏词边界);rs_verify 将按 maxChars 硬失败,"
-                                  "请在停顿处人工拆分"})
+            note = {"text": text, "chars": n, "maxChars": max_chars,
+                    "splitInto": [], "strategy": "review",
+                    "maxFeasibleChars": max_chars,
+                    "note": "T4.13 预检:超长卡在字级停顿(≥200ms)与自然停顿符处均无刀点,"
+                            "不强行拆分(强拆破坏词边界);已进复核队列——请人工在语义边界"
+                            f"手动拆分或放宽平台预设(最长可容 {max_chars} 字/卡)"}
+            notes.append(note)
+            if review is not None:
+                review.append({"type": "overrideUnsplittable", "text": text,
+                               "chars": n, "maxChars": max_chars,
+                               "maxFeasibleChars": max_chars,
+                               "action": note["note"]})
             continue
         pieces.append((start, cb))
         for k, (a, b) in enumerate(pieces):
@@ -531,9 +585,11 @@ def _precheck_split_requests(requests: list[dict], chars: list[dict], idx: list[
             out.append(piece)
         notes.append({"text": text, "chars": n, "maxChars": max_chars,
                       "splitInto": [b - a for a, b in pieces],
-                      "strategy": "pause",
-                      "note": "P30-3 编译期预检:超长卡已在自然停顿处拆分"
-                              "(与用户原案不完全一致,留痕待复核)"})
+                      "strategy": strategy,
+                      "note": ("P30-3/T4.13 编译期预检:超长卡已在字级停顿处拆分(gap ≥200ms,"
+                               "比标点更可靠)" if strategy == "gap" else
+                               "P30-3 编译期预检:超长卡已在自然停顿处拆分"
+                               "(与用户原案不完全一致,留痕待复核)")})
     return out, notes
 
 
@@ -575,11 +631,12 @@ def events_from_override(wl: dict, override: dict, max_chars: int, *,
       **partial** —— 只覆盖一部分:以 DP 分组为基底,被 override 区间压住的 DP 卡
       被替换,其余沿用 DP 结果。微调一张卡不再需要重给全部 span(B7)。
 
-    副文档 07 三道配套:
-      P30-3 预检 —— 超长 request 在自然停顿处拆分并留痕(硬失败前置到编译期);
+    副文档 07 三道配套 + 第四册收口:
+      P30-3 预检 —— 超长 request 在字级停顿/自然停顿处拆分并留痕(T4.13:gap 优先,
+              拆不动进复核队列 + 最长可容字卡数,不再等 rs_verify 才红);
       P30-2 余字 —— 被压住的 DP 卡中未被覆盖的余字**自动生成重组 request**,
-      不再要求 Agent 手动补(治「挪走科目、剩下按净额填列只有直接消失」式丢字);
-      P28-2 保险 —— 内容字有效时长 <100ms 的幽灵卡必须并卡或丢弃。
+              不再要求 Agent 手动补(治「挪走科目、剩下按净额填列只有直接消失」式丢字);
+      P28-2/T4.2 —— 已知字级时间时后处理只调时间;幽灵卡不再并/丢,改报 unsatisfied。
     """
     import bisect
     chars = wl.get("chars") or []
@@ -589,7 +646,10 @@ def events_from_override(wl: dict, override: dict, max_chars: int, *,
     requests = _resolve_override_requests(override, chars, s, idx)
     if not requests:
         raise ValueError("override 没有有效卡片")
-    requests, precheck_notes = _precheck_split_requests(requests, chars, idx, max_chars)
+    review_extra: list[dict] = []
+    allow_gap = not bool(wl.get("charTimingEstimated"))
+    requests, precheck_notes = _precheck_split_requests(
+        requests, chars, idx, max_chars, allow_gap=allow_gap, review=review_extra)
 
     covered = 0
     for ca, cb in (r["content"] for r in requests):
@@ -598,7 +658,7 @@ def events_from_override(wl: dict, override: dict, max_chars: int, *,
 
     residual_events: list[tuple[int, dict]] = []
     if not full_mode:
-        base, _cand, _deg, _wfb = _dp_events(wl, max_chars)
+        base, _cand, _deg, _wfb, _si = _dp_events(wl, max_chars)
         if any("charSpan" not in e for e in base):
             raise ValueError("partial override 需要 DP 事件携带 charSpan(降级 wordline 不支持,"
                              "请改用全量 span 覆盖)")
@@ -646,15 +706,12 @@ def events_from_override(wl: dict, override: dict, max_chars: int, *,
 
     events.sort(key=lambda e: e["start"])
     kar_attached = _apply_karaoke_chars(events, wl) if karaoke else 0
-    events, merged = _merge_short(events, max_chars)
-    extended = _extend_short(events)
-    _enforce_gaps(events)
-    events, ghost_merged, ghost_dropped = _drop_ghost_cards(events, max_chars)
-    if ghost_merged:
-        _enforce_gaps(events)
+    char_known = not bool(wl.get("charTimingEstimated")) and not bool(wl.get("degraded"))
+    post = _postprocess_events(events, max_chars, known_time=char_known)
     final_cards = _to_cards(events)
     violations = segmentation.check_constraints(
         final_cards, max_chars, cps_max or segmentation.cps_max_for(max_chars))
+    violations += _unsatisfied_to_violations(post["unsatisfied"])
     audit = [{"span": list(e["charSpan"]), "text": e["text"],
               "startMs": int(round(e["start"] * 1000)), "endMs": int(round(e["end"] * 1000)),
               "chars": len(e["text"].replace(" ", ""))}
@@ -662,26 +719,34 @@ def events_from_override(wl: dict, override: dict, max_chars: int, *,
     reasons = list(wl.get("degradeReasons") or [])
     if residual_events:
         reasons.append(f"P30-2 余字重组:{len(residual_events)} 段被压住 DP 卡的余字已自动成卡")
-    if ghost_dropped:
-        reasons.append(f"P28-2 幽灵卡保险:丢弃 {len(ghost_dropped)} 张 <{GHOST_MIN_MS}ms 卡"
-                       f"(并卡 {ghost_merged} 张):{'、'.join(ghost_dropped[:3])}")
+    if post["ghostDropped"]:
+        reasons.append(f"P28-2 幽灵卡保险:丢弃 {len(post['ghostDropped'])} 张 "
+                       f"<{GHOST_MIN_MS}ms 卡(并卡 {post['ghostMerged']} 张):"
+                       f"{'、'.join(post['ghostDropped'][:3])}")
+    if not char_known:
+        reasons.append("字级信息缺失/降级:DP 时长/幽灵卡约束缺席,保留旧可读性后处理"
+                       "(必并/幽灵卡保险);补齐字级时间后自动切换 time-only")
     meta = {"degraded": bool(wl.get("degraded")),
             "degradeReasons": reasons,
             "charTimingEstimated": bool(wl.get("charTimingEstimated")),
             "violations": violations, "candidates": [],
-            "mergedShort": merged, "extendedShort": extended,
+            "mergedShort": post["mergedShort"], "extendedShort": post["extendedShort"],
+            "unsatisfied": post["unsatisfied"], "postProcess": post["mode"],
             "karaokeAttached": kar_attached, "wordFallbackSentences": 0,
             "ambiguous": 0,
             "overrideApplied": True, "overrideCards": len(requests),
             "overrideMode": override_mode, "audit": audit,
             "overridePrecheck": precheck_notes,
             "residualRegrouped": len(residual_events),
-            "ghostCards": {"merged": ghost_merged, "dropped": ghost_dropped}}
+            "ghostCards": {"merged": post["ghostMerged"], "dropped": post["ghostDropped"]},
+            "reviewQueue": _build_review_queue(candidates=[], unsatisfied=post["unsatisfied"],
+                                               violations=violations, seg_infos=[],
+                                               precheck_notes=precheck_notes + review_extra)}
     return events, meta
 
 
 MIN_DUR_S = 0.83
-GHOST_MIN_MS = 100          # P28-2:内容字有效时长低于此值的卡 = 幽灵卡,必须并卡或丢弃
+GHOST_MIN_MS = segmentation.GHOST_MIN_MS   # P28-2 幽灵卡线(T4.4 策略表共读)
 
 
 def _ghost_span_ms(e: dict) -> float:
@@ -689,6 +754,100 @@ def _ghost_span_ms(e: dict) -> float:
     if "anchorStart" in e and "anchorEnd" in e:
         return max(0.0, (e["anchorEnd"] - e["anchorStart"]) * 1000.0)
     return max(0.0, (e["end"] - e["start"]) * 1000.0)
+
+
+def _postprocess_events(events: list[dict], max_chars: int, *, known_time: bool,
+                        ) -> dict:
+    """T4.2/T4.3 事件层后处理收口——「DP 是唯一的断句决策者」在代码里的落点。
+
+    known_time=True(有真实字级时间):只许在**释放余量内调时间**
+    (_extend_short 延后沿 / _enforce_gaps 收间距),严禁合并、吞并、丢弃文本;
+    短卡/幽灵卡 → 标记 unsatisfied + 可执行替代方案,全部进 violations。
+    known_time=False(字级信息缺失/降级):保留旧可读性后处理(必并/幽灵卡保险),
+    调用方**必须留痕**(T4.1c)。
+    """
+    out: dict = {"mode": "time-only" if known_time else "legacy-readability",
+                 "mergedShort": 0, "extendedShort": 0,
+                 "ghostMerged": 0, "ghostDropped": [], "unsatisfied": []}
+    if known_time:
+        out["extendedShort"] = _extend_short(events)
+        _enforce_gaps(events)
+        gmin = segmentation.ghost_min_ms()
+        for i, e in enumerate(events):
+            span_ms = _ghost_span_ms(e)
+            dur_ms = (e["end"] - e["start"]) * 1000.0
+            if span_ms < gmin:
+                out["unsatisfied"].append({
+                    "card": i, "text": e.get("text") or "", "issue": "ghostCard",
+                    "spanMs": int(span_ms), "ghostMinMs": gmin,
+                    "suggestion": "字级时间已坍缩(<100ms):先修 wordline"
+                                  "(rs_align remap/prune-ghost),或 rs_subtitle --override "
+                                  "把该卡与相邻卡合并"})
+            elif dur_ms < MIN_DUR_S * 1000 - 1e-6:
+                out["unsatisfied"].append({
+                    "card": i, "text": e.get("text") or "", "issue": "shortCard",
+                    "durMs": int(dur_ms),
+                    "suggestion": "过短卡(延长余量耗尽):调整平台预设(放宽最短时长),"
+                                  "或 rs_subtitle --override 重新分组(回灌即重跑 DP 预检)"})
+        return out
+    # 降级路径:旧可读性后处理(必并 → 延长 → 间距 → 幽灵卡保险),留痕由调用方写
+    events, merged = _merge_short(events, max_chars)
+    out["mergedShort"] = merged
+    out["extendedShort"] = _extend_short(events)
+    _enforce_gaps(events)
+    events, gm, gd = _drop_ghost_cards(events, max_chars)
+    out["ghostMerged"], out["ghostDropped"] = gm, gd
+    if gm:
+        _enforce_gaps(events)
+    return out
+
+
+def _unsatisfied_to_violations(unsatisfied: list[dict]) -> list[str]:
+    """unsatisfied → violations 文本(T4.3:不合规 100% 进 violations 且带替代方案)。"""
+    out = []
+    for u in unsatisfied:
+        if u["issue"] == "ghostCard":
+            out.append(f"卡{u['card']} 幽灵卡(内容字有效时长 {u['spanMs']}ms < "
+                       f"{u['ghostMinMs']}ms,未自动并/丢):{u['suggestion']}")
+        else:
+            out.append(f"卡{u['card']} 时长 {u['durMs'] / 1000.0:.2f}s < {MIN_DUR_S}s"
+                       f"(未自动合并):{u['suggestion']}")
+    return out
+
+
+def _build_review_queue(*, candidates: list[dict], unsatisfied: list[dict],
+                        violations: list[str], seg_infos: list[dict],
+                        precheck_notes: list[dict] | None = None) -> list[dict]:
+    """T4.12:Agent 复核队列——DP ambiguous / violations 非空 / I1 语义命中 /
+    override 预检未拆动,任何一项命中都进 review_queue.json,走 override 回灌通道
+    而不是让后处理硬扛。每条带 type / 建议动作。"""
+    queue: list[dict] = []
+    for c in candidates or []:
+        if c.get("ambiguous"):
+            queue.append({"type": "ambiguous", "sentence": c.get("sentence"),
+                          "plans": c.get("plans"),
+                          "action": "从候选中选定,或写 subtitles_override.json 复核"})
+    for si in seg_infos or []:
+        hits = si.get("semanticHits") or []
+        if hits:
+            queue.append({"type": "semantic(I1)", "sentence": si.get("text"),
+                          "hits": hits,
+                          "action": "人工确认语义单元是否被拆;必要时 override 重新分组"})
+    for u in unsatisfied or []:
+        queue.append({"type": u["issue"], "card": u.get("card"), "text": u.get("text"),
+                      "action": u.get("suggestion")})
+    for v in violations or []:
+        if v.startswith("卡") and "未自动" in v:
+            continue           # unsatisfied 已入队,不重复
+        queue.append({"type": "violation", "message": v,
+                      "action": "按违规类型处理(字数/重叠=改 override 分组;"
+                                "CPS/时长=平台预设放宽或 override)"})
+    for n in precheck_notes or []:
+        if n.get("strategy") == "review":
+            queue.append({"type": "overrideUnsplittable", "text": n.get("text"),
+                          "chars": n.get("chars"), "maxChars": n.get("maxChars"),
+                          "action": n.get("note")})
+    return queue
 
 
 def _drop_ghost_cards(events: list[dict], max_chars: int,
@@ -775,13 +934,14 @@ def _same_voice(a: dict, b: dict) -> bool:
 
 def _merge_short(events: list[dict], max_chars: int,
                  min_dur: float = MIN_DUR_S) -> tuple[list[dict], int]:
-    """<0.83s 必并(rules/subtitles.md §4.4):与相邻卡合并,前提是合并后不超字数上限。
+    """<0.83s 必并(rules/subtitles.md §4.4)——**仅降级路径**(T4.1c)。
 
-    读得完是节奏问题,但**说出来的时间是对的**——所以宁可合卡,不去改时间。
-    dev-jj2815 实测:必并线曾是 0.8s,与 DUR_MIN=0.83s 之间有 0.03s 死区——
-    0.81s 卡既不触发必并,又因下一卡 2 帧间隙就到、延长被 _enforce_gaps 收回
-    (「成为电商」0.81s)。改为与 MIN_DUR_S 同线;第一遍向上一卡并,预算放
-    不下的第二遍向下一卡吞(起点取短卡,说出来的时间不动)。
+    第四册 T4.2/T4.3 契约:有字级时间时 DP 以带权惩罚直接避免短卡,事件层**不再合并**
+    (任何文本合并都是反写断句);只有字级信息缺失/降级的 wordline 才保留本后处理,
+    且必须留痕(调用方负责写 degradeReasons)。
+    本函数只保留「向上一卡并」的第一遍;**第二遍「向下一卡吞并」已删除(T4.3)**——
+    吞并会在未被重新求解的情况下改写 DP/用户的文本分组,是「门禁强制断句」的根因 R1。
+    预算放不下的过短卡 → 调用方标记 unsatisfied + 给替代方案(见 _unsatisfied_entries)。
     """
     out: list[dict] = []
     merged = 0
@@ -805,30 +965,6 @@ def _merge_short(events: list[dict], max_chars: int,
                 merged += 1
                 continue
         out.append(dict(e))
-    # 第二遍:仍过短的卡(上一卡预算放不下)向下一卡吞并
-    i = 0
-    while i < len(out) - 1:
-        e = out[i]
-        if e["end"] - e["start"] >= min_dur:
-            i += 1
-            continue
-        nxt = out[i + 1]
-        text = _join(e["text"], nxt["text"])
-        if len(text.replace(" ", "")) <= max_chars and _same_voice(e, nxt):
-            nxt["text"] = text
-            nxt["start"] = e["start"]
-            if "anchorStart" in e:
-                nxt["anchorStart"] = e["anchorStart"]      # 起点取短卡(对齐精度)
-            if "charSpan" in e:
-                nxt["charSpan"] = [min(e["charSpan"][0], nxt["charSpan"][0]),
-                                   max(e["charSpan"][1], nxt["charSpan"][1])] \
-                    if "charSpan" in nxt else list(e["charSpan"])
-            if e.get("chars"):
-                nxt["chars"] = (e.get("chars") or []) + (nxt.get("chars") or [])
-            out.pop(i)
-            merged += 1          # 不 i+=1:吞并后的卡可能仍短,继续尝试
-        else:
-            i += 1
     return out, merged
 
 
@@ -891,6 +1027,90 @@ def _finalize_events(events: list[dict], fps: float = 30.0) -> None:
         if e["end"] <= e["start"]:
             e["end"] = e["start"] + frame
     _enforce_gaps(events, fps)
+
+
+# ---------------------------------------------------------------- 帧网格对齐(T2.6/H6)
+
+def frame_grid_deltas(clips: list[dict], fps: float) -> list[tuple[int, int, int]]:
+    """「名义段起点 → 帧取整段起点」分段 delta 表(H6 单一真相源口径)。
+
+    视频 = Σ 帧取整段长;名义 = Σ durationMs;每段 delta_k = 实际起点 − 名义起点。
+    返回 [(nom_start_ms, nom_end_ms, delta_ms)];与旧 rs_render 烧录期平移同一
+    映射,只是前移到了 S7 生成期(生成即对齐,盘面 ASS 不再有第二套时间)。
+    """
+    segs: list[tuple[int, int, int]] = []
+    acc_nom, acc_act = 0.0, 0.0
+    for c in clips:
+        dur = int(c.get("durationMs") or 0)
+        if dur <= 0:
+            continue
+        qf = max(1, round(dur / 1000.0 * fps))
+        nom_start = int(acc_nom)
+        segs.append((nom_start, nom_start + dur, int(round(acc_act * 1000)) - nom_start))
+        acc_nom += dur
+        acc_act += qf / fps
+    return segs
+
+
+def _delta_at(segs: list[tuple[int, int, int]], ms: int) -> int:
+    for a, b, d in segs:
+        if a <= ms < b:
+            return d
+    return segs[-1][2] if segs else 0
+
+
+def align_events_to_frame_grid(events: list[dict], clips: list[dict],
+                               fps: float) -> int:
+    """S7 生成期把事件时间对齐到**拼接帧网格**(T2.6/H6:单一真相源)。
+
+    每事件按其起点/终点所在段的 delta 平移;返回被平移的事件数(留痕)。
+    段长恰为帧整数倍(delta 全 0)时是恒等操作。旧口径(烧录期平移
+    `_build/subtitled_aligned.ass`,盘面 ASS 不动)已废。
+    """
+    if not clips or not fps or fps <= 0:
+        return 0
+    segs = frame_grid_deltas(clips, fps)
+    if not segs or all(d == 0 for _, _, d in segs):
+        return 0
+    frame = 1.0 / fps
+    moved = 0
+    for e in events:
+        s_ms = int(round(e["start"] * 1000))
+        e_ms = int(round(e["end"] * 1000))
+        d_s, d_e = _delta_at(segs, s_ms), _delta_at(segs, e_ms)
+        if d_s == 0 and d_e == 0:
+            continue
+        e["start"] = max(0.0, (s_ms + d_s) / 1000.0)
+        e["end"] = max(e["start"] + frame, (e_ms + d_e) / 1000.0)
+        moved += 1
+    events.sort(key=lambda x: x["start"])
+    return moved
+
+
+def _find_project_ir(out: Path) -> dict | None:
+    """从输出落点向上找工程根的 project.json(H6:S7 对齐需要主轨段长)。
+
+    找不到 → None(无工程上下文,名义时间即真相);存在但不合法 → WARN + None
+    (不阻塞字幕生成,如实留痕)。目录定位一律走 rs_paths(禁字面量)。"""
+    import rs_paths  # noqa: PLC0415 — 阶段路径唯一真相源
+    for base in (out, *out.parents):
+        pj = rs_paths.project_json(base)
+        if pj.is_file():
+            try:
+                return rs_common.load_ir_path(pj)
+            except rs_common.IrError as exc:
+                print(f"[rs_subtitle] WARN frameGridAlign-skip project.json 不合法:"
+                      f"{exc.message}", file=sys.stderr)
+                return None
+    return None
+
+
+def _project_video_clips(ir: dict) -> list[dict]:
+    """IR 主视频轨 clips(与 rs_render._main_video_clips 同口径;不跨层 import)。"""
+    tracks = [t for t in ir.get("tracks", []) if t.get("kind") == "video"]
+    if not tracks or not (tracks[0].get("clips") or []):
+        return []
+    return tracks[0]["clips"]
 
 
 def snap_events_to_frames(events: list[dict], fps: float = 30.0) -> int:
@@ -1202,21 +1422,24 @@ def huazi_select(events: list[dict], keywords: list[str]) -> set[int]:
     return out
 
 
-def huazi_body(event: dict, effect: str, params: dict, canvas_w: int = 1080) -> str:
+def huazi_body(event: dict, effect: str, params: dict, canvas_w: int = 1080,
+               outline_w: int | None = None) -> str:
     r"""单卡文本 → 花字 ASS body(标签只进 override,正文逐字原样)。
 
     效果与 assets/huazi/ass/ 八套模板一一对应;动画幅度取模板 params
-    (overshoot ≤1.1,ADR-0057 进阶档纪律)。
+    (overshoot ≤1.1,ADR-0057 进阶档纪律)。M2:box/brush 的内联描边一律取
+    模板解析出的 style.outline_w(HuaziBack),模板未给时才用各效果的历史默认。
     """
     text = event.get("text", "")
     step = int(params.get("stepMs", 70))
+    bord = int(outline_w or 0)
     if effect == "box":
         color = str(params.get("color", "&H00E5FF00"))
-        return f"{{\\bord10\\bordcolor{color}}}{text}"
+        return f"{{\\bord{bord or 10}\\bordcolor{color}}}{text}"
     if effect == "brush":
         # ASS 侧底衬(厚描边 + 微倾手写感);params.element 由 overlay 路径消费
         color = str(params.get("color", "&H6E44FF"))
-        return f"{{\\bord16\\bordcolor{color}\\frz-2}}{text}"
+        return f"{{\\bord{bord or 16}\\bordcolor{color}\\frz-2}}{text}"
     if effect == "pop":
         over = float(params.get("overshoot", 1.1))
         o100 = int(over * 100)
@@ -1257,7 +1480,8 @@ def apply_huazi(events: list[dict], tpl: dict, keywords: list[str]) -> set[int]:
     """就地标记命中卡(事件挂 _huazi body);返回命中下标集(CLI 留痕/测试用)。"""
     idx = huazi_select(events, keywords)
     for i in idx:
-        events[i]["_huazi"] = huazi_body(events[i], tpl["effect"], tpl["params"])
+        events[i]["_huazi"] = huazi_body(events[i], tpl["effect"], tpl["params"],
+                                         outline_w=(tpl.get("style") or {}).get("outline_w"))
     return idx
 
 
@@ -1294,6 +1518,13 @@ def main() -> int:
                     help="Agent 复核修正文件(subtitles_override.json):按 span / text / "
                          "textPrefix+textSuffix 从 wordline 重建卡片;支持部分替换(未提及卡沿用 DP),"
                          "仅支持 --from-wordline")
+    ap.add_argument("--auto", dest="auto", action="store_true",
+                    help="T4.12 自动模式:必定落盘 review_queue.json(有待复核项时非空),"
+                         "把 ambiguous/违规/语义命中/预检未拆动交给 Agent 复核→override 通道")
+    ap.add_argument("--tokenizer", dest="tokenizer", default=None,
+                    help="分词引擎(T4.8):auto/jieba/pkuseg/lac/hanlp/lexicon;"
+                         "缺省读 config.json 的 subtitleTokenizer,再缺省 auto;"
+                         "引擎缺失自动降级并留痕")
     ap.add_argument("--fps", type=float, default=30.0, help="帧率(字幕时间量化到帧)")
     ap.add_argument("--no-snap", dest="no_snap", action="store_true",
                     help="不做帧对齐,保留亚帧精度")
@@ -1316,7 +1547,15 @@ def main() -> int:
         w, h = canvas_for(ratio)
         canvas = f"{w}x{h}"
     terms = tuple(t.strip() for t in a.terms.split(",") if t.strip())
-    max_chars = a.max_chars or preset.get("maxChars") or MAX_CHARS[ratio]
+    max_chars = resolve_max_chars(a.max_chars, preset, ratio)
+    # T4.8 分词引擎:CLI > config.json subtitleTokenizer > auto(jieba→lexicon)
+    engine = a.tokenizer
+    if not engine:
+        try:
+            cfg = rs_common.load_config()
+            engine = str((cfg or {}).get("subtitleTokenizer") or "auto")
+        except Exception:  # noqa: BLE001 — config 不可读不阻塞出片
+            engine = "auto"
 
     # 双 Style 判定先于读源:voice 标记只来自校对后的 wordline,其他源直接拒绝
     dual_style = bool(a.dual_style)
@@ -1393,7 +1632,7 @@ def main() -> int:
         events, meta = events_from_wordline(wl, max_chars, terms=terms, top=a.top,
                                             mode=a.segment, karaoke=karaoke,
                                             cps_max=preset.get("cpsMax"),
-                                            dual_style=dual_style)
+                                            dual_style=dual_style, engine=engine)
         if karaoke and not meta.get("karaokeAttached"):
             karaoke = False
             kar_note = "卡拉OK 降级:字级时间未覆盖任何字幕卡"
@@ -1420,22 +1659,39 @@ def main() -> int:
         # 30–40ms 重叠(rs_sync 容差 1 帧 → 判 FAIL)。锚点释放余量内再收一次间距;
         # 余量耗尽仍重叠的留给 rs_sync 帧容差(对齐精度优先,Hard Rule 20)。
         meta["postSnapGaps"] = _enforce_gaps(events, a.fps)
+    out = Path(a.out)
+    # T2.6/H6:S7 生成期帧网格对齐(单一真相源)—— 输出落点在工程内时,按 IR 主轨
+    # 各段「帧取整起点 − 名义起点」平移事件;盘面 subtitles.ass 即烧录时间基准,
+    # 不再有 _build/subtitled_aligned.ass 第二套时间(S9 对账/交付/缓存同源)。
+    ir_doc = _find_project_ir(out)
+    if ir_doc is not None:
+        meta["frameGridAligned"] = align_events_to_frame_grid(
+            events, _project_video_clips(ir_doc), a.fps or 30.0)
     # B5(BUGREPORT-20260913)落盘防御:cards.json 与 ass 由**同一份 events** 写出,
     # 时间必须单调、正时长、无重叠;任何上游调整(必并/延长/间距/帧对齐)后在此兜底,
     # 不得把倒挂/漂移的时间写进审计件。
     _finalize_events(events, a.fps or 30.0)
 
-    out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
     write_srt(events, out / "master.srt")
     dual_applied = write_ass(events, out / "subtitles.ass", style, ratio, canvas,
                              karaoke=karaoke, dual_style=dual_style,
-                             huazi_tpl=(load_huazi_template(a.huazi) if a.huazi and huazi_idx
-                                        else None))
+                             huazi_tpl=(huazi_tpl if a.huazi and huazi_idx
+                                        else None))   # M1:复用外层已加载的模板,不再二次读盘解析
 
     if meta["candidates"]:
         (out / "segments_candidates.json").write_text(
             json.dumps(meta["candidates"], ensure_ascii=False, indent=1), encoding="utf-8")
+
+    # T4.12:Agent 复核队列——ambiguous / 违规 / I1 语义命中 / 预检未拆动 → review_queue.json;
+    # --auto 下必定落盘(空队列也是显式留痕),默认只在非空时写。
+    review_queue = meta.get("reviewQueue") or []
+    if review_queue or a.auto:
+        (out / "review_queue.json").write_text(
+            json.dumps({"auto": bool(a.auto),
+                        "postProcess": meta.get("postProcess"),
+                        "items": review_queue}, ensure_ascii=False, indent=1),
+            encoding="utf-8")
 
     # Agent 复核输入:卡 ↔ charSpan(wordline 内容字全局索引);改 span 后用 --override 回灌
     cards_json = [{"i": i, "text": e["text"], "voice": e.get("voice") or "commentary",
@@ -1471,6 +1727,11 @@ def main() -> int:
                 f"({meta['huazi']['effect']})")
     if meta["ambiguous"]:
         msg += f";{meta['ambiguous']} 句切分歧义(见 segments_candidates.json)"
+    sc = meta.get("segscore") or {}
+    if sc.get("score") is not None:
+        msg += f";断句质量分 {sc['score']:.3f}"
+    if review_queue:
+        msg += f";⚠ {len(review_queue)} 项待 Agent 复核(review_queue.json)"
     if meta["violations"]:
         msg += f";⚠ {len(meta['violations'])} 项约束违规"
     if meta["degraded"]:
@@ -1479,6 +1740,7 @@ def main() -> int:
     return emit(True, "SUBTITLE_OK", msg,
                 {"srt": str(out / "master.srt"), "ass": str(out / "subtitles.ass"),
                  "cards": str(out / "cards.json"),
+                 "reviewQueue": str(out / "review_queue.json") if review_queue else None,
                  "style": style, "ratio": ratio, "platform": a.platform,
                  "canvas": canvas, "count": len(events),
                  "dualStyle": dual_style,
@@ -1488,6 +1750,11 @@ def main() -> int:
                  "fontDegraded": font_state()["degraded"],
                  "overrideApplied": bool(meta.get("overrideApplied")),
                  "maxChars": max_chars, "ambiguous": meta["ambiguous"],
+                 "segscore": meta.get("segscore"),
+                 "unsatisfied": meta.get("unsatisfied"),
+                 "postProcess": meta.get("postProcess"),
+                 "reviewQueueCount": len(review_queue),
+                 "tokenizer": engine,
                  "violations": meta["violations"][:20], "degraded": meta["degraded"],
                  "charTimingEstimated": bool(meta.get("charTimingEstimated")),
                  "degradeReasons": meta["degradeReasons"]})

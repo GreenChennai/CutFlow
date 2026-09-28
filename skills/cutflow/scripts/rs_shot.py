@@ -12,9 +12,14 @@
   --deep   TransNetV2(深度档,硬切+溶解均准)未登记进懒加载清单(诚实纪律:不声明
            就不假装有)→ 探测不到时如实留痕并退回当前可用档
 
-产物 04_粗剪决策/shots.json:
-  {"shots": [{index, startMs, endMs, durMs}], "transitions": [{atMs, kind}],
-   "engine", "degraded", "degradeReason"?, "missingComponent"?, "source", "tiers"}
+产物 04_粗剪决策/shots.json(v2,第三册 T3.1 镜头档案):
+  {"schema": 2, "shots": [{index, startMs, endMs, durMs, motionScore, motionPeakMs,
+    brightness, contrast, colorfulness, stability, staticRatio, audioRms, speechRate}],
+   "transitions": [{atMs, kind}], "engine", "degraded", "degradeReason"?,
+   "missingComponent"?, "source", "tiers", "profile"}
+  v2 档案字段全部纯本地可复算(ffmpeg 帧差/直方图粗量,rs_vision 整数累加),
+  两次运行逐字段一致(确定性);hasFace/safeAreaOccupancy 属 L1 标签层,
+  不在 shots.json(去 vision.json 看,rs_vision.py vision)。
 """
 from __future__ import annotations
 
@@ -140,7 +145,7 @@ def ready_tier(media: Path, out_root: Path, deep: bool) -> tuple[list[int] | Non
 
 def analyze(media: Path, out_root: Path, *, deep: bool = False, force: bool = False
             ) -> tuple[dict, int]:
-    """单素材全流程 → shots.json。返回 (产物 dict, 退出码)。"""
+    """单素材全流程 → shots.json(v2:切分 + L0 逐镜档案)。返回 (产物 dict, 退出码)。"""
     out_path = shots_path(out_root)
     cfg = load_config()
     cuts, tiers = ready_tier(media, out_root, deep)
@@ -164,6 +169,19 @@ def analyze(media: Path, out_root: Path, *, deep: bool = False, force: bool = Fa
                "engine": engine, "source": media.name,
                "durationSec": round(total_s, 3), "tiers": tiers,
                "degraded": False}
+    # ---- v2 镜头档案(T3.1,L0 结构层:默认开,零模型;失败显式降级不阻塞切分)----
+    doc["schema"] = 2
+    try:
+        import rs_vision  # noqa: PLC0415 — 感知层共享库(本册新建)
+        from rs_vision import wordline_chars
+        chars = wordline_chars(out_root)
+        profiles, prof = rs_vision.profile_shots(media, doc["shots"], cfg, chars)
+        for s in doc["shots"]:
+            s.update(profiles.get(int(s["index"]), {}))
+    except (OSError, ValueError) as exc:         # 感知库自身不可用:字段缺省 + 留痕
+        prof = {"engine": "none", "degraded": True,
+                "note": f"逐镜档案失败({exc}),v2 数值字段缺席"}
+    doc["profile"] = prof
     _write(out_path, doc)
     return doc, EXIT_OK
 

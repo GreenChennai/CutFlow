@@ -13,6 +13,7 @@
 - **clip.freezeMs(v0.12,I7)**:冻结帧补长——渲染端 `-t` 只读到该时刻(输入侧),其后 tpad 克隆尾帧补足到 durationMs;用于纯动画卡片比旁白短的场景(冻结必须发生在出场动画开始前,组装器预留 950ms)。
 - **`subtitle.ass` 才是烧录字段**(缺失即**不会烧录字幕**,v0.12 渲染时会显式 WARN);
   `subtitle.source` 仅作溯源(指向 `05_时间线工程/wordline.json`)——只写 source 不写 ass = 静默无字幕成片(v0.12 前的事故形态)。
+  **生成式 IR(from-cutlist / from-cards)一律不得手改**,重建覆盖受 `_manual_edits` 护栏(原 SKILL 铁律 23 前半;手注参数走 rs_edit / 显式确认,不走暗改)。
 - **显式 Gap**:粗剪后 keep 区间之间的空隙用 `{"kind":"gap","durationMs":N}` 表达,不再靠"没有 clip"隐式表示(语义对齐 OTIO 的 Gaps / Filler)。
 - **BGM ducking(v0.12 修复后可正常开启)**:`bgm.ducking: true` 时全部人声先合成一条总线再 `asplit` 出闪避侧链——历史工程里被迫写 `ducking:false` 绕 bug 的,需要闪避谁改谁的 IR,**不批量改**。
 
@@ -33,6 +34,12 @@ python skills/cutflow/scripts/rs_ir.py build --from-cutlist 04_粗剪决策/cutl
 
 - keep 区间 → `clips[]`,时间由 `map_src_to_final()` 换算(`sourceInMs` 仍指源素材位置);
 - 切点处自动带 `transition`(默认 8ms 亚帧,`--xfade` 控制);渲染时 0<durMs<1帧 会被**提升为 120ms 交叉溶解**(ADR-0023),源间隙放不下才回退 concat。
+
+## 铁律(自 SKILL 入口下沉,第一册 T1.1)
+
+- **渲染管线已固化,勿绕过**(原 SKILL 铁律 10):统一帧率 → 逐段提取 → concat → 合成 → 混音 → **字幕最后叠** → 编码;不要手写 filtergraph 一步到位渲染全片。
+- **响度目标以 `rs_render.LOUDNESS_TARGET` 为准**(原 SKILL 铁律 11;数值与双 pass 细节是本册「渲染」节的唯一文档出处,勿在别处复述)。
+- **转场字段唯一 `durMs`**(原 SKILL 铁律 22 前半):`ms` 是幽灵字段,validate 直接报错;0<durMs<1帧 自动提升为 `joinCrossfadeMs` 交叉溶解(ADR-0023,尾帧扩展零时间漂移);仅源间隙放不下时才整链弃用走 concat。多段人声的 `sourceInMs` 由 rs_render 输入寻址消费——不要再手工预抽 voice_full(绕过法仍有效但不必需)。
 
 ## 流程
 

@@ -5,7 +5,7 @@ r"""成片内容诊断(ADR-0032):从成片出发的独立证据链,对照工程�
                  [--cutlist <cutlist.applied.json>] [--budget 900]
                  [--no-d2] [--json] [--out 06_成片输出]
 
-为什么需要它(docs/REVIEW-20260916-假正常诊断根因.md):
+为什么需要它(docs/archive/REVIEW-20260916-假正常诊断根因.md):
   现有全部机器闸都是「对照中间产物」的闸——错误发生在管线内部时,错误同时
   传染给 wordline/ass/成片,所有对照闸拿到同一份错误的镜像,互相印证全绿。
   本工具的判据**从成片现场测量**(独立 ASR/画面运动/音频能量),中间产物只作
@@ -335,6 +335,34 @@ def d2_av_sync(video: Path, cfg: dict, is_pure_animation: bool,
 
 # ---------------------------------------------------------------- D3 错剪 → 无意义片段
 
+def d3c_segment_context(ass_path: Path | None) -> dict:
+    """断句上下文审计(T4.14,复用 rs_sync.segment_audit 同一实现):逐卡检查
+    固定搭配/动宾/引文切断嫌疑;WARN 级,条目 100% 附可读理由。"""
+    t0 = time.perf_counter()
+    if ass_path is None or not ass_path.is_file():
+        return {"id": "D3c", "name": "断句上下文审计", "status": "skipped",
+                "elapsedS": 0, "findings": ["无 ASS 字幕文件,跳过"]}
+    try:
+        import rs_sync  # noqa: PLC0415 — 复用 S9 同一实现,口径不漂移
+        events = rs_sync.parse_ass(ass_path)
+        if not events:
+            return {"id": "D3c", "name": "断句上下文审计", "status": "skipped",
+                    "elapsedS": 0, "findings": ["ASS 无 Dialogue 事件,跳过"]}
+        audit = rs_sync.segment_audit(events)
+    except Exception as exc:  # noqa: BLE001 — 审计缺席必须显式,不阻塞诊断主链
+        return {"id": "D3c", "name": "断句上下文审计", "status": "indetermined",
+                "elapsedS": round(time.perf_counter() - t0, 1),
+                "findings": [f"断句审计执行失败:{exc}"]}
+    head = f"{audit['cards']} 卡已审计;{audit['suspects']} 处疑似异常换句:"
+    findings = [head] + [f"  {f}" for f in audit.get("findings", [])[:5]] \
+        if audit.get("suspects") else [f"{audit['cards']} 卡边界全部语义完整"]
+    return {"id": "D3c", "name": "断句上下文审计",
+            "status": "warn" if audit.get("suspects") else "pass",
+            "elapsedS": round(time.perf_counter() - t0, 1),
+            "findings": findings, "suspects": audit.get("suspects", 0),
+            "items": audit.get("items", [])}
+
+
 def d3a_cut_context(cutlist_path: Path | None, wl_path: Path | None) -> dict:
     """剪点上下文审计:句中腰斩/悬空连接词/碎片保留(有工程产物时)。"""
     t0 = time.perf_counter()
@@ -485,12 +513,23 @@ def d3b_semantic_coherence(video: Path, cfg: dict, budget_left: float,
                 hits.append({"type": "abrupt-cut", "startS": round(s["start"], 2),
                              "detail": f"子句仅 {dur_ms:.0f}ms 且无标点收尾:「{s['text'][:10]}」(疑似腰斩)"})
         elif med_dur > 0 and dur_ms < med_dur * 0.55 and dur_ms < 1400:
-            soft_hits += 1
-            if len(hits) < 15:
-                hits.append({"type": "short-clause", "startS": round(s["start"], 2),
-                             "detail": f"子句 {dur_ms:.0f}ms 显著短于同视频中位({med_dur:.0f}ms):"
-                                       f"「{s['text'][:10]}」(短句疑似腰斩,建议人工核对)"
-                             })
+            # 相对短句:ASR 补标点会掩盖腰斩,同源自比不受语速影响。
+            # 极端偏离(<中位 0.40 且 <1.2s)按硬截断计——正常语流的偶发短句
+            # 极少短到中位四成以下(阈值由 fix3 腰斩 fixture 与基线不误报共同锚定)。
+            if dur_ms < med_dur * 0.40 and dur_ms < 1200:
+                hard_hits += 1
+                if len(hits) < 15:
+                    hits.append({"type": "abrupt-cut", "startS": round(s["start"], 2),
+                                 "detail": f"子句 {dur_ms:.0f}ms 仅为同视频中位 "
+                                           f"{med_dur:.0f}ms 的 {dur_ms / med_dur:.0%}:"
+                                           f"「{s['text'][:10]}」(极端短句,疑似腰斩)"})
+            else:
+                soft_hits += 1
+                if len(hits) < 15:
+                    hits.append({"type": "short-clause", "startS": round(s["start"], 2),
+                                 "detail": f"子句 {dur_ms:.0f}ms 显著短于同视频中位({med_dur:.0f}ms):"
+                                           f"「{s['text'][:10]}」(短句疑似腰斩,建议人工核对)"
+                                 })
     findings = [f"子句 {len(sents)};近重复 {len([h for h in hits if h['type'] == 'near-duplicate'])} / "
                 f"硬截断 {hard_hits} / 相对短句 {soft_hits} / 连接词开头(信息) {dangling}"]
     # 定级:强特征(无标点截断/半句重放)→ fail;相对短句(ASR 补标点会掩盖腰斩)
@@ -594,6 +633,8 @@ def diagnose(video: Path, project: Path | None, ass_path: Path | None,
 
     # D3a + D3b(复用 ASR)
     checks.append(d3a_cut_context(cutlist_path, wl_path))
+    # T4.14 断句上下文审计(复用 rs_sync.segment_audit;WARN 级)
+    checks.append(d3c_segment_context(ass_path))
     d1_rows = next((c.get("rows") for c in checks if c.get("id") == "D1"), None)
     checks.append(d3b_semantic_coherence(video, cfg, left(), asr_segments_cache, d1_rows))
 

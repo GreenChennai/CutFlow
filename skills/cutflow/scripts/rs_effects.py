@@ -35,6 +35,63 @@ REMOVED_WHY = "语义不明(原文含 OCR 噪声),用户确认删除"
 T2_PENDING_WHY = "T2 候选(需着色器/素材/字幕侧逐元素表达);本轮未落地,登记待实现"
 TRANSITION_T2_PENDING_WHY = "T2 候选转场(GLSL 遮罩/3D/粒子);gl-transitions 未收录或逐条验证未过"
 
+# ---------------------------------------------------------------- T2.9 登记待实现三要素
+# ADR-0055 零静默:每条「登记待实现」必须带 ①owner=归属册号 ②trigger=触发条件
+# ③degrade=当前降级行为与留痕字段。三者由本表**机械生成**(normalize 幂等产出,
+# 禁手改);owner 按消费域映射到多册迭代计划的册域分工。
+PENDING_OWNER_BY_DOMAIN = {
+    "render": "第二册",     # 效果目录/注册表/真渲验证(T2.2 判据)的对账册
+    "element": "第三册",    # 画面元素语义与元素轨消费
+    "artboard": "第三册",
+    "subtitle": "第四册",   # 字幕/卡片侧逐元素动画表达
+    "audio": "第二册",
+}
+PENDING_DEGRADE_REGISTERED = ("已注册 T2 占位:rs_fx.build_clip_fx 跳过该特效并"
+                              " fxDegraded 留痕(不渲不报错);intent/verify 经 "
+                              "is_executable 判不可选;目录留痕=status=登记待实现")
+PENDING_DEGRADE_UNREGISTERED = ("未注册:fx.apply 报 FX_UNREGISTERED 结构化错误(不静默);"
+                                "catalog search 与 is_executable 过滤为不可选;"
+                                "目录留痕=status=登记待实现")
+
+
+def _pending_trigger(e: dict) -> str:
+    """登记待实现条目的触发条件(按条目族机械判定;措辞与 note 同源)。"""
+    fid = str(e.get("fxId") or e.get("id") or "")
+    if fid.startswith("fx.transition.") or (e.get("category") == "transition"
+                                            and e.get("tier") == "T2"):
+        return ("对应 gl-transitions 源收录进 templates/effects/glsl,并按第二册 "
+                "T2.2 判据(逐条编译 + 像素级断言)真渲通过")
+    if fid == "effect.speed.ramp":
+        return "IR 变速区间表达升版落地(零漂移口径在 schema 层重定义)"
+    if fid == "effect.split.grid":
+        return "fc 分块(xstack)扩展落地,并复核 >6 块的渲染成本"
+    if fid == "fx.spotlight":
+        return "fc 遮罩/位移扩展落地(ADR-0022 geq 禁令不变)"
+    if fid in ("in.cursor.click", "in.keystroke", "in.shadow.drop"):
+        return "元素轨 fxId 消费通道落地(rs_fx domain=element 的渲染端消费)"
+    if fid in ("in.mask.reveal", "out.mask.close"):
+        return "GLSL/形状遮罩能力落地(clip 级表达)"
+    if fid in ("in.progress.bar", "in.ring.progress"):
+        return "elements/ 素材落点就绪 + 元素轨动画表达落地"
+    if fid in ("in.stagger", "out.stagger"):
+        return "字幕/卡片侧逐元素动画表达落地(总量 ≤800ms 纪律,分册02 §6.2)"
+    if fid == "in.stroke.draw":
+        return "artboard 侧 SVG stroke-dashoffset 动画表达落地"
+    return (f"消费域 {e.get('domain')} 的对应表达通道落地"
+            f"(owner 册收口时对本条对账)")
+
+
+def enrich_pending(effects: list[dict]) -> None:
+    """就地给全部「登记待实现」条目补齐三要素(T2.9;normalize 幂等产出)。"""
+    for e in effects:
+        if e.get("status") != "登记待实现":
+            continue
+        e["owner"] = PENDING_OWNER_BY_DOMAIN.get(str(e.get("domain")), "第二册")
+        e["trigger"] = _pending_trigger(e)
+        registered = str(e.get("fxId") or "") in rs_fx.registered_ids()
+        e["degrade"] = PENDING_DEGRADE_REGISTERED if registered \
+            else PENDING_DEGRADE_UNREGISTERED
+
 # §6 标准 NLE 通用效果词典(62 条)的规范 id → 本仓落地 id 族。
 # 直登条目(id 即 fxId)不列;参数化家族列出全部落地档。
 NLE62_FAMILY: dict[str, list[str]] = {
@@ -306,6 +363,7 @@ def normalize(source_path: Path = DEFAULT_SOURCE) -> tuple[dict, dict]:
         "orphanGroupIds": sorted(orphans),
         "total": len(effects),
     }
+    enrich_pending(effects)                  # T2.9:登记待实现三要素(幂等产出)
     stats = _stats(effects)
     catalog = {"version": 1, "kind": "cutflow-effect-catalog",
                "sourceDoc": f"sources/{source_path.name}",
@@ -370,6 +428,13 @@ def check(catalog: dict | None = None) -> tuple[bool, list[str]]:
                 errs.append(f"{where} 可执行条目 id 必须等于 fxId")
         if status == "不实现" and not str(e.get("why") or "").strip():
             errs.append(f"{where} status=不实现 但 why 为空")
+        if status == "登记待实现":
+            # T2.9(ADR-0055 零静默):三要素 = 归属册号 / 触发条件 / 降级行为与留痕
+            for key, label in (("owner", "归属册号"), ("trigger", "触发条件"),
+                               ("degrade", "降级行为与留痕字段")):
+                if not str(e.get(key) or "").strip():
+                    errs.append(f"{where} status=登记待实现 缺 {key}({label})"
+                                "(T2.9 三要素;normalize 重跑补齐)")
         if tier == "T2" and status == "可执行" and not str(e.get("license") or "").strip():
             errs.append(f"{where} tier=T2 可执行 但 license 为空(许可合规)")
         for a in e.get("aliases") or []:

@@ -40,4 +40,4 @@
 
 - `rules/align.md`、`rules/subtitles.md` §5
 - 修订 ADR-0002(轻改写的时间处理)
-- `docs/OPTIMIZATION-v4.md` §3.2 / §4.2
+- `docs/archive/OPTIMIZATION-v4.md` §3.2 / §4.2

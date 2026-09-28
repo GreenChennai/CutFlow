@@ -64,18 +64,6 @@
    "weights": "https://github.com/PeterL1n/RobustVideoMatting/releases/download/v1.0.0/rvm_mobilenetv3_fp32.pt",
    "notes": "官方仓库 PeterL1n/RobustVideoMatting;无正式 pip 发行,git 直装与权重直链采用前须一手核实。质量门禁见 ADR-0050(五项指标)。安装目标 tools/.venv-torch。"
   },
-  "bytetrack": {
-   "capability": "vision.track",
-   "label": "目标跟踪",
-   "version": "pending",
-   "sizeMb": 20,
-   "sha256": "",
-   "verify": "pending",
-   "backend": "py",
-   "pip": "bytetrack",
-   "weights": "",
-   "notes": "官方仓库 ifzhang/ByteTrack;社区 pip 包名(bytetrack)与官方发行方式不对应,采用前须一手核实(可能走 yolox 生态);模型资源见仓库。装主解释器(轻依赖,仅跟踪逻辑)。"
-  },
   "opencv": {
    "capability": "vision.cv",
    "label": "OpenCV 基础视觉",
@@ -111,6 +99,30 @@
    "pip": "moderngl",
    "notes": "M13/ADR-0054(分册02 §1.2 B3):rs_fx/t2_glsl.py 用 moderngl 预渲 gl-transitions(MIT)重叠区;缺失即降级注册表声明的最接近 T1 xfade 并 fxDegraded 留痕(ADR-0049 三态);needs GPU/GL 上下文,无 GL 环境装了也不可用(诚实探针 rs_fx.t2_glsl.available)。采用前须一手核实。",
    "weights": ""
+  },
+  "opencv-track": {
+   "capability": "vision.track",
+   "label": "主体跟踪(cv2 本地检测)",
+   "version": "pending",
+   "sizeMb": 60,
+   "sha256": "",
+   "verify": "pending",
+   "backend": "py",
+   "pip": "opencv-python",
+   "weights": "",
+   "notes": "第三册 T3.4:READY 档重定义为 cv2 本地检测(Haar cascade 随 opencv 分发,零下载);与 vision.cv 的 opencv 同包,键分开只为 1:1 门禁。采用前须一手核实:Haar 数据随包分发的版本覆盖。"
+  },
+  "opencv-sense": {
+   "capability": "vision.sense",
+   "label": "画面感知 L1 标签(cv2 本地检测)",
+   "version": "pending",
+   "sizeMb": 60,
+   "sha256": "",
+   "verify": "pending",
+   "backend": "py",
+   "pip": "opencv-python",
+   "weights": "",
+   "notes": "第三册 T3.7/T3.8:vision.json L1 标签层(hasFace/安全带占用);缺失显式降级 L0-only。与 vision.cv 的 opencv 同包,键分开只为 1:1 门禁。采用前须一手核实:同 opencv-track。"
   }
  }
 }

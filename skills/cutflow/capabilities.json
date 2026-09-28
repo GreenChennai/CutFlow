@@ -1,6 +1,6 @@
 {
- "version": 1,
- "_doc": "能力目录(T2-1,单一真相源):python skills/cutflow/scripts/rs_caps.py generate 从 argparse + rs_run 阶段注册表 + SKILL.md 管线表自动生成;禁止手改,漂移即测试红。查能力先读这里(短、机器可读),细节跑 <script> --help;probe = 最小可用 argv(T3 对拍)。命令粒度 = argparse 可见的子命令(choices/subparsers);旗标式脚本(如 rs_artboard 的 gen-cards/export-fallback)不拆条,能力看 args 与 SKILL.md 命令速查。",
+ "version": 2,
+ "_doc": "能力目录(单一真相源):python skills/cutflow/scripts/rs_caps.py generate 从 argparse + rs_run 阶段注册表 + SKILL.md 管线表自动生成;禁止手改,漂移即测试红。查能力先读这里(短、机器可读),细节跑 <script> --help;probe = 最小可用 argv(T3 对拍)。检索:rs_caps.py search <关键词>(按命令名/用途/keywords/阶段过滤,空格分词 AND);keywords 字段从 argparse help 自动抽取(第一册 T1.2)。命令粒度 = argparse 可见的子命令(choices/subparsers);旗标式脚本(如 rs_artboard 的 gen-cards/export-fallback)不拆条,能力看 args 与各分册示例。",
  "tools": [
   {
    "script": "rs_align.py",
@@ -22,6 +22,7 @@
     "--calib-window=250",
     "--calib-min-shift=20",
     "--max-end-sil=0",
+    "--restore-punct",
     "--cutlist",
     "--force-remap",
     "--removed-ms",
@@ -30,6 +31,24 @@
     "--out",
     "--fps=30",
     "--dry-run"
+   ],
+   "keywords": [
+    "不写文件",
+    "专名",
+    "且缺标点时接入",
+    "优化",
+    "会把",
+    "会把转写稿当成视频源",
+    "再缺省取",
+    "制作简报",
+    "原生吃热词",
+    "只报告编辑摘要",
+    "可选件",
+    "合并",
+    "同源小模型补标点",
+    "后端",
+    "否则下游",
+    "域时仍强行二次重映射"
    ],
    "commands": [
     {
@@ -106,6 +125,24 @@
     "--transparent",
     "--probe"
    ],
+   "keywords": [
+    "从卡片计划批量生成卡片",
+    "以计划覆盖手改卡片",
+    "体检用",
+    "全部重导",
+    "六类场景卡",
+    "共用",
+    "其余情况此位置是",
+    "别名",
+    "制作简报",
+    "卡片画幅",
+    "卡片计划",
+    "只处理指定卡片",
+    "告警",
+    "子命令",
+    "导出脚本在位",
+    "引用的卡片按硬失败处理"
+   ],
    "commands": [
     {
      "name": "rs_artboard.py",
@@ -124,6 +161,12 @@
     "<media>(必需)",
     "--out(必需)",
     "--backend=auto|pkg|onnx|server"
+   ],
+   "keywords": [
+    "auto",
+    "onnx",
+    "pkg",
+    "server"
    ],
    "commands": [
     {
@@ -149,6 +192,24 @@
     "--stems",
     "--force"
    ],
+   "keywords": [
+    "产物",
+    "人声",
+    "伴奏分离后检测",
+    "同时产出下拍网格",
+    "工程根",
+    "工程模式",
+    "工程模式下忽略产物新鲜度强制重算",
+    "挂载器契约",
+    "显式指定素材",
+    "粗剪决策",
+    "缺省",
+    "缺组件对混音检测",
+    "缺组件降级",
+    "自动选素材",
+    "音频或视频素材路径",
+    "beat-only"
+   ],
    "commands": [
     {
      "name": "rs_beat.py detect",
@@ -161,15 +222,28 @@
   },
   {
    "script": "rs_bench.py",
-   "purpose": "自评抽帧:渲染产物 → 关键点网格图(首2s/尾2s/剪点±1.5s/随机3点),供 Agent 目测。",
+   "purpose": "自评抽帧:渲染产物 → 关键点网格图,供 Agent 目测。",
    "stage": [],
    "outputs": [],
    "gate": "",
    "args": [
     "<video>(必需)",
     "--ir",
+    "--shots",
+    "--wordline",
+    "--vision",
     "--out(必需)",
     "--cols=4"
+   ],
+   "keywords": [
+    "人脸出现帧选点",
+    "字幕起点前",
+    "帧选点",
+    "给出即走价值选帧",
+    "json",
+    "shots",
+    "vision",
+    "wordline"
    ],
    "commands": [
     {
@@ -206,6 +280,21 @@
     "--jobs=0",
     "--logo-src=03_创作素材/branding/logos/{id}.png"
    ],
+   "keywords": [
+    "串行回退",
+    "内容包围盒",
+    "变体渲染并发",
+    "只分析一个",
+    "文件",
+    "真实宽高",
+    "结果顺序与矩阵声明顺序一致",
+    "自动",
+    "ADR-0056",
+    "CPU",
+    "Logo",
+    "alpha",
+    "min"
+   ],
    "commands": [
     {
      "name": "rs_brand.py",
@@ -224,6 +313,21 @@
     "--query",
     "--top=8"
    ],
+   "keywords": [
+    "工程根",
+    "工程模式",
+    "按语义检索素材",
+    "文件名关键词命中",
+    "术语",
+    "缺省",
+    "缺省取标题",
+    "语义查询",
+    "返回条数上限",
+    "OCR",
+    "brief",
+    "cwd",
+    "match"
+   ],
    "commands": [
     {
      "name": "rs_broll.py match",
@@ -236,12 +340,30 @@
   },
   {
    "script": "rs_caps.py",
-   "purpose": "能力目录生成器(T2-1,副文档 05 §3 T2:Token 与上下文治理)。",
+   "purpose": "能力目录生成器(T2-1,副文档 05 §3 T2:Token 与上下文治理;第一册 T1.2 增检索)。",
    "stage": [],
    "outputs": [],
    "gate": "",
    "args": [
     "--out=skills\\cutflow\\capabilities.json"
+   ],
+   "keywords": [
+    "关键词",
+    "再生成并与盘上对比",
+    "可空格分多个",
+    "按关键词检索目录",
+    "按命令名",
+    "漂移退出",
+    "用途",
+    "目录落点",
+    "缺省",
+    "语义",
+    "重新生成目录",
+    "阶段匹配",
+    "AND",
+    "capabilities",
+    "check",
+    "cutflow"
    ],
    "commands": [
     {
@@ -257,6 +379,13 @@
      "probe": [
       "check"
      ]
+    },
+    {
+     "name": "rs_caps.py search",
+     "sub": "search",
+     "probe": [
+      "search"
+     ]
     }
    ]
   },
@@ -270,6 +399,7 @@
     "<project>(必需)",
     "--apply"
    ],
+   "keywords": [],
    "commands": [
     {
      "name": "rs_cleanup.py",
@@ -308,6 +438,24 @@
     "--from-text",
     "--from-text-file"
    ],
+   "keywords": [
+    "三项",
+    "下标",
+    "不给则退回字间",
+    "产物",
+    "优先级高于",
+    "余量",
+    "侵入即报错而非降级",
+    "保护区",
+    "做音频能量探测",
+    "内联检测也需要它",
+    "切点",
+    "则内联帧差",
+    "判定的跑题段落",
+    "区间外走",
+    "口播",
+    "口播尾余量"
+   ],
    "commands": [
     {
      "name": "rs_cut.py",
@@ -333,6 +481,19 @@
     "--out=06_成片输出",
     "--json"
    ],
+   "keywords": [
+    "工程根",
+    "无人物画面",
+    "纯动画",
+    "自动定位",
+    "诊断耗时预算秒",
+    "超时输出阶段性结论",
+    "跳过音画同步检测",
+    "默认",
+    "ass",
+    "cutlist",
+    "wordline"
+   ],
    "commands": [
     {
      "name": "rs_diagnose.py",
@@ -351,6 +512,9 @@
    "gate": "素材可解码;**未处理幕布检测(ADR-0031)**",
    "args": [
     "--report"
+   ],
+   "keywords": [
+    "打印人读环境自检报告"
    ],
    "commands": [
     {
@@ -374,6 +538,24 @@
     "--out=06_成片输出",
     "--write"
    ],
+   "keywords": [
+    "句内估算",
+    "句级",
+    "已有的",
+    "已验证",
+    "把真实字级时间戳写回",
+    "整条",
+    "由自带",
+    "目标",
+    "离线",
+    "结果",
+    "转写取真实字级时间戳",
+    "通常是",
+    "配音音频",
+    "ASR",
+    "TTS",
+    "align"
+   ],
    "commands": [
     {
      "name": "rs_dub.py align",
@@ -396,6 +578,7 @@
     "--json",
     "--scope=clip|project|subtitle|audio",
     "--budget=12KB",
+    "--with-vision",
     "--ops",
     "--dry-run",
     "--actor=agent|user",
@@ -403,6 +586,24 @@
     "--force",
     "--last",
     "--rev"
+   ],
+   "keywords": [
+    "一行",
+    "不写盘",
+    "仍无图片路径",
+    "全景",
+    "前置修订号",
+    "包装内亦可",
+    "对比",
+    "对比的两个",
+    "工程目录",
+    "应用",
+    "打印人话差异表",
+    "接管过期锁",
+    "撤销",
+    "文件",
+    "时间线视图",
+    "校验"
    ],
    "commands": [
     {
@@ -451,6 +652,17 @@
    "args": [
     "--json"
    ],
+   "keywords": [
+    "工程目录",
+    "输出",
+    "默认",
+    "JSON",
+    "check",
+    "diff",
+    "probe",
+    "timeline",
+    "view"
+   ],
    "commands": [
     {
      "name": "rs_editor.py view",
@@ -496,6 +708,14 @@
    "outputs": [],
    "gate": "",
    "args": [],
+   "keywords": [
+    "check",
+    "coverage",
+    "list",
+    "normalize",
+    "search",
+    "show"
+   ],
    "commands": [
     {
      "name": "rs_effects.py list",
@@ -555,6 +775,24 @@
     "--auto",
     "--allow-fetch"
    ],
+   "keywords": [
+    "三态清单",
+    "不自动",
+    "只比对不更新",
+    "回写项",
+    "无人值守",
+    "显式更新有差异模块",
+    "清单比对",
+    "现场下载",
+    "离线",
+    "组件模块名或能力",
+    "绝不触发网络",
+    "缺组件按降级档处置",
+    "缺组件默认降级不阻塞",
+    "输出",
+    "连用才允许自动下载",
+    "JSON"
+   ],
    "commands": [
     {
      "name": "rs_fetchable.py state",
@@ -588,7 +826,7 @@
   },
   {
    "script": "rs_frames.py",
-   "purpose": "视频抽帧:均匀采样 + 网格拼图,供 Agent 目测(内容理解/构图锚点/自评)。",
+   "purpose": "视频抽帧:均匀采样网格(旧档)+ 价值选帧(T3.9),供 Agent 目测。",
    "stage": [],
    "outputs": [],
    "gate": "",
@@ -597,7 +835,24 @@
     "--out(必需)",
     "--every=10.0",
     "--tile=3x3",
-    "--scale=270:480"
+    "--scale=270:480",
+    "--shots",
+    "--wordline",
+    "--vision",
+    "--cap=0"
+   ],
+   "keywords": [
+    "人脸出现帧选点",
+    "字幕起点前",
+    "帧选点",
+    "给出即走价值选帧",
+    "选帧硬上限",
+    "镜头数",
+    "json",
+    "min",
+    "shots",
+    "vision",
+    "wordline"
    ],
    "commands": [
     {
@@ -620,6 +875,14 @@
    "args": [
     "--check",
     "--json"
+   ],
+   "keywords": [
+    "只跑指定检查项",
+    "当前",
+    "注册表为准",
+    "范围以",
+    "里程碑",
+    "gate"
    ],
    "commands": [
     {
@@ -644,6 +907,12 @@
     "--reason",
     "--samples=6",
     "--json"
+   ],
+   "keywords": [
+    "媒体文件",
+    "工程根",
+    "allow",
+    "check"
    ],
    "commands": [
     {
@@ -681,6 +950,24 @@
     "--reason",
     "--publish",
     "--allow-auto-matting"
+   ],
+   "keywords": [
+    "保持",
+    "先备份旧",
+    "半成品",
+    "发布最终产物到",
+    "工程根目录",
+    "必填",
+    "成品",
+    "成品分离",
+    "才放行自动抠像",
+    "拷贝非移动",
+    "检测到幕布时先跑",
+    "用户对误判的说明",
+    "用户预处理",
+    "质量门禁",
+    "阻断",
+    "默认不启用"
    ],
    "commands": [
     {
@@ -740,6 +1027,24 @@
     "--template",
     "--auto-fill"
    ],
+   "keywords": [
+    "不写任何文件",
+    "产物",
+    "产物落",
+    "仅作",
+    "先以",
+    "再走既有校验链",
+    "制作简报",
+    "卡片",
+    "原始提示词文件",
+    "原文锚定",
+    "只打印推断表",
+    "场景提示词模板库",
+    "子参数",
+    "字幕",
+    "工程根目录",
+    "查注册表"
+   ],
    "commands": [
     {
      "name": "rs_intent.py compile",
@@ -793,6 +1098,24 @@
     "--replace",
     "--out"
    ],
+   "keywords": [
+    "主轨",
+    "产出的",
+    "产物路径",
+    "修复后",
+    "共用一份",
+    "关闭闪避",
+    "写进",
+    "卡清单",
+    "卡片",
+    "卡片时间窗表",
+    "卡片顺序",
+    "可正常使用",
+    "同名轨已存在时替换其",
+    "同名轨已存在须",
+    "后自动",
+    "密度"
+   ],
    "commands": [
     {
      "name": "rs_ir.py validate",
@@ -837,6 +1160,24 @@
     "--dry-run",
     "--open"
    ],
+   "keywords": [
+    "不写任何文件",
+    "不查剪映进程",
+    "人读",
+    "只编译草稿计划并打印",
+    "失败仍非零退出",
+    "字幕源",
+    "映射表",
+    "片段",
+    "生成后启动剪映",
+    "草稿片段",
+    "覆盖",
+    "门禁照跑",
+    "json",
+    "manifest",
+    "transcript",
+    "tts"
+   ],
    "commands": [
     {
      "name": "rs_jy_draft.py",
@@ -859,6 +1200,21 @@
     "--bg",
     "--gpu=auto|on|off",
     "--max-frames=48"
+   ],
+   "keywords": [
+    "写进",
+    "合成用",
+    "工程根",
+    "素材视频路径",
+    "背景图",
+    "auto",
+    "check",
+    "extract",
+    "gate",
+    "matte",
+    "off",
+    "rembg",
+    "rvm"
    ],
    "commands": [
     {
@@ -904,6 +1260,7 @@
     "--markers",
     "--out(必需)"
    ],
+   "keywords": [],
    "commands": [
     {
      "name": "rs_meta.py",
@@ -927,6 +1284,20 @@
     "--state=open|orphan|rejected|resolved",
     "--author=user|agent",
     "--json"
+   ],
+   "keywords": [
+    "工程目录",
+    "按作者过滤",
+    "按状态过滤",
+    "agent",
+    "list",
+    "open",
+    "orphan",
+    "probe",
+    "rejected",
+    "resolved",
+    "stats",
+    "user"
    ],
    "commands": [
     {
@@ -963,6 +1334,20 @@
     "--actor=user|agent|script",
     "--limit=20",
     "--json"
+   ],
+   "keywords": [
+    "只看",
+    "工程目录",
+    "过滤",
+    "actor",
+    "agent",
+    "kind",
+    "probe",
+    "report",
+    "rev",
+    "script",
+    "tail",
+    "user"
    ],
    "commands": [
     {
@@ -1001,6 +1386,14 @@
     "--pick=1",
     "--out"
    ],
+   "keywords": [
+    "fetch",
+    "music",
+    "photo",
+    "search",
+    "sound_effect",
+    "video"
+   ],
    "commands": [
     {
      "name": "rs_pixabay.py search",
@@ -1031,6 +1424,20 @@
    "args": [
     "--ratio=9x16|3x4|16x9",
     "--force"
+   ],
+   "keywords": [
+    "再缺省",
+    "出重构方案",
+    "工程根",
+    "工程模式",
+    "忽略产物新鲜度强制重算",
+    "目标画幅",
+    "缺省",
+    "缺省取",
+    "cwd",
+    "outputs",
+    "plan",
+    "x16"
    ],
    "commands": [
     {
@@ -1066,6 +1473,24 @@
     "--clear-cache",
     "--no-cache"
    ],
+   "keywords": [
+    "不执行渲染",
+    "串行回退",
+    "产物与串行字节级一致",
+    "全部重渲",
+    "变体渲染用",
+    "只报告",
+    "完整埋点在结果的",
+    "并发度",
+    "并发度不进缓存键",
+    "忽略已有缓存",
+    "成片输出",
+    "日志规范",
+    "显式输出文件路径",
+    "步骤缓存命中情况",
+    "段渲染并发",
+    "每比例各一个"
+   ],
    "commands": [
     {
      "name": "rs_render.py",
@@ -1100,6 +1525,24 @@
     "--verify-full",
     "--auto"
    ],
+   "keywords": [
+    "上游仍走缓存",
+    "人工阶段自动执行",
+    "单独使用报错",
+    "只打印将执行的命令",
+    "各阶段账的",
+    "含待目测清单",
+    "在阶段文件夹生成",
+    "墙钟时间始终进",
+    "并发度",
+    "强制跑",
+    "强制重跑",
+    "必须搭配",
+    "指定备份时间戳",
+    "指定的起点阶段",
+    "按策略跑",
+    "无人值守"
+   ],
    "commands": [
     {
      "name": "rs_run.py",
@@ -1123,6 +1566,24 @@
     "--waiting",
     "--force"
    ],
+   "keywords": [
+    "不追光标",
+    "产物",
+    "供加速",
+    "光标轨迹追踪",
+    "删除",
+    "工程根",
+    "工程模式",
+    "工程模式下忽略产物新鲜度强制重算",
+    "录屏视频路径",
+    "快捷键提示卡检测",
+    "挂载器契约",
+    "按键",
+    "提醒",
+    "敏感信息区检测",
+    "无视觉变化且无语音区间",
+    "显式指定素材"
+   ],
    "commands": [
     {
      "name": "rs_screen.py analyze",
@@ -1135,25 +1596,44 @@
   },
   {
    "script": "rs_sense.py",
-   "purpose": "图片感知:OCR(文字)+ VQA(语义)合并输出。用法:python rs_sense.py <图片> --out <目录>\"\"\"",
+   "purpose": "图片/镜头感知(第三册 T3.6/T3.8):OCR+VQA 单图备选件 + 三级感知预算逐镜描述。",
    "stage": [],
    "outputs": [],
    "gate": "",
    "args": [
-    "<image>(必需)",
-    "--out(必需)",
+    "--shots",
+    "--vision",
+    "--media",
+    "--tier=L0|L1|L2",
+    "--budget-sec=120.0",
+    "--max-shots=0",
+    "--out",
     "--prompt=用中文详细描述这张图片的内容:主体、文字、风格、配色。",
     "--force"
+   ],
+   "keywords": [
+    "不限",
+    "不静默降级",
+    "只受预算",
+    "感知预算档",
+    "描述",
+    "时间预算秒",
+    "最多描述的镜头数",
+    "本地标签",
+    "检查强制执行",
+    "结构零模型",
+    "缺省从",
+    "超限停并留痕",
+    "路径",
+    "跳过",
+    "逐镜描述模式",
+    "逐镜描述模式的素材视频"
    ],
    "commands": [
     {
      "name": "rs_sense.py",
      "sub": null,
-     "probe": [
-      "P",
-      "--out",
-      "P"
-     ]
+     "probe": []
     }
    ]
   },
@@ -1176,6 +1656,14 @@
     "--keywords",
     "--out=05_时间线工程/sfx_draft.json"
    ],
+   "keywords": [
+    "命中词上屏",
+    "强调关键词",
+    "接线",
+    "缺陷",
+    "逗号分隔",
+    "ding"
+   ],
    "commands": [
     {
      "name": "rs_sfx.py",
@@ -1197,6 +1685,24 @@
     "--deep",
     "--force"
    ],
+   "keywords": [
+    "产物",
+    "工程根",
+    "工程模式",
+    "工程模式下忽略产物新鲜度强制重算",
+    "挂载器契约",
+    "显式指定素材",
+    "未登记进懒加载清单时如实留痕并退回可用档",
+    "粗剪决策",
+    "缺省",
+    "自动选素材",
+    "视频素材路径",
+    "请求深度档",
+    "TransNetV2",
+    "detect",
+    "json",
+    "shots"
+   ],
    "commands": [
     {
      "name": "rs_shot.py detect",
@@ -1217,6 +1723,23 @@
     "--label",
     "--video-type",
     "--artboard-slug"
+   ],
+   "keywords": [
+    "中文名",
+    "借用的",
+    "全量对拍",
+    "打印包摘要",
+    "的风格包",
+    "缺省用",
+    "脚手架新包",
+    "风格",
+    "artboard",
+    "check",
+    "new",
+    "registry",
+    "show",
+    "slug",
+    "videoTypes"
    ],
    "commands": [
     {
@@ -1272,8 +1795,28 @@
     "--huazi",
     "--huazi-keywords",
     "--override",
+    "--auto",
+    "--tokenizer",
     "--fps=30.0",
     "--no-snap"
+   ],
+   "keywords": [
+    "不做帧对齐",
+    "专有名词表",
+    "且句级",
+    "个切分候选",
+    "仅支持",
+    "保留亚帧精度",
+    "全部卡上花字",
+    "关闭轻改写",
+    "再缺省",
+    "再退回",
+    "分词引擎",
+    "卡拉",
+    "原声对白体",
+    "原声对白双",
+    "后端字级时间戳的",
+    "复核"
    ],
    "commands": [
     {
@@ -1296,7 +1839,7 @@
     "06_成片输出/sync_report.md",
     "06_成片输出/sync_rows.json"
    ],
-   "gate": "偏移中位数 ≤40ms;**成片音频内容闸**;**QC 体检**(黑帧/冻结/VFR/响度,v0.11)",
+   "gate": "对齐断言/成片音频内容闸/QC 体检(判据见 rules/verify.md)",
    "args": [
     "--video",
     "--wordline(必需)",
@@ -1309,7 +1852,26 @@
     "--audio-content",
     "--audio-sim-min=0.9",
     "--no-audio-cache",
-    "--qc"
+    "--qc",
+    "--segment-audit"
+   ],
+   "keywords": [
+    "不可得时回退",
+    "也算未通过",
+    "冻结",
+    "判据流",
+    "动宾",
+    "动画卡时间窗是否重叠",
+    "卡片时间重叠判定容差",
+    "只告警",
+    "响度机械闸",
+    "字幕被动画卡压住",
+    "对成片音轨跑自带",
+    "对账",
+    "引文切断嫌疑",
+    "强制重跑",
+    "忽略",
+    "成片体检"
    ],
    "commands": [
     {
@@ -1336,6 +1898,15 @@
     "--voice",
     "--speed=1.0"
    ],
+   "keywords": [
+    "前缀",
+    "句切分",
+    "情感",
+    "按行",
+    "支持",
+    "文案",
+    "txt"
+   ],
    "commands": [
     {
      "name": "rs_tts.py",
@@ -1354,7 +1925,7 @@
    "purpose": "分级自检(ADR-0016 / rules/verify.md)。",
    "stage": [],
    "outputs": [],
-   "gate": "偏移中位数 ≤40ms;**成片音频内容闸**;**QC 体检**(黑帧/冻结/VFR/响度,v0.11)",
+   "gate": "对齐断言/成片音频内容闸/QC 体检(判据见 rules/verify.md)",
    "args": [
     "--level=L0|L1",
     "--content",
@@ -1363,10 +1934,29 @@
     "--mark-first",
     "--result=pass|fail",
     "--content-budget=900.0",
+    "--score",
     "--copyright-max-single",
     "--copyright-max-total",
     "--copyright-min-commentary",
     "--json"
+   ],
+   "keywords": [
+    "与诊断台账",
+    "五维",
+    "分制",
+    "初值可配",
+    "单部引用占比上限",
+    "原创解说轨时长占比下限",
+    "字幕",
+    "总分",
+    "总引用时长占比上限",
+    "成片及格线评分卡",
+    "机械可判部分自动算分",
+    "版权门禁",
+    "结果记入",
+    "缺失同等强度",
+    "解说型",
+    "诊断预算秒"
    ],
    "commands": [
     {
@@ -1377,6 +1967,74 @@
    ]
   },
   {
+   "script": "rs_vision.py",
+   "purpose": "画面感知层(第三册 T3.3/T3.4/T3.7/T3.8/T3.11):逐镜像素统计 + 聚合 + 骨架 + 降级报告。",
+   "stage": [],
+   "outputs": [],
+   "gate": "",
+   "args": [
+    "--force"
+   ],
+   "keywords": [
+    "主轨骨架摘要",
+    "工程根",
+    "忽略产物新鲜度强制重算",
+    "缺省",
+    "聚合逐镜画面档案",
+    "能力三态报告",
+    "cwd",
+    "report",
+    "skeleton",
+    "vision"
+   ],
+   "commands": [
+    {
+     "name": "rs_vision.py vision",
+     "sub": "vision",
+     "probe": [
+      "vision"
+     ]
+    },
+    {
+     "name": "rs_vision.py skeleton",
+     "sub": "skeleton",
+     "probe": [
+      "skeleton"
+     ]
+    },
+    {
+     "name": "rs_vision.py report",
+     "sub": "report",
+     "probe": [
+      "report"
+     ]
+    }
+   ]
+  },
+  {
+   "script": "rs_codes.py",
+   "purpose": "结果 code 唯一注册表(T2.13):ExitCode 协议 + DOMAINS 域分组清单;新 code 先登记再用,未登记 emit 即红",
+   "library": true,
+   "stage": [],
+   "outputs": [],
+   "gate": "",
+   "args": [],
+   "commands": [],
+   "keywords": [
+    "先登记再用",
+    "协议",
+    "即红",
+    "唯一注册表",
+    "域分组清单",
+    "未登记",
+    "结果",
+    "DOMAINS",
+    "ExitCode",
+    "code",
+    "emit"
+   ]
+  },
+  {
    "script": "rs_paths.py",
    "purpose": "阶段路径唯一真相源(ADR-0046):STAGE_DIRS/p/resolve/check/ensure;全仓禁止目录字面量,取路径只有查表一族入口",
    "library": true,
@@ -1384,7 +2042,17 @@
    "outputs": [],
    "gate": "",
    "args": [],
-   "commands": []
+   "commands": [],
+   "keywords": [
+    "全仓禁止目录字面量",
+    "取路径只有查表一族入口",
+    "阶段路径唯一真相源",
+    "ADR-0046",
+    "STAGE_DIRS",
+    "check",
+    "ensure",
+    "resolve"
+   ]
   }
  ]
 }

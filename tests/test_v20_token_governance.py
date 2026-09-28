@@ -306,7 +306,8 @@ def test_t1_hard_rule_and_antipattern_written():
     skill = (REPO / "skills/cutflow/SKILL.md").read_text(encoding="utf-8")
     assert "禁止为一次性任务现写剪辑逻辑脚本" in skill
     assert "给定输入必得同一输出" in skill and "capabilities.json" in skill
-    assert "为一次性任务现写剪辑逻辑脚本" in skill.split("## 9. 反模式")[1], "反模式清单须同口径"
+    # 第一册 T1.1:反模式段从 §9 重编号为 §6,锚点改为标题文字而非编号(编号不再被锁死)
+    assert "为一次性任务现写剪辑逻辑脚本" in skill.split("反模式", 1)[1]
 
 
 # ================================================================ T2-1 能力目录 + T3-1a 对拍
@@ -364,7 +365,8 @@ def test_t3_catalog_covers_every_argparse_script():
 def test_t2_capabilities_is_short_and_machine_readable():
     """目录要短:每工具一行用途 + 参数摘要;总条目量有上界,防目录长成要读的文件。"""
     doc = json.loads(CAPABILITIES.read_text(encoding="utf-8"))
-    assert doc["version"] == 1 and isinstance(doc["tools"], list) and doc["tools"]
+    # 第一册 T1.2:keywords 检索字段入册,目录升 version 2(增量字段,向后兼容)
+    assert doc["version"] == 2 and isinstance(doc["tools"], list) and doc["tools"]
     for t in doc["tools"]:
         assert set(t) >= {"script", "purpose", "stage", "outputs", "gate", "args", "commands"}
         assert len(t["purpose"]) <= 120
@@ -373,10 +375,10 @@ def test_t2_capabilities_is_short_and_machine_readable():
     raw = CAPABILITIES.read_text(encoding="utf-8")
     # M8 五能力脚本(rs_beat/rs_shot/rs_reframe/rs_broll/rs_screen)入册后 1235 行;
     # 上界随工具数同比例放宽(1300 ≈ 每 rs_* 脚本 ≤35 行),预算纪律不变:细节归 --help。
-    # v2 M14:rs_render/rs_brand 的 --jobs 与 rs_render/rs_run 的 --verbose 入册 +7 行
-    # (渲染并发与日志规范是新承诺能力,目录如实登记)→ 1300 → 1320
+    # v2 M14:rs_render/rs_brand 的 --jobs 与 rs_render/rs_run 的 --verbose 入册 +7 行 → 1300 → 1320
     # v2 M13:rs_effects.py(效果目录 CLI)入册 +36 行 → 1320 → 1400
-    assert len(raw.splitlines()) < 1400, "能力目录过长(细节应留给 --help)"
+    # 第一册 T1.2:每工具 keywords 检索字段(≤16 个,从 argparse help 抽取)≈+11 行/工具 → 1400 → 2100
+    assert len(raw.splitlines()) < 2100, "能力目录过长(细节应留给 --help)"
 
 
 # ================================================================ 端到端:复现「昨天任务」不写新脚本

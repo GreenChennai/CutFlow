@@ -54,6 +54,9 @@ EXIT_OK, EXIT_INPUT, EXIT_DEP, EXIT_EXEC = 0, 2, 3, 4
 def emit(ok: bool, code: str, message: str, data=None, exit_code: int = EXIT_OK) -> int:
     # Windows 控制台默认 GBK:中文 JSON 经 stdout 会变乱码,调用方按 utf-8 读全废。
     # 强制 utf-8(REVIEW-20260916 根因 4)。
+    # T2.13:本脚本自带 emit,code 同样必须已在 rs_codes 注册(未登记即红)。
+    from rs_codes import require_registered
+    require_registered(code)
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
     print(json.dumps({"ok": ok, "code": code, "message": message, "data": data},

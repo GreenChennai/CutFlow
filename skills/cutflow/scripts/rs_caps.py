@@ -1,8 +1,9 @@
-"""能力目录生成器(T2-1,副文档 05 §3 T2:Token 与上下文治理)。
+"""能力目录生成器(T2-1,副文档 05 §3 T2:Token 与上下文治理;第一册 T1.2 增检索)。
 
 用法:
   rs_caps.py generate [--out <path>]    重新生成 capabilities.json(缺省 skills/cutflow/capabilities.json)
   rs_caps.py check    [--out <path>]    再生成并与盘上逐字节对比,漂移即退出 2(门禁/CI 用)
+  rs_caps.py search   <关键词> [更多词…]  按命令名/用途/关键词/阶段检索目录(空格分词 = AND)
 
 能力目录 = 「Agent 先查目录、不读源码」的单一真相源:每个工具一行用途 + 参数摘要,
 细节留给各脚本 --help。内容只从三个机械源生成,**禁止手改目录**(防漂移测试会红,
@@ -40,6 +41,9 @@ EXCLUDED = {"rs_common.py"}
 LIBRARIES = {
     "rs_paths.py": "阶段路径唯一真相源(ADR-0046):STAGE_DIRS/p/resolve/check/ensure;"
                    "全仓禁止目录字面量,取路径只有查表一族入口",
+    # T2.13:退出码与结果 code 唯一注册表;rs_common.emit/die 强制校验 code 已登记
+    "rs_codes.py": "结果 code 唯一注册表(T2.13):ExitCode 协议 + DOMAINS 域分组清单;"
+                   "新 code 先登记再用,未登记 emit 即红",
 }
 
 # 解析器装配重放只认这几种方法调用(手册脚本的实际写法超不出这个集合;
@@ -213,6 +217,40 @@ def _doc_summary(script: Path) -> str:
     return line[0].strip() if line else ""
 
 
+# 检索关键词上限(防目录膨胀;超出部分细节归 --help / search 全文匹配)
+KEYWORDS_CAP = 16
+
+
+def _keywords_from_text(joined: str) -> list[str]:
+    """文本 → 检索关键词:CJK 连续段在前(用户检索主要打中文),组内排序保证确定性。"""
+    cjk = sorted(set(re.findall(r"[\u4e00-\u9fff]{2,}", joined)))
+    ascii_words = sorted(set(re.findall(r"[A-Za-z][A-Za-z0-9_-]{2,}", joined)))
+    out: list[str] = []
+    for tok in cjk + ascii_words:
+        if tok not in out:
+            out.append(tok)
+    return out[:KEYWORDS_CAP]
+
+
+def _keywords_from_help(parser: argparse.ArgumentParser) -> list[str]:
+    """从 argparse 的 help 文本抽检索关键词(第一册 T1.2)。
+
+    口径:CJK 连续段(取词组形态,如「字幕样式」「热词」)+ ASCII 标识符(如 douyin、
+    BAD_PLATFORM)+ choices 字面值(子命令/枚举名)。截断到 KEYWORDS_CAP,防目录长成
+    要读的文件;无 help 的位置参数不算(信息在 commands 里)。
+    """
+    texts: list[str] = []
+    for act in parser._actions:  # noqa: SLF001 — argparse 内省无公开 API
+        if act.dest in ("help", "version"):
+            continue
+        if act.help:
+            texts.append(act.help)
+        for c in (act.choices or []):
+            if isinstance(c, str):
+                texts.append(c)
+    return _keywords_from_text(" ".join(texts))
+
+
 def _stage_and_outputs() -> tuple[dict[str, list[str]], dict[str, list[str]]]:
     """rs_run.spec() 阶段注册表 → (script → [stage], script → [声明产物])。"""
     import rs_run  # noqa: PLC0415 — 同目录,延迟导入避免无谓开销
@@ -265,6 +303,7 @@ def build_catalog() -> dict:
             "outputs": outputs.get(script.name, []),
             "gate": gates.get(script.name, ""),
             "args": _args_summary(parser, sub_dest),
+            "keywords": _keywords_from_help(parser),   # 第一册 T1.2:检索字段,从 argparse help 抽取
         }
         if subs:
             tool["commands"] = [
@@ -279,14 +318,17 @@ def build_catalog() -> dict:
     # 库工具(LIBRARIES 静态表):无 CLI,只登记用途,排序稳定
     for name, purpose in sorted(LIBRARIES.items()):
         tools.append({"script": name, "purpose": purpose, "library": True,
-                      "stage": [], "outputs": [], "gate": "", "args": [], "commands": []})
+                      "stage": [], "outputs": [], "gate": "", "args": [], "commands": [],
+                      "keywords": _keywords_from_text(purpose)})
     return {
-        "version": 1,
-        "_doc": "能力目录(T2-1,单一真相源):python skills/cutflow/scripts/rs_caps.py generate "
+        "version": 2,
+        "_doc": "能力目录(单一真相源):python skills/cutflow/scripts/rs_caps.py generate "
                 "从 argparse + rs_run 阶段注册表 + SKILL.md 管线表自动生成;禁止手改,漂移即测试红。"
                 "查能力先读这里(短、机器可读),细节跑 <script> --help;probe = 最小可用 argv(T3 对拍)。"
+                "检索:rs_caps.py search <关键词>(按命令名/用途/keywords/阶段过滤,空格分词 AND);"
+                "keywords 字段从 argparse help 自动抽取(第一册 T1.2)。"
                 "命令粒度 = argparse 可见的子命令(choices/subparsers);旗标式脚本(如 rs_artboard 的 "
-                "gen-cards/export-fallback)不拆条,能力看 args 与 SKILL.md 命令速查。",
+                "gen-cards/export-fallback)不拆条,能力看 args 与各分册示例。",
         "tools": tools,
     }
 
@@ -297,10 +339,32 @@ def dumps_catalog(doc: dict) -> str:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("command", choices=["generate", "check"],
-                    help="generate=重新生成目录;check=再生成并与盘上对比(漂移退出 2)")
+    ap.add_argument("command", choices=["generate", "check", "search"],
+                    help="generate=重新生成目录;check=再生成并与盘上对比(漂移退出 2);"
+                         "search=按关键词检索目录")
+    ap.add_argument("keyword", nargs="?", default=None,
+                    help="search 用:关键词(可空格分多个,AND 语义;按命令名/用途/keywords/阶段匹配)")
     ap.add_argument("--out", default=str(CAPABILITIES), help="目录落点(缺省 skills/cutflow/capabilities.json)")
     a = ap.parse_args()
+
+    if a.command == "search":
+        if not a.keyword:
+            return emit(False, "CAPS_SEARCH_USAGE",
+                        "用法:rs_caps.py search <关键词> [更多词…](空格分词 = AND)", exit_code=2)
+        doc = build_catalog()
+        words = a.keyword.split()
+        hits: list[dict] = []
+        for t in doc["tools"]:
+            hay = json.dumps(t, ensure_ascii=False).lower()
+            if all(w.lower() in hay for w in words):
+                hits.append({"script": t["script"], "purpose": t["purpose"],
+                             "stage": t["stage"],
+                             "commands": [c["name"] for c in t["commands"]],
+                             "keywords": t.get("keywords", [])})
+        names = ", ".join(h["script"] for h in hits[:10]) or "(无)"
+        return emit(True, "CAPS_SEARCH",
+                    f"检索「{a.keyword}」:{len(hits)}/{len(doc['tools'])} 个工具命中 → {names}",
+                    {"query": a.keyword, "matches": len(hits), "tools": hits})
 
     doc = build_catalog()
     out = Path(a.out)

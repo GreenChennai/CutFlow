@@ -2,6 +2,8 @@
 
 ## 用法
 
+> **铁律(原 SKILL 铁律 9 下沉)**:TTS 长文**先全量合成落盘**再进时间线;逐句时长以 ffprobe **实测值**为准(禁止估算累加)——manifest 的句级 start/end 是唯一可入时间线的时间。
+
 `rs_tts.py --script 00_制作简报/文案.txt --out 03_创作素材/tts [--voice koubo-test] [--speed 1.0]`
 
 - 文案格式:普通多行文本;行首 `【开心】` 指定该句情感。

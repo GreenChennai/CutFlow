@@ -41,6 +41,7 @@ from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
+import rs_common  # noqa: E402  — M14:字体查表等共享实现
 from rs_common import RATIOS, REPO_ROOT, emit, write_text_atomic  # noqa: E402
 import rs_paths  # noqa: E402  — 阶段路径唯一真相源(ADR-0046),本文件禁止目录字面量
 
@@ -381,6 +382,21 @@ def _item_prefix(artboard_root: Path, root: Path) -> str:
         return artboard_root.relative_to(root).as_posix()
     except ValueError:
         return ""
+
+
+def _item_base(root: Path, artboard_root: Path) -> Path:
+    """清单相对路径(project/output)的**解析基准**(与 _item_prefix 写入口径互逆)。
+
+    C 组 T2.16c 实测:独立素材仓 + cwd≠工程根 时,出口曾一律按 `--root`(cwd)
+    解析 → 主引擎 EXPORT_OK 假成功(产物落进 cwd、manifest sourceHash 回写
+    丢失)、export-fallback 假 EXPORT_SKIP(拿 cwd 下的野产物判「在盘」)。
+    与写入口径互逆:artboard 目录在工程根下 → 按工程根;独立仓 → 按清单目录。
+    """
+    try:
+        artboard_root.relative_to(root)
+        return root
+    except ValueError:
+        return artboard_root
 
 
 def upsert_manifest(doc: dict, entries: list[dict], *, ratio: str = "9x16",
@@ -968,17 +984,8 @@ def run_safe_check(src_dir: Path, ratio: str, artboard_dir: Path,
 
 def _css_font() -> str:
     """卡片 CSS 字体栈第三顺位(分册01 §5):fonts.json 查表家族名,缺失回退
-    思源黑体系;不再写死任何系统私有字体。"""
-    fj = Path(__file__).resolve().parents[1] / "templates" / "fonts.json"
-    try:
-        doc = json.loads(fj.read_text(encoding="utf-8"))
-        dkey = (doc.get("default") or {}).get("subtitle")
-        for f in doc.get("fonts") or []:
-            if f.get("dir") == dkey and f.get("family"):
-                return str(f["family"])
-    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
-        pass
-    return "Source Han Sans SC"
+    思源黑体系;不再写死任何系统私有字体。M14:查表委托 rs_common.resolve_font_family()。"""
+    return rs_common.resolve_font_family() or "Source Han Sans SC"
 
 
 def default_fonts() -> str:
@@ -986,13 +993,8 @@ def default_fonts() -> str:
 
     fonts.json 缺失 → artboard scaffold 自身默认(source-han-sans)兜底,不传空值
     ——空 --fonts 意味着「用系统字体」,跨机器必然不一致(缺陷 D 的根因)。
-    """
-    fj = Path(__file__).resolve().parents[1] / "templates" / "fonts.json"
-    try:
-        d = json.loads(fj.read_text(encoding="utf-8"))
-        return str((d.get("default") or {}).get("subtitle") or "source-han-sans")
-    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
-        return "source-han-sans"
+    M14:委托 rs_common.default_font_dir()(三处合一的共享读口)。"""
+    return rs_common.default_font_dir()
 
 
 def scaffold_project(card_id: str, artboard_root: Path, ratio: str,
@@ -1080,7 +1082,8 @@ def shift_track(clips: list[dict], index: int, delta_ms: int) -> int:
 
 
 def apply_to_ir(doc: dict, ir: dict, root: Path, *, strict: bool = False,
-                only: set[str] | None = None) -> tuple[dict, list[str], list[dict], list[dict]]:
+                only: set[str] | None = None,
+                item_base: Path | None = None) -> tuple[dict, list[str], list[dict], list[dict]]:
     """把清单里的产物路径与尺寸回填 IR。返回 (新 IR, 硬问题, 变更, 跳过)。
 
     v0.8.1:
@@ -1096,7 +1099,8 @@ def apply_to_ir(doc: dict, ir: dict, root: Path, *, strict: bool = False,
     canvas = ir.get("canvas") or {}
     cw, ch = canvas.get("width"), canvas.get("height")
 
-    by_out = {_norm_path(it["output"], root): it for it in items}
+    base = item_base or root
+    by_out = {_norm_path(it["output"], base): it for it in items}
     referenced: set[str] = set()
     for ti, track in enumerate(ir.get("tracks", [])):
         if track.get("kind") != "video":
@@ -1109,7 +1113,7 @@ def apply_to_ir(doc: dict, ir: dict, root: Path, *, strict: bool = False,
             item = by_out.get(src_norm)
             if item is None:
                 continue
-            full = root / item["output"]
+            full = (item_base or root) / item["output"]
             if not full.is_file():
                 issues.append(f"{item['id']}:产物不存在,先跑 --export({full})")
                 continue
@@ -1260,10 +1264,14 @@ def main() -> int:
         return emit(False, "NO_MANIFEST", "需要 <manifest.json>,或用 --scan <artboard 目录> / "
                                          "gen-cards --from <cards.json> 生成", exit_code=2)
     mpath = Path(mpath_arg)
+    if not mpath.is_absolute():
+        mpath = root / mpath          # 相对清单路径按 --root(工程根)解析(cwd 无关)
     if not mpath.is_file():
         return emit(False, "NO_MANIFEST", f"清单不存在:{mpath}(先跑 --scan 或 gen-cards)", exit_code=2)
     doc = load_manifest(mpath)
     only = {x.strip() for x in a.only.split(",") if x.strip()}
+    # 清单相对路径(project/output)的解析基准(C 组实测修:独立素材仓不得按 cwd 解析)
+    item_base = _item_base(root, mpath.parent)
 
     if sub == "export-fallback":
         if not artboard_dir.is_dir():
@@ -1271,17 +1279,17 @@ def main() -> int:
                         f"artboard 技能目录不存在:{artboard_dir};请在 config.artboard_dir 配置", exit_code=3)
         # P6-2 同一口径:源码变了 **或产物不在盘** 都要导,存在且未变才 skip。
         todo = [it for it in doc["items"] if (not only or it["id"] in only)
-                and (a.force or hash_source(_src_dir(root, it)) != it.get("sourceHash")
-                     or not (root / it["output"]).is_file())]
+                and (a.force or hash_source(_src_dir(item_base, it)) != it.get("sourceHash")
+                     or not (item_base / it["output"]).is_file())]
         if not todo:
             return emit(True, "EXPORT_SKIP", "所有卡片源码未变且产物在盘,无需兜底导出",
                         {"exported": 0})
         okd, failed = [], []
         for it in todo:
-            ok, info = export_item_fallback(it, root, artboard_dir,
+            ok, info = export_item_fallback(it, item_base, artboard_dir,
                                             scale=a.scale, transparent=a.transparent)
             if ok:
-                it["sourceHash"] = hash_source(_src_dir(root, it))
+                it["sourceHash"] = hash_source(_src_dir(item_base, it))
                 okd.append(it["id"])
             else:
                 failed.append({"id": it["id"], "error": info})
@@ -1299,16 +1307,16 @@ def main() -> int:
         # P6-2(上一版 P6 的真缺口):skip 判定必须是「源码未变 **且产物在盘**」——
         # 旧版只比 source hash,首次 scan 后(产物还没导过)会假 EXPORT_SKIP 漏导。
         todo = [it for it in doc["items"] if (not only or it["id"] in only)
-                and (a.force or hash_source(_src_dir(root, it)) != it.get("sourceHash")
-                     or not (root / it["output"]).is_file())]
+                and (a.force or hash_source(_src_dir(item_base, it)) != it.get("sourceHash")
+                     or not (item_base / it["output"]).is_file())]
         if not todo:
             return emit(True, "EXPORT_SKIP", "所有卡片源码未变且产物在盘,无需重导",
                         {"exported": 0})
         okd, failed = [], []
         for it in todo:
-            ok, info = export_item(it, root, artboard_dir)
+            ok, info = export_item(it, item_base, artboard_dir)
             if ok:
-                it["sourceHash"] = hash_source(_src_dir(root, it))
+                it["sourceHash"] = hash_source(_src_dir(item_base, it))
                 okd.append(it["id"])
             else:
                 failed.append({"id": it["id"], "error": info})
@@ -1324,7 +1332,8 @@ def main() -> int:
         if not ir_path.is_file():
             return emit(False, "NO_IR", f"IR 不存在:{ir_path}", exit_code=2)
         ir = json.loads(ir_path.read_text(encoding="utf-8"))
-        ir, issues, changes, skipped = apply_to_ir(doc, ir, root, strict=a.strict, only=only)
+        ir, issues, changes, skipped = apply_to_ir(doc, ir, root, strict=a.strict, only=only,
+                                                   item_base=item_base)
         if issues:
             return emit(False, "APPLY_ISSUES",
                         f"{len(issues)} 个问题,已停止(不带着坏输入往下跑)",

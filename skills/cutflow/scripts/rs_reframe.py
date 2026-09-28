@@ -5,7 +5,9 @@
   rs_reframe.py                # 无参 = 工程模式(cwd=工程根,读 IR 主轨逐 clip 出锚点)
 
 双档三态(懒加载体系 rs_fetchable,ADR-0049;本脚本只探测、绝不下载):
-  READY    bytetrack probe 通过 → 逐帧主体中心 → 滑窗中位数平滑 + 限速(防「跟着人乱甩」)
+  READY    vision.track(cv2)probe 通过 → 逐采样帧主体盒(Haar 人脸 + 帧差粗框,
+           第三册 T3.4 落地,rs_vision.subject_boxes)→ 滑窗中位数平滑 + 限速
+           (防「跟着人乱甩」);检测置信度不足 → 显式降级留痕(不再静默 static-center)
   MISSING  降级档 static-center:每 clip 居中锚(≈零计算,方案 §6.2 预算)
 
 硬约束(方案 §5.5.2):
@@ -15,7 +17,7 @@
 
 产物 05_时间线工程/reframe_plan.json:
   {"ratio", "canvas", "engine", "degraded", "clips": [{clipId, anchorX, anchorY, scale,
-    trajectory[], cropWindow, mode, violations[]}], ...}
+    trajectory[], cropWindow, mode, violations[], degradeNote?}], "degradeReasons"?, ...}
   anchorX/anchorY/trajectory 坐标均在【源像素空间】(渲染端按 sourceInMs 映射)。
 """
 from __future__ import annotations
@@ -37,6 +39,8 @@ DEFAULT_SCALE = 1.0         # static-center 档缩放(1.0 = 不推近;推近由 
 SMOOTH_WIN = 15             # 轨迹滑窗中位数窗口(帧数;约 0.5s@30fps,消检测抖动)
 MAX_SHIFT_PX_PER_SEC = 240.0  # 锚点限速(源像素/秒;超速分摊到后续帧,防镜头乱甩)
 REFRAME_CLIP_SUBJECT = "REFRAME_CLIP_SUBJECT"   # 主体被切破的错误码(方案 §5.5.2 硬约束)
+TRACK_MAX_KEYS = 16        # 轨迹关键帧上限(渲染端 crop 表达式按关键帧数嵌套 if,
+                           # 帧帧全量产出会超 ffmpeg 表达式深度;分段线性 16 键足够)
 
 
 def reframe_path(project: Path) -> Path:
@@ -117,11 +121,13 @@ def clip_plan_track(src_w: int, src_h: int, ratio_wh: float, clip_ms: int, fps: 
     """READY 档:逐帧主体盒 → 中点序列 → 平滑限速轨迹;每帧窗内复核主体硬约束。
 
     任一帧违反 REFRAME_CLIP_SUBJECT → 整 clip 降级 static-center + violations 留痕
-    (宁可退回居中,绝不交付切掉主体的方案)。
+    (宁可退回居中,绝不交付切掉主体的方案);检测无主体 → 显式留痕降级(T3.4:
+    不再静默 static-center)。
     """
     plan = clip_plan_static(src_w, src_h, ratio_wh)
     if not subject_boxes:
-        return plan                              # 检测无主体 → 维持 static-center(如实)
+        plan["degradeNote"] = "主体跟踪缺失→居中锚(检测无主体/置信度不足,T3.4 显式留痕)"
+        return plan
     centers = [((b[0] + b[2]) / 2.0, (b[1] + b[3]) / 2.0) for b in subject_boxes]
     track = smooth_track(centers, fps)
     n = max(1, int(clip_ms / 1000.0 * fps))
@@ -144,6 +150,10 @@ def clip_plan_track(src_w: int, src_h: int, ratio_wh: float, clip_ms: int, fps: 
     trajectory = [{"tMs": int(i * step_ms), "anchorX": track[min(i, len(track) - 1)][0],
                    "anchorY": track[min(i, len(track) - 1)][1], "scale": DEFAULT_SCALE}
                   for i in range(n)]
+    if len(trajectory) > TRACK_MAX_KEYS:         # 关键帧抽稀(首末必留;渲染端表达式深度受限)
+        idxs = [round(j * (len(trajectory) - 1) / (TRACK_MAX_KEYS - 1))
+                for j in range(TRACK_MAX_KEYS)]
+        trajectory = [trajectory[j] for j in dict.fromkeys(idxs)]
     x_last, y_last = track[-1]
     plan.update({"mode": "track", "anchorX": round(x_last, 2), "anchorY": round(y_last, 2),
                  "trajectory": trajectory})
@@ -152,24 +162,28 @@ def clip_plan_track(src_w: int, src_h: int, ratio_wh: float, clip_ms: int, fps: 
 
 # ---------------------------------------------------------------- READY 档检测(测试 mock 本函数)
 
-def ready_subject_boxes(media: Path, max_frames: int = 600
+def ready_subject_boxes(media: Path, src_w: int, src_h: int, cfg: dict,
+                        max_frames: int = 600
                         ) -> list[tuple[float, float, float, float]] | None:
-    """READY 档逐帧主体包围盒(opencv+bytetrack;None = 检测不可用)。
+    """READY 档逐帧主体包围盒(T3.4 真实实现:cv2 Haar 人脸 + 帧差主体粗框)。
 
-    真实实现依赖 tools/.venv 侧组件;测试 mock 本函数提供合成盒,轨迹数学走真代码。
+    委托 rs_vision.subject_boxes(解码走 ffmpeg 管道,绕开 cv2 中文路径静默失败;
+    置信度不足/组件缺失 → None,调用方显式降级留痕)。测试 mock 本函数提供合成盒,
+    轨迹数学走真代码。
     """
     try:
-        import cv2  # noqa: F401,PLC0415 — probe 已保证 READY 才会走到这里
+        import rs_vision  # noqa: PLC0415 — 感知层共享库(第三册新建)
     except ImportError:
         return None
-    return None                                  # bytetrack 驱动未部署时如实返回不可用
+    boxes, _tiers = rs_vision.subject_boxes(media, src_w, src_h, cfg, max_frames=max_frames)
+    return boxes
 
 
 def ready_tier() -> tuple[bool, dict]:
     """probe vision.track → (是否可用, tiers 留痕)。"""
     st = rs_fetchable.state("vision.track")
     if st["state"] == "READY":
-        return True, {"track": {"engine": "bytetrack", "degraded": False}}
+        return True, {"track": {"engine": "haar+frame-diff", "degraded": False}}
     return False, {"track": {"engine": "static-center", "degraded": True,
                              **{k: v for k, v in rs_fetchable.degrade_record("vision.track").items()
                                 if k != "degraded"}}}
@@ -227,6 +241,8 @@ def plan_project(root: Path, ratio: str | None = None, force: bool = False
     track_ready, tiers = ready_tier()
     fps = float(ir.get("fps") or 30)
     clips_out: list[dict] = []
+    degrade_reasons: list[str] = []
+    boxes_cache: dict[str, list | None] = {}    # 同源多 clip 只检测一次
     for tr in ir.get("tracks") or []:
         if tr.get("kind") != "video":
             continue
@@ -236,11 +252,19 @@ def plan_project(root: Path, ratio: str | None = None, force: bool = False
             if src.is_file():
                 sw, sh = _src_dims(src, manifest, cfg)
             if track_ready and src.is_file():
-                boxes = ready_subject_boxes(src)
+                key = f"{src}|{sw}x{sh}"
+                if key not in boxes_cache:
+                    boxes_cache[key] = ready_subject_boxes(src, sw, sh, cfg)
+                boxes = boxes_cache[key]
                 plan = clip_plan_track(sw, sh, ratio_wh, int(clip.get("durationMs") or 0),
                                        fps, boxes)
+                if boxes is None and plan.get("degradeNote"):
+                    degrade_reasons.append(f"{clip.get('id', '?')}:{plan['degradeNote']}")
             else:
                 plan = clip_plan_static(sw, sh, ratio_wh)
+                if not track_ready:
+                    degrade_reasons.append(
+                        f"{clip.get('id', '?')}:主体跟踪缺失→居中锚(vision.track 未部署)")
             clips_out.append({"clipId": clip.get("id", ""), "src": clip.get("src", ""),
                               "srcWidth": sw, "srcHeight": sh,
                               "startMs": clip.get("startMs", 0),
@@ -249,6 +273,8 @@ def plan_project(root: Path, ratio: str | None = None, force: bool = False
     doc = {"version": 1, "ratio": ratio, "canvas": [w, h], "engine": engine,
            "clipCount": len(clips_out), "clips": clips_out, "tiers": tiers,
            "source": ir_path.name}
+    if degrade_reasons:
+        doc["degradeReasons"] = degrade_reasons
     if not track_ready:
         doc.update(rs_fetchable.degrade_record("vision.track"))
     _write(out_path, doc)

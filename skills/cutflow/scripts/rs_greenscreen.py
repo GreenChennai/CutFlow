@@ -46,8 +46,9 @@ def _raw_frame(src: Path, at_s: float, cfg: dict) -> tuple[bytes, int, int] | No
            "-i", str(src), "-frames:v", "1",
            "-vf", f"scale={FRAME_W}:-2,format=rgb24", "-f", "rawvideo", "-"]
     try:
+        # T2.12:限时走 stages.json policies.GREEN(CUTFLOW_GREEN_TIMEOUT 仍完全覆盖)
         p = subprocess.run(cmd, capture_output=True,
-                           timeout=int(__import__("os").environ.get("CUTFLOW_GREEN_TIMEOUT", "60")))
+                           timeout=rs_common.policy_timeout("GREEN"))
     except (OSError, subprocess.TimeoutExpired):
         return None
     if p.returncode != 0 or not p.stdout:

@@ -43,12 +43,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 import rs_common  # noqa: E402
-from rs_common import RATIOS, emit, write_text_atomic  # noqa: E402
+from rs_common import (RATIOS, emit, write_text_atomic,  # noqa: E402
+                       load_capability_descriptors)
 import rs_paths  # noqa: E402  — 阶段路径唯一真相源(ADR-0046),本文件禁止目录字面量
 import rs_stylepack  # noqa: E402  — 风格包加载 API(ADR-0051;缺包返回 None,不抛)
 from rs_subtitle import STYLES, load_platforms, resolve_platform  # noqa: E402
-from rs_run import _PLATFORM_ALIASES, load_capability_descriptors  # noqa: E402
-#  — 平台别名单一真相源 + 能力描述符注册表(ADR-0047,rs_run 与本文件共用一份加载器)
+from rs_run import _PLATFORM_ALIASES  # noqa: E402
+#  — 平台别名单一真相源(rs_run);能力描述符注册表 T2.14 起由 rs_common 提供
 
 REGISTRY_PATH = Path(__file__).resolve().parents[1] / "templates" / "styles" / "registry.json"
 STYLES_DIR = Path(__file__).resolve().parents[1] / "templates" / "styles"
@@ -62,15 +63,20 @@ DENSITIES = ("无", "少", "多")
 
 # M8 内置 BGM 小曲库(清欠账 #13):manifest 真相源 + 确定性选曲
 BGM_LIBRARY_DIR = Path(__file__).resolve().parents[1] / "assets" / "bgm"
-BGM_LIBRARY_RELPREFIX = "skills/cutflow/assets/bgm"
+# M12:repoRelPath 统一锚 assets/ 目录;`file` 一律 = manifest 原值(相对 assets/,
+# 如 "bgm/x.mp3"),需要 basename 时显式取 —— 不再两处各写一套路径口径。
+BGM_ASSETS_RELPREFIX = "skills/cutflow/assets"
 
 
 def _bgm_tracks() -> list[dict]:
     """曲库全量曲目(M12 真相源 = 统一索引 skills/cutflow/assets/manifest.json 的
-    kind=bgm;旧兼容件 bgm/manifest.json 兜底,R42 闭环的取数口)。"""
+    kind=bgm;旧兼容件 bgm/manifest.json 兜底,R42 闭环的取数口)。
+
+    M12:`file` 统一为「相对 assets/ 的路径」—— 统一索引原样直通;旧兼容件的
+    裸文件名显式补 "bgm/" 前缀,两条来源同一语义,repoRelPath 不再有错位风险。"""
     import rs_asset
     tracks = [{"id": str(a.get("id")), "name": str(a.get("label", "")),
-               "file": str(a.get("file", "")).rsplit("/", 1)[-1],
+               "file": str(a.get("file", "")),
                "pacingFit": list(a.get("pacingFit") or []),
                "gainHintDb": a.get("gainHintDb", -18), "mood": str(a.get("mood", "")),
                "durationSec": a.get("durationSec"), "bpm": a.get("bpm"),
@@ -88,7 +94,9 @@ def _bgm_tracks() -> list[dict]:
     out = []
     for t in raw:
         if isinstance(t, dict):
+            rel = str(t.get("file", ""))
             out.append({**t, "id": str(t.get("id") or t.get("name") or ""),
+                        "file": rel if "/" in rel else f"bgm/{rel}",
                         "commercial": bool(t.get("commercial", True))})
     return out
 
@@ -111,9 +119,10 @@ def bgm_library_pick(pacing: str, mood: str | None = None) -> dict | None:
         if hit is not None:
             pool = [hit]
     hit = pool[0]
+    rel = str(hit.get("file", ""))
     return {"id": hit.get("id", ""), "name": str(hit.get("name", "")),
-            "file": str(hit.get("file", "")),
-            "repoRelPath": f"{BGM_LIBRARY_RELPREFIX}/{hit.get('file', '')}",
+            "file": rel,
+            "repoRelPath": f"{BGM_ASSETS_RELPREFIX}/{rel}" if rel else "",
             "bpm": hit.get("bpm"), "durationSec": hit.get("durationSec"),
             "gainHintDb": hit.get("gainHintDb", -18), "mood": str(hit.get("mood", "")),
             "commercial": hit.get("commercial", True)}

@@ -55,7 +55,7 @@
 
 ## 字幕
 
-- **字幕卡**:一条屏幕上同时显示的字幕(≤2 行,9:16 每行 ≤16 字)。
+- **字幕卡**:一条屏幕上同时显示的字幕(≤2 行;每行字数上限按平台查表——9:16 竖屏 12 字,唯一文档口径 `rules/platforms.md` §3,机器源 `templates/platforms.json`)。
 - **轻改写**:仅作用于字幕文本的规范化(删口水词、标点规范化、按语义断行),**不改语义、不删信息**;音频不动。
 - **字幕规范**:Netflix 简体中文 Timed Text 规范 + 抖音低质判定标准的合集,见 rules/subtitles.md。
 
@@ -126,3 +126,40 @@
 | 效果使用率门禁 | 九判据(EFFECTS_UNUSED 等);「声明了处方却零使用」=红,滥用也红;无处方跳过留痕 |
 | 无技巧转场 | 靠镜头间造型/动作/逻辑关联衔接,不用特效(13 类);技巧转场只在时空跳跃/段落切换/风格化三类场景 |
 | reason 的评审效力 | rs_edit EditOp 强制 reason;「好看」类词视为未解释,应改硬切 |
+
+## rs_* 脚本分层表(T2.14,机器可读)
+
+> 门禁:`tests/test_import_direction.py` 按本表(含越级复用白名单)静态断言 import 方向,
+> **改分层先改本表,测试自动跟随**;表未收录的脚本 = 门禁红(零静默)。import 方向
+> 只许向低层(引擎→机械臂→工具);桥是端点,只有桥自己能 import 桥;越级复用仅限
+> 白名单(见表后代码块,每条带理由)。
+
+| 层 | 脚本 | 职责与规则 |
+|---|---|---|
+| 工具层 | rs_codes, rs_paths, segmentation, textopt, rs_common, rs_fetchable | 纯函数/数据表/路径与协议唯一真相源,无工程语义;只许 import 标准库与工具层 |
+| 机械臂层 | rs_ingest, rs_align, rs_asr, rs_cut, rs_ir, rs_render, rs_subtitle, rs_brand, rs_sfx, rs_meta, rs_artboard, rs_screen, rs_shot, rs_frames, rs_bench, rs_vision, rs_sense, rs_matting, rs_greenscreen, rs_reframe, rs_broll, rs_beat, rs_tts, rs_dub, rs_pixabay, rs_asset, rs_cleanup, rs_stylepack, rs_sync, rs_effects, rs_fx | 阶段执行者:产/改工程产物、驱动 ffmpeg/模型;可 import 工具层与机械臂层,**禁止 import 引擎层与桥层**(白名单外;不得驱动编排/经桥改盘) |
+| 引擎层 | rs_run, rs_verify, rs_intent, rs_caps, rs_doctor, rs_diagnose | 编排/自检/意图编译/能力目录/体检/诊断:驱动机械臂走子进程,自己不产中间产物;可 import 工具层与引擎层;**不得 import 机械臂层**——数据表/判据复用走白名单(见下);不得 import 桥层 |
+| 桥层 | rs_editor, rs_edit, rs_notes, rs_oplog, rs_gate, rs_jy_draft | 外部系统(CutForge 编辑器/剪映)↔ 工程盘面的契约通道:对盘面的变更只经 Op/EditOp 契约,绝不直渲成片、绝不产阶段中间产物;可 import 工具层与桥层;**任何非桥脚本不得 import 桥** |
+
+越级复用白名单(均为「单一真相源数据表/判据」复用,带理由;新增条目必须在本表登记理由,
+`tests/test_import_direction.py` 对拍:登记的边必须真实存在,真实存在的越级边必须登记):
+
+```
+# 引擎 → 机械臂(数据表/判据复用;引擎不建第二份)
+rs_run → rs_subtitle        # STYLES/平台预设数据表复用(引擎不建第二份样式表)
+rs_verify → rs_ir           # IR 载入/校验单一实现(R09/R41)
+rs_verify → rs_sync         # 对齐断言判据单一实现
+rs_verify → rs_subtitle     # 平台预设查表(字幕安全区判据复用同一数据表)
+rs_verify → rs_greenscreen  # 幕布放行文件读取复用 S0 同一实现(宁可拦不漏放)
+rs_verify → rs_vision       # 感知层共享库(第三册新建)
+rs_verify → rs_asset        # 素材四字段/归因对拍复用 rs_asset 的工程引用采集
+rs_verify → rs_fx           # 效果使用事件提取复用 fxId 注册表(与渲染同源)
+rs_verify → rs_align        # 重放对账复用 remap 纯函数(独立对账·产物路,T5.6c 判据单一实现)
+rs_intent → rs_stylepack    # 风格注册表查表(意图编译是纯查表)
+rs_intent → rs_subtitle     # 字幕样式/平台预设查表(同 rs_run 理由)
+rs_intent → rs_asset        # BGM 曲库取数复用统一索引读口(M12/R42)
+rs_intent → rs_effects      # 效果处方校验复用效果目录读口
+rs_diagnose → rs_sync       # 内容诊断复用对齐实现(S9 同一口径,不漂移)
+# 机械臂 → 引擎(纯判据函数复用;只调函数,绝不驱动编排)
+rs_ingest → rs_verify       # 交付对账复用 check_safe_area L0 判据(清欠 #A6 同一实现)
+```

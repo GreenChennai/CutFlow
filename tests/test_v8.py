@@ -146,24 +146,28 @@ def test_events_from_wordline_carry_charspan():
     assert expect <= covered, (sorted(expect - covered),)
 
 
-def test_charspan_survives_merge_short():
-    """必并合卡后 charSpan 必须同步合并(时间锚与文本分组保持一致)。
+def test_charspan_survives_postprocess():
+    """T4.2/T4.3(第四册):过短卡不再静默合并——charSpan 分区在事件层保持原样。
 
-    句内相邻卡合并必然超字数上限,所以用「短句 1 + 短句 2」触发必并:
-    每字 10ms → 4 字卡只有 40ms < 0.83s,与后句 5 字卡合并(合计 9 ≤ 10)。
+    旧契约:每字 10ms → 4 字卡 40ms < 0.83s,与后句合并(mergedShort ≥ 1)。
+    新契约:有字级时间时事件层只调时间不碰文本;过短卡标记 unsatisfied +
+    替代方案并进 violations/review queue;charSpan 分区仍必须连续、不重叠、不丢字。
     """
     wl = _wordline("一二三四五六七八九", sent_spans=[(0, 4), (4, 9)])
     for i, c in enumerate(wl["chars"]):
         c["startMs"], c["endMs"] = 10 * i, 10 * i + 8
     events, meta = sub.events_from_wordline(wl, 10)
-    assert meta["mergedShort"] >= 1, meta
-    assert len(events) == 1, events
-    assert events[0]["charSpan"] == [0, 9], events[0]
+    assert meta["mergedShort"] == 0, meta
+    assert len(events) == 2, events
+    issues = {u["issue"] for u in meta["unsatisfied"]}
+    assert issues & {"shortCard", "ghostCard"}, meta["unsatisfied"]
+    assert any(q["type"] in ("shortCard", "ghostCard") for q in meta["reviewQueue"])
     covered: set[int] = set()
     for e in events:
         a, b = e["charSpan"]
         assert not (covered & set(range(a, b))), f"charSpan 重叠:{e}"
         covered.update(range(a, b))
+    assert covered == set(range(9)), "内容字一个不丢"
 
 
 def test_override_rebuilds_cards_from_spans():

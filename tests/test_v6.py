@@ -1,6 +1,6 @@
 """CutFlow v6 回归测试:seg 级缓存 / retext 校对回灌 / karaoke 逐字字幕 / 基轨绿幕 / P2 清理。
 
-对应 docs/OPTIMIZATION-v6.md 验收(P0 三项 + P2 清理)。
+对应 docs/archive/OPTIMIZATION-v6.md 验收(P0 三项 + P2 清理)。
 运行:pytest tests/ -q
 """
 import json
@@ -660,7 +660,19 @@ def test_merge_short_aligns_min_dur_line():
 
 
 def test_merge_short_second_pass_absorbs_next():
-    """上一卡预算放不下(9+4=13>12)时,第二遍把短卡吞给下一卡(4+7=11)。"""
+    """T4.3(第四册):「向下一卡吞并」的第二遍已删除,且只降级路径可达。
+
+    旧契约:第一遍并不下时,第二遍把短卡吞给下一卡(起点取短卡)。新契约:
+    ① 第二遍整段删除(机制断言见下);② 本函数只服务字级信息缺失/降级路径,
+    已知字级时间的工程事件层根本不调用(test_no_text_rewrite_after_dp 有
+    monkeypatch 机制断言);③ 过短卡在已知时间路径走 unsatisfied + 替代方案。
+    """
+    import inspect
+    src = inspect.getsource(rsub._merge_short)
+    assert "out.pop" not in src, "第二遍吞并(out.pop 轮)必须已删除"
+    assert "第二遍" not in src or "已删除" in src
+
+    # 旧场景重放:第一遍「向上一卡并」的合并结果保持(合并预算/对齐精度不回归)
     events = [
         {"start": 0.0, "end": 2.0, "text": "因此的一店一照已经"},
         {"start": 2.07, "end": 2.88, "text": "成为电商"},
@@ -670,6 +682,10 @@ def test_merge_short_second_pass_absorbs_next():
     assert merged == 1 and len(out) == 2
     assert out[1]["text"] == "成为电商行业的经营常规"
     assert abs(out[1]["start"] - 2.07) < 1e-9   # 起点取短卡(对齐精度)
+    # 已知字级时间:同样的输入在事件层收口不再被合并,而是报 unsatisfied
+    post = rsub._postprocess_events(events, 12, known_time=True)
+    assert post["mode"] == "time-only" and post["mergedShort"] == 0
+    assert any(u["issue"] == "shortCard" and u["suggestion"] for u in post["unsatisfied"]), post
 
 
 def test_karaoke_display_glyph_budget():

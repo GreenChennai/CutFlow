@@ -1,5 +1,7 @@
 # 剪辑手法库(editing-grammar,方案 §5.9,M8 逐条转录)
 
+> **超限理由(第一册 T1.8)**:手法库 25 条逐条带「适用/落点/参数/出处/验收/禁忌」六栏,是剪辑决策的单一出处;拆册会破坏「一次查一册」的用法。
+
 > 本文件是**给 Agent 读的规范**:每条手法给出 手法名 / 适用类型 / 可执行落点(命令 +
 > 子命令)/ 关键参数与默认值 / 出处与分级 / 验收判据 / 禁忌。落点命令必须真实存在
 > (M8 落点核查,见文末核查表);还不存在的落点如实标 ⏳,不许编造命令,也不许
@@ -233,7 +235,7 @@
 - **可执行落点**(三选一,`rs_ir` 建议 + `rs_edit` 执行):
   ① op `transition.set` kind=dissolve;② op `overlay.add` 插 B-roll;
   ③ op `clip.reframe` 推近。
-- **关键参数/默认值**:溶解 300ms(手法 2);B-roll hold 1.5–3s(经验);推近 1.4x(手法 18)。
+- **关键参数/默认值**:溶解 300ms(手法 2,机器档见 `rs_ir`/`rs_render` ADR-0026);B-roll hold 1.5–3s(经验);推近 1.4x(手法 18)。
 - **出处与分级**:【规范】auto-editor/jumpcutter(掩饰是这类工具的配套实践)。
 - **验收判据**:跳切处三选一落实(抽帧 L1);同一跳切不叠三种。
 - **禁忌**:裸跳切连发不掩饰(口播观感碎)。
@@ -242,9 +244,9 @@
 
 - **适用类型**:口播。
 - **可执行落点**:`rs_cut.py <wordline> --detect all`(内置,无参数):
-  前留白 150ms / 后留白 300ms(`MARGIN_IN_MS/MARGIN_OUT_MS`,不对称——后留白
-  给呼吸感)。
-- **关键参数/默认值**:150ms / 300ms。
+  前后留白不对称(后留白给呼吸感)——数值唯一出处见 `rules/roughcut.md` §8.5
+  (机器常量 `rs_cut.MARGIN_IN_MS/MARGIN_OUT_MS`)。
+- **关键参数/默认值**:查上一行出处,本库不复述。
 - **出处与分级**:【规范】auto-editor `--margin` 精神。
 - **验收判据**:粗剪 keep 边界不贴字(字首字尾有留白);无半字被切(wordline guard)。
 - **禁忌**:margin 设 0(字贴刀口);把 margin 当音量淡出用。
@@ -344,7 +346,7 @@
 | 17 前 3 秒钩子 | rs_meta / rs_intent | ✅ 既有 |
 | 18 punch-in | clip.reframe --scale | ✅ 既有 op(scale 域 0.05–4.0;anchorX 为 U7 拒绝项)+ rs_ir --punch-in-auto |
 | 19 jump cut 掩饰 | 三选一 | ✅ 组合既有 op |
-| 20 margin / 21 smooth / 22 tail-reserve | rs_cut 内置 | ✅ 既有(150/300ms;120/100ms;650ms) |
+| 20 margin / 21 smooth / 22 tail-reserve | rs_cut 内置 | ✅ 既有(margin/smooth/tail-reserve 数值唯一出处见 `rules/roughcut.md` §8.5 与 §2.1) |
 | 23 冻结补长 | rs_ir --from-cards / freeze.set | ✅ 既有(ADR-0027) |
 | 24 Ken Burns | artboard 借格 | ✅ artboard 分册(有限次数) |
 | 25 waiting | rs_cut --detect waiting | ⏳ rs_cut 检测器待第二波;**M8 已落 rs_screen --waiting**(screen.json.waiting) |

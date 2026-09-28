@@ -296,9 +296,13 @@ def _g_zoompan(ctx: FxContext, p: dict) -> FxPlan:
     else:                                        # 线性 ramp:入场 z0→z1,出场锚末端
         u = f"min(in/{n_frames},1)"
         if slot == "out":
-            # 出场:z0 保持到只剩 N 帧,最后 N 帧回到 z1(与入场镜像)
-            z = (f"if(lt(in,{n_frames}),{z0:.4f},"
-                 f"{z1:.4f}+({z0:.4f}-{z1:.4f})*min((in-{n_frames})/{n_frames},1))")
+            # 出场(T2.3/H3 修复):判据用**剩余帧数**口径。旧写法 lt(in,n_frames)
+            # 恒真(in ∈ 0..n_frames-1)→ 恒返 z0,出场动画静默空操作。
+            # 现口径:z0 保持到只剩 n_anim 帧,最后 n_anim 帧从 z0 ramp 到 z1。
+            n_anim = max(int(round(_fade_d(p, ctx, slot) * ctx.fps)), 1)
+            hold = max(n_frames - n_anim, 0)
+            z = (f"if(lt(in,{hold}),{z0:.4f},"
+                 f"{z0:.4f}+({z1:.4f}-{z0:.4f})*min((in-{hold})/{n_anim},1))")
         else:
             z = f"{z0:.4f}+({z1:.4f}-{z0:.4f})*{u}"
     ax = float(p.get("anchorX", 0.5))
@@ -620,8 +624,8 @@ def _g_stretch(ctx: FxContext, p: dict) -> FxPlan:
         u = f"(1-min(max((t-{ctx.out_s - d:.3f})/{d:.3f},0),1))"
     else:
         u = f"(1-min(t/{d:.3f},1))"
-    w_expr = f"max(iw*(1+{amp}*(1-{u})),2)" if False else \
-        f"max(iw*(1+{amp}*{u}),2)"
+    # M3:删除 `if False` 调试残留死分支(只保留真实表达式)
+    w_expr = f"max(iw*(1+{amp}*{u}),2)"
     h_expr = f"max(ih*(1-{amp}*{u}),2)"
     plan.fc = [f"[{{IN}}]split=2[str_bg][str_fg];"
                f"[str_bg]drawbox=c=black:t=fill[str_bgb];"

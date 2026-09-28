@@ -9,14 +9,17 @@
 """
 import base64
 import json
+import os
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
 
 import numpy as np
 
-REPO = Path(r"E:\平日资料\GitHub\CutFlow")
-FF = r"E:\Tools\ffmpeg\bin\ffmpeg.exe"
+REPO = Path(__file__).resolve().parents[1]
+# T2.4(H4):ffmpeg 只走环境变量/PATH,个人盘符不作代码内缺省
+FF = os.environ.get("CUTFLOW_FFMPEG", "") or shutil.which("ffmpeg") or "ffmpeg"
 OUT = REPO / "tests" / "fixtures" / "diagnosis"
 OUT.mkdir(parents=True, exist_ok=True)
 SR = 24000

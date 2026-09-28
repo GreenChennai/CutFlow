@@ -1,0 +1,643 @@
+{
+ "meta": {
+  "board": "03-koubo-stale-ir",
+  "videoType": "口播",
+  "state": "多阶段 stale(带外改 IR)",
+  "desc": "project.json 带外改 → S3 起多阶段 stale(含人工 S4)。",
+  "regen": "python tests/test_snapshots.py"
+ },
+ "status": {
+  "exitCode": 0,
+  "code": "STATUS_OK",
+  "data": {
+   "stages": [
+    {
+     "id": "S0",
+     "name": "基础素材",
+     "status": "done",
+     "staleReason": [],
+     "outs": 1
+    },
+    {
+     "id": "S1",
+     "name": "转写与字级对齐",
+     "status": "done",
+     "staleReason": [],
+     "outs": 1
+    },
+    {
+     "id": "S2",
+     "name": "粗剪处理",
+     "status": "done",
+     "staleReason": [],
+     "outs": 1
+    },
+    {
+     "id": "S3",
+     "name": "基础合成",
+     "status": "stale",
+     "staleReason": [
+      "产物带外改写(outHash <hash> → <hash>;rs_run 之外的工具改过产物)"
+     ],
+     "outs": 1
+    },
+    {
+     "id": "S4",
+     "name": "动画/信息卡",
+     "status": "stale",
+     "staleReason": [
+      "inputs 变化 05_时间线工程/project.json(<hash> → <hash>)"
+     ],
+     "outs": 0
+    },
+    {
+     "id": "S5",
+     "name": "品牌(Logo 变体)",
+     "status": "stale",
+     "staleReason": [
+      "inputs 变化 05_时间线工程/project.json(<hash> → <hash>)"
+     ],
+     "outs": 1
+    },
+    {
+     "id": "S6",
+     "name": "音效",
+     "status": "stale",
+     "staleReason": [
+      "inputs 变化 05_时间线工程/project.json(<hash> → <hash>)"
+     ],
+     "outs": 1
+    },
+    {
+     "id": "S7",
+     "name": "字幕",
+     "status": "done",
+     "staleReason": [],
+     "outs": 1
+    },
+    {
+     "id": "S8",
+     "name": "烧录导出",
+     "status": "stale",
+     "staleReason": [
+      "inputs 变化 05_时间线工程/project.json(<hash> → <hash>)"
+     ],
+     "outs": 1
+    },
+    {
+     "id": "S9",
+     "name": "自评与对齐断言",
+     "status": "done",
+     "staleReason": [],
+     "outs": 2
+    },
+    {
+     "id": "S10",
+     "name": "封面与文案",
+     "status": "done",
+     "staleReason": [],
+     "outs": 1
+    },
+    {
+     "id": "S11",
+     "name": "交付",
+     "status": "done",
+     "staleReason": [],
+     "outs": 1
+    }
+   ]
+  }
+ },
+ "explain": {
+  "S0": {
+   "stage": "S0",
+   "name": "基础素材",
+   "status": "done",
+   "staleReason": [],
+   "outs": 1,
+   "verdict": "keep",
+   "verdictLabel": "可继续(缓存命中)",
+   "compared": {
+    "inputs": {
+     "count": 3,
+     "changed": [],
+     "added": [],
+     "removed": []
+    },
+    "tool": {
+     "count": 2,
+     "changed": [],
+     "added": [],
+     "removed": []
+    },
+    "external": {
+     "count": 1,
+     "changed": [],
+     "added": [],
+     "removed": []
+    },
+    "params": {
+     "declared": [],
+     "current": {},
+     "changed": []
+    },
+    "outputs": {
+     "count": 1,
+     "recordedOutHash": "<hash>",
+     "currentOutHash": "<hash>",
+     "outOfBand": false
+    }
+   }
+  },
+  "S1": {
+   "stage": "S1",
+   "name": "转写与字级对齐",
+   "status": "done",
+   "staleReason": [],
+   "outs": 1,
+   "verdict": "keep",
+   "verdictLabel": "可继续(缓存命中)",
+   "compared": {
+    "inputs": {
+     "count": 2,
+     "changed": [],
+     "added": [],
+     "removed": []
+    },
+    "tool": {
+     "count": 1,
+     "changed": [],
+     "added": [],
+     "removed": []
+    },
+    "external": {
+     "count": 1,
+     "changed": [],
+     "added": [],
+     "removed": []
+    },
+    "params": {
+     "declared": [],
+     "current": {},
+     "changed": []
+    },
+    "outputs": {
+     "count": 1,
+     "recordedOutHash": "<hash>",
+     "currentOutHash": "<hash>",
+     "outOfBand": false
+    }
+   }
+  },
+  "S2": {
+   "stage": "S2",
+   "name": "粗剪处理",
+   "status": "done",
+   "staleReason": [],
+   "outs": 1,
+   "verdict": "keep",
+   "verdictLabel": "可继续(缓存命中)",
+   "compared": {
+    "inputs": {
+     "count": 1,
+     "changed": [],
+     "added": [],
+     "removed": []
+    },
+    "tool": {
+     "count": 1,
+     "changed": [],
+     "added": [],
+     "removed": []
+    },
+    "external": {
+     "count": 1,
+     "changed": [],
+     "added": [],
+     "removed": []
+    },
+    "params": {
+     "declared": [],
+     "current": {},
+     "changed": []
+    },
+    "outputs": {
+     "count": 1,
+     "recordedOutHash": "<hash>",
+     "currentOutHash": "<hash>",
+     "outOfBand": false
+    }
+   }
+  },
+  "S3": {
+   "stage": "S3",
+   "name": "基础合成",
+   "status": "stale",
+   "staleReason": [
+    "产物带外改写(outHash <hash> → <hash>;rs_run 之外的工具改过产物)"
+   ],
+   "outs": 1,
+   "verdict": "rerun",
+   "verdictLabel": "必须重跑",
+   "compared": {
+    "inputs": {
+     "count": 2,
+     "changed": [],
+     "added": [],
+     "removed": []
+    },
+    "tool": {
+     "count": 2,
+     "changed": [],
+     "added": [],
+     "removed": []
+    },
+    "external": {
+     "count": 1,
+     "changed": [],
+     "added": [],
+     "removed": []
+    },
+    "params": {
+     "declared": [
+      "ratio"
+     ],
+     "current": {
+      "ratio": null
+     },
+     "changed": []
+    },
+    "outputs": {
+     "count": 1,
+     "recordedOutHash": "<hash>",
+     "currentOutHash": "<hash>",
+     "outOfBand": true
+    }
+   }
+  },
+  "S4": {
+   "stage": "S4",
+   "name": "动画/信息卡",
+   "status": "stale",
+   "staleReason": [
+    "inputs 变化 05_时间线工程/project.json(<hash> → <hash>)"
+   ],
+   "outs": 0,
+   "verdict": "rerun",
+   "verdictLabel": "必须重跑",
+   "compared": {
+    "inputs": {
+     "count": 1,
+     "changed": [
+      "05_时间线工程/project.json"
+     ],
+     "added": [],
+     "removed": []
+    },
+    "tool": {
+     "count": 0,
+     "changed": [],
+     "added": [],
+     "removed": []
+    },
+    "external": {
+     "count": 1,
+     "changed": [],
+     "added": [],
+     "removed": []
+    },
+    "params": {
+     "declared": [],
+     "current": {},
+     "changed": []
+    },
+    "outputs": {
+     "count": 0,
+     "recordedOutHash": null,
+     "currentOutHash": null,
+     "outOfBand": false
+    }
+   }
+  },
+  "S5": {
+   "stage": "S5",
+   "name": "品牌(Logo 变体)",
+   "status": "stale",
+   "staleReason": [
+    "inputs 变化 05_时间线工程/project.json(<hash> → <hash>)"
+   ],
+   "outs": 1,
+   "verdict": "rerun",
+   "verdictLabel": "必须重跑",
+   "compared": {
+    "inputs": {
+     "count": 2,
+     "changed": [
+      "05_时间线工程/project.json"
+     ],
+     "added": [],
+     "removed": []
+    },
+    "tool": {
+     "count": 1,
+     "changed": [],
+     "added": [],
+     "removed": []
+    },
+    "external": {
+     "count": 1,
+     "changed": [],
+     "added": [],
+     "removed": []
+    },
+    "params": {
+     "declared": [],
+     "current": {},
+     "changed": []
+    },
+    "outputs": {
+     "count": 1,
+     "recordedOutHash": "<hash>",
+     "currentOutHash": "<hash>",
+     "outOfBand": false
+    }
+   }
+  },
+  "S6": {
+   "stage": "S6",
+   "name": "音效",
+   "status": "stale",
+   "staleReason": [
+    "inputs 变化 05_时间线工程/project.json(<hash> → <hash>)"
+   ],
+   "outs": 1,
+   "verdict": "rerun",
+   "verdictLabel": "必须重跑",
+   "compared": {
+    "inputs": {
+     "count": 1,
+     "changed": [
+      "05_时间线工程/project.json"
+     ],
+     "added": [],
+     "removed": []
+    },
+    "tool": {
+     "count": 1,
+     "changed": [],
+     "added": [],
+     "removed": []
+    },
+    "external": {
+     "count": 1,
+     "changed": [],
+     "added": [],
+     "removed": []
+    },
+    "params": {
+     "declared": [],
+     "current": {},
+     "changed": []
+    },
+    "outputs": {
+     "count": 1,
+     "recordedOutHash": "<hash>",
+     "currentOutHash": "<hash>",
+     "outOfBand": false
+    }
+   }
+  },
+  "S7": {
+   "stage": "S7",
+   "name": "字幕",
+   "status": "done",
+   "staleReason": [],
+   "outs": 1,
+   "verdict": "keep",
+   "verdictLabel": "可继续(缓存命中)",
+   "compared": {
+    "inputs": {
+     "count": 1,
+     "changed": [],
+     "added": [],
+     "removed": []
+    },
+    "tool": {
+     "count": 3,
+     "changed": [],
+     "added": [],
+     "removed": []
+    },
+    "external": {
+     "count": 1,
+     "changed": [],
+     "added": [],
+     "removed": []
+    },
+    "params": {
+     "declared": [
+      "maxChars",
+      "cpsMax",
+      "ratio",
+      "terms"
+     ],
+     "current": {
+      "maxChars": 12,
+      "cpsMax": 9,
+      "ratio": null,
+      "terms": null
+     },
+     "changed": []
+    },
+    "outputs": {
+     "count": 1,
+     "recordedOutHash": "<hash>",
+     "currentOutHash": "<hash>",
+     "outOfBand": false
+    }
+   }
+  },
+  "S8": {
+   "stage": "S8",
+   "name": "烧录导出",
+   "status": "stale",
+   "staleReason": [
+    "inputs 变化 05_时间线工程/project.json(<hash> → <hash>)"
+   ],
+   "outs": 1,
+   "verdict": "rerun",
+   "verdictLabel": "必须重跑",
+   "compared": {
+    "inputs": {
+     "count": 2,
+     "changed": [
+      "05_时间线工程/project.json"
+     ],
+     "added": [],
+     "removed": []
+    },
+    "tool": {
+     "count": 1,
+     "changed": [],
+     "added": [],
+     "removed": []
+    },
+    "external": {
+     "count": 1,
+     "changed": [],
+     "added": [],
+     "removed": []
+    },
+    "params": {
+     "declared": [
+      "ratio"
+     ],
+     "current": {
+      "ratio": null
+     },
+     "changed": []
+    },
+    "outputs": {
+     "count": 1,
+     "recordedOutHash": "<hash>",
+     "currentOutHash": "<hash>",
+     "outOfBand": false
+    }
+   }
+  },
+  "S9": {
+   "stage": "S9",
+   "name": "自评与对齐断言",
+   "status": "done",
+   "staleReason": [],
+   "outs": 2,
+   "verdict": "keep",
+   "verdictLabel": "可继续(缓存命中)",
+   "compared": {
+    "inputs": {
+     "count": 1,
+     "changed": [],
+     "added": [],
+     "removed": []
+    },
+    "tool": {
+     "count": 1,
+     "changed": [],
+     "added": [],
+     "removed": []
+    },
+    "external": {
+     "count": 1,
+     "changed": [],
+     "added": [],
+     "removed": []
+    },
+    "params": {
+     "declared": [],
+     "current": {},
+     "changed": []
+    },
+    "outputs": {
+     "count": 2,
+     "recordedOutHash": "<hash>",
+     "currentOutHash": "<hash>",
+     "outOfBand": false
+    }
+   }
+  },
+  "S10": {
+   "stage": "S10",
+   "name": "封面与文案",
+   "status": "done",
+   "staleReason": [],
+   "outs": 1,
+   "verdict": "keep",
+   "verdictLabel": "可继续(缓存命中)",
+   "compared": {
+    "inputs": {
+     "count": 2,
+     "changed": [],
+     "added": [],
+     "removed": []
+    },
+    "tool": {
+     "count": 1,
+     "changed": [],
+     "added": [],
+     "removed": []
+    },
+    "external": {
+     "count": 1,
+     "changed": [],
+     "added": [],
+     "removed": []
+    },
+    "params": {
+     "declared": [],
+     "current": {},
+     "changed": []
+    },
+    "outputs": {
+     "count": 1,
+     "recordedOutHash": "<hash>",
+     "currentOutHash": "<hash>",
+     "outOfBand": false
+    }
+   }
+  },
+  "S11": {
+   "stage": "S11",
+   "name": "交付",
+   "status": "done",
+   "staleReason": [],
+   "outs": 1,
+   "verdict": "keep",
+   "verdictLabel": "可继续(缓存命中)",
+   "compared": {
+    "inputs": {
+     "count": 1,
+     "changed": [],
+     "added": [],
+     "removed": []
+    },
+    "tool": {
+     "count": 0,
+     "changed": [],
+     "added": [],
+     "removed": []
+    },
+    "external": {
+     "count": 1,
+     "changed": [],
+     "added": [],
+     "removed": []
+    },
+    "params": {
+     "declared": [],
+     "current": {},
+     "changed": []
+    },
+    "outputs": {
+     "count": 1,
+     "recordedOutHash": "<hash>",
+     "currentOutHash": "<hash>",
+     "outOfBand": false
+    }
+   }
+  }
+ },
+ "rebuild": {
+  "cascadeFrom": "S3",
+  "rerun": [
+   "S3",
+   "S4",
+   "S5",
+   "S6",
+   "S8"
+  ],
+  "stop": [],
+  "degrade": [],
+  "keepCount": 7,
+  "action": "从 S3 级联重跑(rs_run --from S3;一键入口 05_时间线工程/rebuild.py)"
+ }
+}

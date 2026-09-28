@@ -346,7 +346,12 @@ def test_render_manual_reframe_overrides_plan(tmp_path):
 
 @pytest.fixture(scope="module")
 def vlog_proj(tmp_path_factory):
-    """vlog 夹具工程:8 碎片(横/竖混杂)→ detect → plan → 渲染,产物一次产出多处断言。"""
+    """vlog 夹具工程:8 碎片(横/竖混杂)→ detect → plan → 渲染,产物一次产出多处断言。
+
+    第三册 T3.4 起 vision.track READY=cv2 可用:plan 的 engine/mode 随机器能力在
+    track/static 之间变化,像素几何断言(test_b 等)对该差异稳健(竖屏窗=全幅,
+    横屏 track 窗跟随主体且方块无变形);环境级断言集中在 test_j 自适应。
+    """
     root = tmp_path_factory.mktemp("vlog_e2e")
     rs_paths.ensure(root)
     frames_dir = root / rs_paths.p("state") / "probe_frames"
@@ -427,26 +432,43 @@ def test_a_shots_json_and_boundary_agreement(vlog_proj):
 
 def test_j_reframe_plan_schema(vlog_proj):
     """reframe_plan:9x16、主轨 8 clip 逐条在册、裁切窗比=9:16、窗在源内(渲染同口径);
-    渲染端逐段报告确认 plan 被真实消费(8/8 段 static-center 档,而非静默回退旧档)。"""
+    渲染端逐段报告确认 plan 被真实消费,而非静默回退旧档。
+
+    环境自适应(第三册 T3.4 起 vision.track READY=cv2 可用,track 档在本机为真):
+    检测器在 → 允许 track/static 混合(由检测与硬约束决定);检测器缺 → 必须整体
+    static-center 且降级留痕。两条路径都断言「逐段真实消费 plan」。
+    """
     plan = vlog_proj["plan"]
     assert plan["ratio"] == "9x16" and plan["canvas"] == [CW, CH]
-    assert plan["engine"] == "static-center" and plan["degraded"] is True, \
-        "本环境 bytetrack 未部署,须为 static-center 降级档(如实留痕)"
     entries = {e["clipId"]: e for e in plan["clips"]}
     seg_tags = [r.get("reframe", "") for r in vlog_proj["render"]["segs"]]
-    assert seg_tags == ["static-center"] * N_FRAGS, \
-        f"主轨 8 段必须逐段消费 reframe_plan:{seg_tags}"
+    if plan["engine"] == "track":
+        for e in plan["clips"]:
+            assert e["mode"] in ("track", "static-center"), e["mode"]
+            if e["mode"] == "track":
+                traj = e.get("trajectory") or []
+                assert 2 <= len(traj) <= rs_reframe.TRACK_MAX_KEYS, (
+                    f"轨迹关键帧数越界:{len(traj)}(渲染端表达式深度约束)")
+        assert all(t in ("track", "static-center") for t in seg_tags), seg_tags
+    else:
+        assert plan["degraded"] is True, "engine=static-center 必须带降级留痕"
+        assert seg_tags == ["static-center"] * N_FRAGS, seg_tags
+    assert all(t for t in seg_tags), f"主轨 8 段必须逐段消费 reframe_plan:{seg_tags}"
     for i in range(N_FRAGS):
         cid = f"V1-{i + 1:03d}"
         assert cid in entries, f"主轨 {cid} 缺 reframe 条目"
         e = entries[cid]
         win = e["cropWindow"]
-        assert abs(win["w"] / win["h"] - 9 / 16) * max(win["w"], win["h"]) \
-            <= rs_render.REFRAME_RATIO_EPS, f"{cid} 窗比必须=9:16(裁切不拉伸)"
+        assert abs(win["w"] / win["h"] - 9 / 16) * max(win["w"], win["h"])             <= rs_render.REFRAME_RATIO_EPS, f"{cid} 窗比必须=9:16(裁切不拉伸)"
         assert win["x0"] >= 0 and win["y0"] >= 0
         assert win["x0"] + win["w"] <= e["srcWidth"] + 1e-6
         assert win["y0"] + win["h"] <= e["srcHeight"] + 1e-6
-        assert e["durationMs"] == FRAG_MS and e["violations"] == []
+        assert e["durationMs"] == FRAG_MS
+        if e["mode"] == "track":
+            assert e["violations"] == [], f"{cid} track 档不得有切破主体违规"
+        else:
+            # 检测到主体但越窗/未检出 → static-center + 留痕(T3.4 显式降级语义)
+            assert e["violations"] or e.get("degradeNote"), f"{cid} 降级必须留痕"
 
 
 @pixel_only

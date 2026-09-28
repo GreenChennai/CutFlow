@@ -163,6 +163,45 @@ def _intent_bgm(project_root: Path) -> dict | None:
     return {"absPath": abs_path, "gainDb": float(bgm.get("gainDb", -18))}
 
 
+def _load_shots(project_root: Path | None) -> list[dict]:
+    """工程 shots.json(T3.2 转场 reason 按镜头关系选择);缺失 → []。"""
+    if project_root is None:
+        return []
+    sp = rs_paths.resolve(project_root, "cut") / "shots.json"
+    if not sp.is_file():
+        return []
+    try:
+        return json.loads(sp.read_text(encoding="utf-8")).get("shots") or []
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError):
+        return []
+
+
+def _shot_index_at(shots: list[dict], ms: int) -> int:
+    """源 ms → 镜 index(半开区间;越界归首/末镜,保证边界比较恒有意义)。"""
+    if not shots:
+        return -1
+    for s in shots:
+        if int(s["startMs"]) <= ms < int(s["endMs"]):
+            return int(s["index"])
+    return int(shots[-1]["index"]) if ms >= int(shots[-1]["endMs"]) else int(shots[0]["index"])
+
+
+def frame_quantize_ms(ms: int, fps: int = 30) -> int:
+    """段长量化到帧网格(整帧取整,起点不动;C 组 T2.16a 实测驱动)。
+
+    keep 段长非帧整数倍时,拼接端逐段把视频 round 到整帧,误差随段数单调累积
+    (assetA 364s/41 段实测 +68.7ms,把终点字幕-语音偏移推过 S9 对齐闸 ≤40ms;
+    音频按名义毫秒裁剪、视频按帧走,二者渐行渐远)。IR 期把段长量化到帧网格后,
+    rs_subtitle.align_events_to_frame_grid 回归恒等(delta≡0),渲染拼接不再拉伸。
+    残差 ≤0.34ms/段(int ms 表示帧周期的截断),远低于闸值。
+    舍入取**半升**(0.5 帧向上,不用银行家舍入):40.5 帧 → 41 帧,避免
+    .5 边界段把后续切点整体拉低 17ms、顶出 beat.snap 的 60ms 吸附窗
+    (test_mixcut_e2e 实测驱动)。
+    """
+    frames = max(1, int(ms * fps / 1000 + 0.5))
+    return int(round(frames * 1000 / fps))
+
+
 def build_from_cutlist(cutlist: dict, *, slug: str, ratio: str = "9x16",
                        xfade_ms: int = 8, with_audio: bool = True,
                        punch_in_auto: bool = False,
@@ -173,13 +212,14 @@ def build_from_cutlist(cutlist: dict, *, slug: str, ratio: str = "9x16",
         raise ValueError("cutlist 缺少 keep 区间(先跑 rs_cut.py --apply)")
     src = cutlist.get("source") or rs_paths.p("materials") + "/"
     segs = keep_to_segments(keep)
+    shots = _load_shots(project_root)      # T3.2:镜头关系参与转场 reason 选择
 
     video, audio = [], []
     cursor = 0
     last_punch_ms = -PUNCH_MIN_GAP_MS      # v0.11 R3 punch-in 密度控制(§5.3)
     punch_count = 0
     for i, (a, b) in enumerate(keep):
-        dur = b - a
+        dur = frame_quantize_ms(b - a)     # 帧网格量化:见 frame_quantize_ms(C 组实测)
         clip = {"src": src, "startMs": cursor, "durationMs": dur, "sourceInMs": a}
         if i > 0 and xfade_ms > 0:
             # B2:唯一合法字段是 durMs(schema/rs_render 同口径);旧字段 "ms" 会被
@@ -188,10 +228,14 @@ def build_from_cutlist(cutlist: dict, *, slug: str, ratio: str = "9x16",
             # (渲染端 1 帧 xfade:视觉即硬切,仅吃掉姿态/alpha 单帧 pop 与音频爆音);
             # ≥1s = 真(话题/章节)切换 → 300ms 交叉溶解(Reisz 语法:dissolve 表达
             # "时间过去了",同段内不用)。渲染端 cap 与整链回退不变(ADR-0023)。
+            # 第三册 T3.2:刀口跨镜头边界(shots.json)→ reason=shot-change,
+            # 让「切在换镜处」可审计;同镜内维持 jumpcut/topic 原语义。
             gap = a - keep[i - 1][1]
+            crosses_shot = (shots and _shot_index_at(shots, keep[i - 1][1] - 1)
+                            != _shot_index_at(shots, a))
             if gap < 1000:
                 clip["transition"] = {"type": "fade", "durMs": int(xfade_ms),
-                                      "reason": "jumpcut"}
+                                      "reason": "shot-change" if crosses_shot else "jumpcut"}
             else:
                 clip["transition"] = {"type": "fade", "durMs": max(int(xfade_ms), 300),
                                       "reason": "topic"}
@@ -350,13 +394,16 @@ def build_from_cards(manifest: dict, wordline: dict, anchors: list[dict], *, slu
 
     clips: list[dict] = []
     freeze_count = 0
+    q_acc = 0                                            # 量化后累计(末卡吸收残差,总长不变)
     for i, g in enumerate(groups):
         item = root_items.get(g["card"])
         if item is None:
             raise ValueError(f"卡「{g['card']}」不在 manifest(先 rs_artboard --scan)")
         src = str(item.get("output", ""))
-        dur = bounds[i + 1] - bounds[i]
-        clip = {"src": src, "startMs": bounds[i], "durationMs": dur, "sourceInMs": 0}
+        last = i == len(groups) - 1
+        dur = (total_ms - q_acc) if last else frame_quantize_ms(bounds[i + 1] - bounds[i])
+        clip = {"src": src, "startMs": q_acc, "durationMs": dur, "sourceInMs": 0}
+        q_acc += dur
         if item.get("kind") == "mp4":
             try:
                 card_ms = int(media_duration_s(_resolve(base_dir, src)) * 1000)
@@ -374,7 +421,7 @@ def build_from_cards(manifest: dict, wordline: dict, anchors: list[dict], *, slu
     doc = {
         "version": 1, "slug": slug, "fps": fps, "canvas": dict(CANVAS[ratio]),
         "tracks": [{"id": "V1", "kind": "video", "clips": clips},
-                   {"kind": "audio", "clips": audio}],
+                   {"id": "A1", "kind": "audio", "clips": audio}],   # M13:补 id,与 build_from_cutlist 契约对称
         "subtitle": _subtitle_refs(base_dir),
         "outputs": [ratio],
         "_meta": {"generatedFrom": "cards", "cardCount": len(clips),

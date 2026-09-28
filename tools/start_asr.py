@@ -13,7 +13,10 @@ sys.path.insert(0, str(REPO / "skills" / "cutflow" / "scripts"))
 cfg = __import__("rs_common").load_config()
 
 os.environ["PATH"] = cfg["ffmpeg_dir"] + os.pathsep + os.environ.get("PATH", "")
-MS = Path(cfg.get("momentshift_dir", r"E:\平日资料\GitHub\MomentShift"))
+# T2.4(H4):MomentShift 目录只由 config 提供,个人盘符不作代码内缺省
+MS = Path(cfg["momentshift_dir"]) if cfg.get("momentshift_dir") else None
+if MS is None or not MS.is_dir():
+    raise SystemExit("config.json 缺 momentshift_dir(或目录不存在),无法定位 MomentShift 引擎")
 
 try:
     import qfluentwidgets  # noqa: F401

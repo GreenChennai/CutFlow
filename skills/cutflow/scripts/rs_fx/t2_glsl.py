@@ -23,6 +23,8 @@ from pathlib import Path
 
 # gl-transitions 统一头:提供 progress/getFromColor/getToColor 与约定 uniforms。
 # 兼容层:老源用 texture2D/gl_FragColor,330 语义下宏替换;main() 调 transition()。
+# T2.2(H2):getFromColor/getToColor 必须采样**入参 uv** —— 恒采全局 v_uv 会把
+# 所有可能的 UV 变换(Mosaic 分块/Swap 透视/LinearBlur 偏移…)静默抹平。
 _HEADER = """#version 330
 in vec2 v_uv;
 out vec4 fragColor;
@@ -31,8 +33,8 @@ uniform sampler2D to;
 uniform float progress;
 uniform float ratio;      // 画幅宽高比(部分 gl-transition 源直接引用)
 #define texture2D texture
-vec4 getFromColor(vec2 uv) { return texture(from, v_uv); }
-vec4 getToColor(vec2 uv)   { return texture(to, v_uv); }
+vec4 getFromColor(vec2 uv) { return texture(from, uv); }
+vec4 getToColor(vec2 uv)   { return texture(to, uv); }
 """
 
 
@@ -152,7 +154,8 @@ def render_overlap(seg_a: Path, seg_b: Path, *, fps: float, tdur_s: float,
         ctx = mgl.create_standalone_context()
     except Exception as exc:  # noqa: BLE001
         raise GLUnavailable(f"GL 上下文创建失败:{exc}") from exc
-    proc = None
+    dec_a = dec_b = enc = None                       # M11:异常路径也要回收子进程
+    fbo = None
     try:
         # --- 帧数口径(零漂移:n_td 由调用方的名义 tdur 决定,不猜) ---
         n_td = max(int(round(tdur_s * fps)), 1)
@@ -193,6 +196,8 @@ def render_overlap(seg_a: Path, seg_b: Path, *, fps: float, tdur_s: float,
         tex_from.filter, tex_to.filter = (mgl.LINEAR, mgl.LINEAR), (mgl.LINEAR, mgl.LINEAR)
         vbo = ctx.buffer(_vertices().tobytes())
         vao = ctx.simple_vertex_array(prog, vbo, "in_pos")
+        # M11:帧缓冲循环外创建一次复用(逐帧 new 是资源泄漏)
+        fbo = ctx.simple_framebuffer((w, h))
         rendered = 0
         frame_bytes = w * h * 3
         for i in range(n_td):
@@ -205,7 +210,6 @@ def render_overlap(seg_a: Path, seg_b: Path, *, fps: float, tdur_s: float,
             tex_from.use(0)
             tex_to.use(1)
             prog["progress"].value = (i + 1) / n_td   # 首帧即有微混合,末帧完全落在 to
-            fbo = ctx.simple_framebuffer((w, h))
             fbo.use()
             vao.render()
             enc.stdin.write(fbo.read(components=3, alignment=1))
@@ -218,6 +222,27 @@ def render_overlap(seg_a: Path, seg_b: Path, *, fps: float, tdur_s: float,
             raise GLUnavailable(f"重叠区编码失败:{(enc.stderr.read() or b'')[-200:]!r}")
         return rendered
     finally:
+        # M11:任何异常路径统一回收三个 ffmpeg 子进程(先关 stdin 再 terminate,
+        # 1s 后仍存活才 kill),不留孤儿进程
+        for p in (enc, dec_a, dec_b):
+            if p is None:
+                continue
+            try:
+                if p.stdin is not None and not p.stdin.closed:
+                    p.stdin.close()
+            except Exception:  # noqa: BLE001
+                pass
+            if p.poll() is None:
+                p.terminate()
+                try:
+                    p.wait(timeout=1)
+                except Exception:  # noqa: BLE001
+                    p.kill()
+        try:
+            if fbo is not None:
+                fbo.release()
+        except Exception:  # noqa: BLE001
+            pass
         try:
             ctx.release()
         except Exception:  # noqa: BLE001

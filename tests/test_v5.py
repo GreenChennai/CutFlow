@@ -1,6 +1,6 @@
 """CutFlow v5 回归测试:自带 ASR / 验证分级 / 一键重建与备份 / artboard 闭环 / 省 Token 纪律。
 
-对应 docs/OPTIMIZATION-v5.md §8 验收线。
+对应 docs/archive/OPTIMIZATION-v5.md §8 验收线。
 运行:pytest tests/ -q
 """
 import json

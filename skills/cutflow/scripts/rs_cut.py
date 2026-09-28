@@ -40,7 +40,7 @@ import rs_paths  # noqa: E402  — 阶段路径唯一真相源(ADR-0046),本文�
 
 DETECTOR_VERSION = "cutflow-1.2"
 REASONS = {"silence", "breath", "filler", "false_start", "retake",
-           "stumble", "repetition", "off_topic", "manual", "waiting"}
+           "stumble", "repetition", "off_topic", "manual", "waiting", "shot_change"}
 CONF_REMOVE, CONF_REVIEW = 0.90, 0.60
 SILENCE_MIN_MS = 600          # 静音判定:VAD 间隔 ≥600ms
 DEAD_AIR_MIN_MS = 1200        # "有画面无语音"长段(调整仪容/换提词器)
@@ -57,6 +57,14 @@ WAITING_MIN_MS = 2000                    # waiting 下限(与 rs_screen.WAITING_
 WAITING_MARGIN_IN_MS = 120               # 入点留白(detect_dead_air 同款,防起音被削)
 WAITING_MARGIN_OUT_MS = 120              # 出点留白(给 tailKeep 自然余量)
 
+# ---- 第三册 T3.2:镜头边界信号(shots.json 接进粗剪)----
+# 「镜头切换 + 语音停顿」→ 天然换镜点:候选删除停顿段,刀口对齐镜头边界。
+# 只在停顿里下刀(voice gap ≥ SHOT_CUT_GAP_MS),宁可漏检不错切;置信度压在
+# review 档(<CONF_REMOVE),换镜与否最终由 IR 转场语法(shot-change)表达。
+SHOT_CUT_GAP_MS = 240                    # 边界处语音停顿下限(≥2 音节换气)
+SHOT_CUT_TOL_MS = 200                    # 镜头边界落在停顿内的容差(切点粒度 ±100ms 同域)
+SHOT_CUT_CONF = 0.62                     # review 档置信度(<CONF_REMOVE)
+
 # guard 按 reason 分档(OPTIMIZATION-v7 #3):
 #   「重录/整段重来」的切点本就紧邻语音,要求它落在静音区 = 永远无法 remove;
 #   但 `wordClipped`(不切断字内音素)永不放松 —— 这是"宁可漏删不可错删"的底线。
@@ -69,6 +77,7 @@ GUARD_REQUIRED: dict[str, tuple[str, ...]] = {
     "off_topic": ("wordClipped", "tailKeep"),
     "manual": ("wordClipped", "tailKeep"),
     "waiting": ("wordClipped", "tailKeep"),
+    "shot_change": ("wordClipped", "tailKeep"),
     "silence": GUARD_ALL, "breath": GUARD_ALL, "filler": GUARD_ALL,
 }
 # 应被剪掉的"元话语":口播人员要求重来的话,不该出现在成片里(review 候选,不自动删)
@@ -424,7 +433,7 @@ def _chain_merge(cuts: list[dict], tol_ms: int = 300) -> list[dict]:
 
 
 def detect_retake(wl: dict, max_gap_ms: int = 30000, min_ratio: float = 0.80,
-                  max_sents: int = 6) -> list[dict]:
+                  max_sents: int = 6, stats: dict | None = None) -> list[dict]:
     """重录:**滑动窗口内任意两句**高度相似且后者更完整 → 删 [最早旧尝试, 最后一次尝试)。
 
     v0.7.0(OPTIMIZATION-v7 #3):旧实现只比相邻两句,而"说完一段/调整后再重来"常跨
@@ -436,9 +445,15 @@ def detect_retake(wl: dict, max_gap_ms: int = 30000, min_ratio: float = 0.80,
     SequenceMatcher 的 real_quick_ratio/quick_ratio 上界(比例上界 < 阈值即早停,
     绝不会进全量 ratio)筛掉够不到阈值的配对;上界过滤是纯剪枝,只省计算不改判定,
     输出与旧实现逐条一致。
+
+    T2.7(H7):`ratio()` 曾被复制粘贴连算两遍(每个过剪枝的候选多付一次全量
+    序列比对,直接抵销剪枝收益),已删。`stats` 传 dict 时回填剪枝留痕:
+    {pairs, prunedPairs, fullRatioCalls} —— prunedPairs>0 证明剪枝真的在省算。
     """
     spans = _sentence_spans(wl)
     out: list[dict] = []
+    st = stats if stats is not None else {}
+    st["pairs"] = st["prunedPairs"] = st["fullRatioCalls"] = 0
     for i, a in enumerate(spans):
         if not a["text"]:
             continue
@@ -453,6 +468,7 @@ def detect_retake(wl: dict, max_gap_ms: int = 30000, min_ratio: float = 0.80,
                 break                        # 早停:窗口按时间间隔截断(既有判据)
             if not _more_complete(b["text"], a["text"]):
                 continue
+            st["pairs"] += 1
             if matcher_a is None:
                 matcher_a = SequenceMatcher(None, a["text"], b["text"])
             else:
@@ -460,13 +476,13 @@ def detect_retake(wl: dict, max_gap_ms: int = 30000, min_ratio: float = 0.80,
             # 剪枝:real_quick_ratio ≥ quick_ratio ≥ ratio 是数学上界,上界低于阈值
             # 的配对不可能命中,直接跳过(不付全量对齐的代价)
             if matcher_a.real_quick_ratio() < min_ratio:
+                st["prunedPairs"] += 1
                 continue
             if matcher_a.quick_ratio() < min_ratio:
+                st["prunedPairs"] += 1
                 continue
             ratio = matcher_a.ratio()
-            if ratio < min_ratio:
-                continue
-            ratio = matcher_a.ratio()
+            st["fullRatioCalls"] += 1
             if ratio < min_ratio:
                 continue
             best = j                        # 取窗口内**最后一次**相似尝试(语义与旧实现一致)
@@ -710,11 +726,54 @@ def detect_waiting(wl: dict, media: str | None = None, wl_path: str | None = Non
     return _dedupe(out)
 
 
+def detect_shot_change(wl: dict, wl_path: str | None = None, min_gap_ms: int = SHOT_CUT_GAP_MS
+                       ) -> list[dict]:
+    """镜头边界检测器(T3.2):shots.json 的镜边界 ∩ 语音停顿 → reason=shot_change 候选。
+
+    语义:换镜点若恰逢说话人换气(停顿 ≥min_gap_ms),删除停顿段让成片在镜头
+    边界处切换 —— 视觉切换与语义切换对齐,IR 端(rs_ir)据此标 reason=shot-change。
+    shots.json 缺失 → 空列表(留痕由 CLI 的 params.shotsDetector 承担,零静默)。
+    """
+    if not wl_path:
+        return []
+    root = Path(wl_path).resolve().parent.parent
+    sp = rs_paths.resolve(root, "cut") / "shots.json"
+    if not sp.is_file():
+        return []
+    try:
+        doc = json.loads(sp.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError):
+        return []
+    shots = doc.get("shots") or []
+    if len(shots) < 2:
+        return []
+    chars = wl.get("chars", [])
+    gaps = _gap_windows(chars)
+    out: list[dict] = []
+    for s in shots[:-1]:                     # 末镜边界=片尾,不产生候选
+        b = int(s["endMs"])
+        for g in gaps:
+            if g["ms"] < min_gap_ms:
+                continue
+            if not (g["startMs"] - SHOT_CUT_TOL_MS <= b <= g["endMs"] + SHOT_CUT_TOL_MS):
+                continue
+            in_ms = max(int(g["startMs"]), b - SHOT_CUT_TOL_MS)
+            out_ms = min(int(g["endMs"]), b + SHOT_CUT_TOL_MS)
+            if out_ms - in_ms < SMOOTH_MINCUT_MS:
+                continue
+            out.append({"inMs": in_ms, "outMs": out_ms, "reason": "shot_change",
+                        "conf": SHOT_CUT_CONF,
+                        "note": f"镜头切换+语音停顿({g['ms']}ms),建议在此换镜"
+                                f"(镜 {s.get('index')} 结束)"})
+            break                            # 一个边界只出一次候选
+    return _dedupe(out)
+
+
 DETECTORS = {"silence": detect_silence, "dead_air": detect_dead_air,
              "filler": detect_filler, "repetition": detect_repetition,
              "retake": detect_retake, "retake_block": detect_retake_block,
              "self_negative": detect_self_negative, "hesitate": detect_hesitate,
-             "waiting": detect_waiting}
+             "waiting": detect_waiting, "shots": detect_shot_change}
 
 
 # ---------------------------------------------------------------- 融合
@@ -1173,6 +1232,7 @@ def main() -> int:
     names = list(DETECTORS) if a.detect in ("all", "") else [s.strip() for s in a.detect.split(",")]
     cuts: list[dict] = []
     counts: dict[str, int] = {}
+    retake_stats: dict = {}
     for name in names:
         fn = DETECTORS.get(name)
         if not fn:
@@ -1181,8 +1241,10 @@ def main() -> int:
             got = fn(wl, media=a.media)
         elif name == "waiting":
             got = fn(wl, media=a.media, wl_path=a.wordline, screen=a.screen)
+        elif name == "shots":
+            got = fn(wl, wl_path=a.wordline)
         elif name == "retake":
-            got = fn(wl, min_ratio=a.retake_ratio)
+            got = fn(wl, min_ratio=a.retake_ratio, stats=retake_stats)
         else:
             got = fn(wl)
         counts[name] = len(got)
@@ -1199,13 +1261,24 @@ def main() -> int:
         protects = normalize_protect(a.protect)          # J2:先验区间形状,坏区间快速失败
     except ValueError as exc:
         return emit(False, "BAD_PROTECT", str(exc), exit_code=2)
+    # T3.2 零静默:shots 检测器有否 shots.json 可吃,进 cutlist 留痕
+    shots_trace = None
+    if "shots" in names:
+        shots_trace = {"shotsJson": None, "skipped": "无 shots.json(先 rs_shot.py detect)"}
+        if a.wordline:
+            sp = rs_paths.resolve(Path(a.wordline).resolve().parent.parent, "cut") / "shots.json"
+            if sp.is_file():
+                shots_trace = {"shotsJson": sp.name, "candidates": counts.get("shots", 0)}
     params = {"silenceMinMs": a.min_silence_ms, "tailKeepMs": TAIL_KEEP_MS,
               "retakeRatio": a.retake_ratio, "confRemove": CONF_REMOVE,
               "confReview": CONF_REVIEW,
               "tailReserveMs": a.tail_reserve_ms,
               "waitingMinMs": WAITING_MIN_MS,
               "recordedIsMeasured": wl.get("durationProvenance") == "ffprobe",
-              "protect": protects}
+              "protect": protects,
+              "shotsDetector": shots_trace,
+              # T2.7(H7):剪枝命中率留痕(prunedPairs>0 = 剪枝真的在省算)
+              "retakePrune": retake_stats}
     # P26-3:给了 --media 就顺手 ffprobe 实测,keep 末段终点保底以实测为唯一真相
     if a.media and Path(a.media).is_file():
         measured = probe_duration_ms(a.media)
@@ -1237,7 +1310,9 @@ def main() -> int:
                                       "detectors": counts, "remove": len(removes),
                                       "review": len(reviews), "removedMs": cl["removedMs"],
                                       "srcTotalMs": cl["srcTotalMs"], "keep": cl["keep"],
-                                      "tail": cl.get("tail")})
+                                      "tail": cl.get("tail"),
+                                      # T2.7(H7):剪枝命中率留痕(prunedPairs>0 = 剪枝在省算)
+                                      "retakePrune": retake_stats})
 
 
 if __name__ == "__main__":

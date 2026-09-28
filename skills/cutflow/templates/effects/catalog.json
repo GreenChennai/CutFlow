@@ -509,7 +509,10 @@
    "license": null,
    "domain": "render",
    "note": "setpts 变速改段时长,与零漂移硬约束冲突;待 IR 变速区间表达升版",
-   "originName": null
+   "originName": null,
+   "owner": "第二册",
+   "trigger": "IR 变速区间表达升版落地(零漂移口径在 schema 层重定义)",
+   "degrade": "已注册 T2 占位:rs_fx.build_clip_fx 跳过该特效并 fxDegraded 留痕(不渲不报错);intent/verify 经 is_executable 判不可选;目录留痕=status=登记待实现"
   },
   {
    "id": "effect.split.grid",
@@ -537,7 +540,10 @@
    "license": null,
    "domain": "render",
    "note": "xstack 分块错峰(>6 块成本显著上升,分册02 §3.3);待 fc 分块扩展",
-   "originName": null
+   "originName": null,
+   "owner": "第二册",
+   "trigger": "fc 分块(xstack)扩展落地,并复核 >6 块的渲染成本",
+   "degrade": "已注册 T2 占位:rs_fx.build_clip_fx 跳过该特效并 fxDegraded 留痕(不渲不报错);intent/verify 经 is_executable 判不可选;目录留痕=status=登记待实现"
   },
   {
    "id": "effect.tv.off",
@@ -1049,7 +1055,10 @@
    "license": null,
    "domain": "render",
    "note": "radial 遮罩位移需 fc/mask;禁 geq(ADR-0022)→ 待 fc 遮罩扩展",
-   "originName": null
+   "originName": null,
+   "owner": "第二册",
+   "trigger": "fc 遮罩/位移扩展落地(ADR-0022 geq 禁令不变)",
+   "degrade": "已注册 T2 占位:rs_fx.build_clip_fx 跳过该特效并 fxDegraded 留痕(不渲不报错);intent/verify 经 is_executable 判不可选;目录留痕=status=登记待实现"
   },
   {
    "id": "fx.transition.三屏放大",
@@ -1070,7 +1079,10 @@
    "license": null,
    "domain": "render",
    "note": null,
-   "originName": "三屏放大"
+   "originName": "三屏放大",
+   "owner": "第二册",
+   "trigger": "对应 gl-transitions 源收录进 templates/effects/glsl,并按第二册 T2.2 判据(逐条编译 + 像素级断言)真渲通过",
+   "degrade": "未注册:fx.apply 报 FX_UNREGISTERED 结构化错误(不静默);catalog search 与 is_executable 过滤为不可选;目录留痕=status=登记待实现"
   },
   {
    "id": "fx.transition.上下翻页",
@@ -1091,7 +1103,10 @@
    "license": null,
    "domain": "render",
    "note": null,
-   "originName": "上下翻页"
+   "originName": "上下翻页",
+   "owner": "第二册",
+   "trigger": "对应 gl-transitions 源收录进 templates/effects/glsl,并按第二册 T2.2 判据(逐条编译 + 像素级断言)真渲通过",
+   "degrade": "未注册:fx.apply 报 FX_UNREGISTERED 结构化错误(不静默);catalog search 与 is_executable 过滤为不可选;目录留痕=status=登记待实现"
   },
   {
    "id": "fx.transition.卡片翻转",
@@ -1112,7 +1127,10 @@
    "license": null,
    "domain": "render",
    "note": null,
-   "originName": "卡片翻转"
+   "originName": "卡片翻转",
+   "owner": "第二册",
+   "trigger": "对应 gl-transitions 源收录进 templates/effects/glsl,并按第二册 T2.2 判据(逐条编译 + 像素级断言)真渲通过",
+   "degrade": "未注册:fx.apply 报 FX_UNREGISTERED 结构化错误(不静默);catalog search 与 is_executable 过滤为不可选;目录留痕=status=登记待实现"
   },
   {
    "id": "fx.transition.名片揭开",
@@ -1133,7 +1151,10 @@
    "license": null,
    "domain": "render",
    "note": null,
-   "originName": "名片揭开"
+   "originName": "名片揭开",
+   "owner": "第二册",
+   "trigger": "对应 gl-transitions 源收录进 templates/effects/glsl,并按第二册 T2.2 判据(逐条编译 + 像素级断言)真渲通过",
+   "degrade": "未注册:fx.apply 报 FX_UNREGISTERED 结构化错误(不静默);catalog search 与 is_executable 过滤为不可选;目录留痕=status=登记待实现"
   },
   {
    "id": "fx.transition.圆幕闪现",
@@ -1154,7 +1175,10 @@
    "license": null,
    "domain": "render",
    "note": null,
-   "originName": "圆幕闪现"
+   "originName": "圆幕闪现",
+   "owner": "第二册",
+   "trigger": "对应 gl-transitions 源收录进 templates/effects/glsl,并按第二册 T2.2 判据(逐条编译 + 像素级断言)真渲通过",
+   "degrade": "未注册:fx.apply 报 FX_UNREGISTERED 结构化错误(不静默);catalog search 与 is_executable 过滤为不可选;目录留痕=status=登记待实现"
   },
   {
    "id": "fx.transition.圆形遮罩 I",
@@ -1175,7 +1199,10 @@
    "license": null,
    "domain": "render",
    "note": null,
-   "originName": "圆形遮罩 I"
+   "originName": "圆形遮罩 I",
+   "owner": "第二册",
+   "trigger": "对应 gl-transitions 源收录进 templates/effects/glsl,并按第二册 T2.2 判据(逐条编译 + 像素级断言)真渲通过",
+   "degrade": "未注册:fx.apply 报 FX_UNREGISTERED 结构化错误(不静默);catalog search 与 is_executable 过滤为不可选;目录留痕=status=登记待实现"
   },
   {
    "id": "fx.transition.复古放映",
@@ -1196,7 +1223,10 @@
    "license": null,
    "domain": "render",
    "note": null,
-   "originName": "复古放映"
+   "originName": "复古放映",
+   "owner": "第二册",
+   "trigger": "对应 gl-transitions 源收录进 templates/effects/glsl,并按第二册 T2.2 判据(逐条编译 + 像素级断言)真渲通过",
+   "degrade": "未注册:fx.apply 报 FX_UNREGISTERED 结构化错误(不静默);catalog search 与 is_executable 过滤为不可选;目录留痕=status=登记待实现"
   },
   {
    "id": "fx.transition.字母拼贴",
@@ -1217,7 +1247,10 @@
    "license": null,
    "domain": "render",
    "note": null,
-   "originName": "字母拼贴"
+   "originName": "字母拼贴",
+   "owner": "第二册",
+   "trigger": "对应 gl-transitions 源收录进 templates/effects/glsl,并按第二册 T2.2 判据(逐条编译 + 像素级断言)真渲通过",
+   "degrade": "未注册:fx.apply 报 FX_UNREGISTERED 结构化错误(不静默);catalog search 与 is_executable 过滤为不可选;目录留痕=status=登记待实现"
   },
   {
    "id": "fx.transition.封套撕裂",
@@ -1238,7 +1271,10 @@
    "license": null,
    "domain": "render",
    "note": null,
-   "originName": "封套撕裂"
+   "originName": "封套撕裂",
+   "owner": "第二册",
+   "trigger": "对应 gl-transitions 源收录进 templates/effects/glsl,并按第二册 T2.2 判据(逐条编译 + 像素级断言)真渲通过",
+   "degrade": "未注册:fx.apply 报 FX_UNREGISTERED 结构化错误(不静默);catalog search 与 is_executable 过滤为不可选;目录留痕=status=登记待实现"
   },
   {
    "id": "fx.transition.抖动(转场)",
@@ -1259,7 +1295,10 @@
    "license": null,
    "domain": "render",
    "note": null,
-   "originName": "抖动(转场)"
+   "originName": "抖动(转场)",
+   "owner": "第二册",
+   "trigger": "对应 gl-transitions 源收录进 templates/effects/glsl,并按第二册 T2.2 判据(逐条编译 + 像素级断言)真渲通过",
+   "degrade": "未注册:fx.apply 报 FX_UNREGISTERED 结构化错误(不静默);catalog search 与 is_executable 过滤为不可选;目录留痕=status=登记待实现"
   },
   {
    "id": "fx.transition.拍摄器眨眼",
@@ -1280,7 +1319,10 @@
    "license": null,
    "domain": "render",
    "note": null,
-   "originName": "拍摄器眨眼"
+   "originName": "拍摄器眨眼",
+   "owner": "第二册",
+   "trigger": "对应 gl-transitions 源收录进 templates/effects/glsl,并按第二册 T2.2 判据(逐条编译 + 像素级断言)真渲通过",
+   "degrade": "未注册:fx.apply 报 FX_UNREGISTERED 结构化错误(不静默);catalog search 与 is_executable 过滤为不可选;目录留痕=status=登记待实现"
   },
   {
    "id": "fx.transition.撕拉转场",
@@ -1301,7 +1343,10 @@
    "license": null,
    "domain": "render",
    "note": null,
-   "originName": "撕拉转场"
+   "originName": "撕拉转场",
+   "owner": "第二册",
+   "trigger": "对应 gl-transitions 源收录进 templates/effects/glsl,并按第二册 T2.2 判据(逐条编译 + 像素级断言)真渲通过",
+   "degrade": "未注册:fx.apply 报 FX_UNREGISTERED 结构化错误(不静默);catalog search 与 is_executable 过滤为不可选;目录留痕=status=登记待实现"
   },
   {
    "id": "fx.transition.撕纸拉屏",
@@ -1322,7 +1367,10 @@
    "license": null,
    "domain": "render",
    "note": null,
-   "originName": "撕纸拉屏"
+   "originName": "撕纸拉屏",
+   "owner": "第二册",
+   "trigger": "对应 gl-transitions 源收录进 templates/effects/glsl,并按第二册 T2.2 判据(逐条编译 + 像素级断言)真渲通过",
+   "degrade": "未注册:fx.apply 报 FX_UNREGISTERED 结构化错误(不静默);catalog search 与 is_executable 过滤为不可选;目录留痕=status=登记待实现"
   },
   {
    "id": "fx.transition.撕纸揭除",
@@ -1343,7 +1391,10 @@
    "license": null,
    "domain": "render",
    "note": null,
-   "originName": "撕纸揭除"
+   "originName": "撕纸揭除",
+   "owner": "第二册",
+   "trigger": "对应 gl-transitions 源收录进 templates/effects/glsl,并按第二册 T2.2 判据(逐条编译 + 像素级断言)真渲通过",
+   "degrade": "未注册:fx.apply 报 FX_UNREGISTERED 结构化错误(不静默);catalog search 与 is_executable 过滤为不可选;目录留痕=status=登记待实现"
   },
   {
    "id": "fx.transition.放映机",
@@ -1364,7 +1415,10 @@
    "license": null,
    "domain": "render",
    "note": null,
-   "originName": "放映机"
+   "originName": "放映机",
+   "owner": "第二册",
+   "trigger": "对应 gl-transitions 源收录进 templates/effects/glsl,并按第二册 T2.2 判据(逐条编译 + 像素级断言)真渲通过",
+   "degrade": "未注册:fx.apply 报 FX_UNREGISTERED 结构化错误(不静默);catalog search 与 is_executable 过滤为不可选;目录留痕=status=登记待实现"
   },
   {
    "id": "fx.transition.方片翻转",
@@ -1385,7 +1439,10 @@
    "license": null,
    "domain": "render",
    "note": null,
-   "originName": "方片翻转"
+   "originName": "方片翻转",
+   "owner": "第二册",
+   "trigger": "对应 gl-transitions 源收录进 templates/effects/glsl,并按第二册 T2.2 判据(逐条编译 + 像素级断言)真渲通过",
+   "degrade": "未注册:fx.apply 报 FX_UNREGISTERED 结构化错误(不静默);catalog search 与 is_executable 过滤为不可选;目录留痕=status=登记待实现"
   },
   {
    "id": "fx.transition.旋转圆盘",
@@ -1406,7 +1463,10 @@
    "license": null,
    "domain": "render",
    "note": null,
-   "originName": "旋转圆盘"
+   "originName": "旋转圆盘",
+   "owner": "第二册",
+   "trigger": "对应 gl-transitions 源收录进 templates/effects/glsl,并按第二册 T2.2 判据(逐条编译 + 像素级断言)真渲通过",
+   "degrade": "未注册:fx.apply 报 FX_UNREGISTERED 结构化错误(不静默);catalog search 与 is_executable 过滤为不可选;目录留痕=status=登记待实现"
   },
   {
    "id": "fx.transition.旋转翻页",
@@ -1427,7 +1487,10 @@
    "license": null,
    "domain": "render",
    "note": null,
-   "originName": "旋转翻页"
+   "originName": "旋转翻页",
+   "owner": "第二册",
+   "trigger": "对应 gl-transitions 源收录进 templates/effects/glsl,并按第二册 T2.2 判据(逐条编译 + 像素级断言)真渲通过",
+   "degrade": "未注册:fx.apply 报 FX_UNREGISTERED 结构化错误(不静默);catalog search 与 is_executable 过滤为不可选;目录留痕=status=登记待实现"
   },
   {
    "id": "fx.transition.星星吸入",
@@ -1448,7 +1511,10 @@
    "license": null,
    "domain": "render",
    "note": null,
-   "originName": "星星吸入"
+   "originName": "星星吸入",
+   "owner": "第二册",
+   "trigger": "对应 gl-transitions 源收录进 templates/effects/glsl,并按第二册 T2.2 判据(逐条编译 + 像素级断言)真渲通过",
+   "degrade": "未注册:fx.apply 报 FX_UNREGISTERED 结构化错误(不静默);catalog search 与 is_executable 过滤为不可选;目录留痕=status=登记待实现"
   },
   {
    "id": "fx.transition.星星空间推近",
@@ -1469,7 +1535,10 @@
    "license": null,
    "domain": "render",
    "note": null,
-   "originName": "星星空间推近"
+   "originName": "星星空间推近",
+   "owner": "第二册",
+   "trigger": "对应 gl-transitions 源收录进 templates/effects/glsl,并按第二册 T2.2 判据(逐条编译 + 像素级断言)真渲通过",
+   "degrade": "未注册:fx.apply 报 FX_UNREGISTERED 结构化错误(不静默);catalog search 与 is_executable 过滤为不可选;目录留痕=status=登记待实现"
   },
   {
    "id": "fx.transition.毛边展开",
@@ -1490,7 +1559,10 @@
    "license": null,
    "domain": "render",
    "note": null,
-   "originName": "毛边展开"
+   "originName": "毛边展开",
+   "owner": "第二册",
+   "trigger": "对应 gl-transitions 源收录进 templates/effects/glsl,并按第二册 T2.2 判据(逐条编译 + 像素级断言)真渲通过",
+   "degrade": "未注册:fx.apply 报 FX_UNREGISTERED 结构化错误(不静默);catalog search 与 is_executable 过滤为不可选;目录留痕=status=登记待实现"
   },
   {
    "id": "fx.transition.水墨晕开",
@@ -1511,7 +1583,10 @@
    "license": null,
    "domain": "render",
    "note": null,
-   "originName": "水墨晕开"
+   "originName": "水墨晕开",
+   "owner": "第二册",
+   "trigger": "对应 gl-transitions 源收录进 templates/effects/glsl,并按第二册 T2.2 判据(逐条编译 + 像素级断言)真渲通过",
+   "degrade": "未注册:fx.apply 报 FX_UNREGISTERED 结构化错误(不静默);catalog search 与 is_executable 过滤为不可选;目录留痕=status=登记待实现"
   },
   {
    "id": "fx.transition.水幕散落",
@@ -1532,7 +1607,10 @@
    "license": null,
    "domain": "render",
    "note": null,
-   "originName": "水幕散落"
+   "originName": "水幕散落",
+   "owner": "第二册",
+   "trigger": "对应 gl-transitions 源收录进 templates/effects/glsl,并按第二册 T2.2 判据(逐条编译 + 像素级断言)真渲通过",
+   "degrade": "未注册:fx.apply 报 FX_UNREGISTERED 结构化错误(不静默);catalog search 与 is_executable 过滤为不可选;目录留痕=status=登记待实现"
   },
   {
    "id": "fx.transition.水波",
@@ -1553,7 +1631,10 @@
    "license": null,
    "domain": "render",
    "note": null,
-   "originName": "水波"
+   "originName": "水波",
+   "owner": "第二册",
+   "trigger": "对应 gl-transitions 源收录进 templates/effects/glsl,并按第二册 T2.2 判据(逐条编译 + 像素级断言)真渲通过",
+   "degrade": "未注册:fx.apply 报 FX_UNREGISTERED 结构化错误(不静默);catalog search 与 is_executable 过滤为不可选;目录留痕=status=登记待实现"
   },
   {
    "id": "fx.transition.水流",
@@ -1574,7 +1655,10 @@
    "license": null,
    "domain": "render",
    "note": null,
-   "originName": "水流"
+   "originName": "水流",
+   "owner": "第二册",
+   "trigger": "对应 gl-transitions 源收录进 templates/effects/glsl,并按第二册 T2.2 判据(逐条编译 + 像素级断言)真渲通过",
+   "degrade": "未注册:fx.apply 报 FX_UNREGISTERED 结构化错误(不静默);catalog search 与 is_executable 过滤为不可选;目录留痕=status=登记待实现"
   },
   {
    "id": "fx.transition.波纹掠过",
@@ -1595,7 +1679,10 @@
    "license": null,
    "domain": "render",
    "note": null,
-   "originName": "波纹掠过"
+   "originName": "波纹掠过",
+   "owner": "第二册",
+   "trigger": "对应 gl-transitions 源收录进 templates/effects/glsl,并按第二册 T2.2 判据(逐条编译 + 像素级断言)真渲通过",
+   "degrade": "未注册:fx.apply 报 FX_UNREGISTERED 结构化错误(不静默);catalog search 与 is_executable 过滤为不可选;目录留痕=status=登记待实现"
   },
   {
    "id": "fx.transition.烟雾吹散",
@@ -1616,7 +1703,10 @@
    "license": null,
    "domain": "render",
    "note": null,
-   "originName": "烟雾吹散"
+   "originName": "烟雾吹散",
+   "owner": "第二册",
+   "trigger": "对应 gl-transitions 源收录进 templates/effects/glsl,并按第二册 T2.2 判据(逐条编译 + 像素级断言)真渲通过",
+   "degrade": "未注册:fx.apply 报 FX_UNREGISTERED 结构化错误(不静默);catalog search 与 is_executable 过滤为不可选;目录留痕=status=登记待实现"
   },
   {
    "id": "fx.transition.画笔擦除",
@@ -1637,7 +1727,10 @@
    "license": null,
    "domain": "render",
    "note": null,
-   "originName": "画笔擦除"
+   "originName": "画笔擦除",
+   "owner": "第二册",
+   "trigger": "对应 gl-transitions 源收录进 templates/effects/glsl,并按第二册 T2.2 判据(逐条编译 + 像素级断言)真渲通过",
+   "degrade": "未注册:fx.apply 报 FX_UNREGISTERED 结构化错误(不静默);catalog search 与 is_executable 过滤为不可选;目录留痕=status=登记待实现"
   },
   {
    "id": "fx.transition.相机眨眼",
@@ -1658,7 +1751,10 @@
    "license": null,
    "domain": "render",
    "note": null,
-   "originName": "相机眨眼"
+   "originName": "相机眨眼",
+   "owner": "第二册",
+   "trigger": "对应 gl-transitions 源收录进 templates/effects/glsl,并按第二册 T2.2 判据(逐条编译 + 像素级断言)真渲通过",
+   "degrade": "未注册:fx.apply 报 FX_UNREGISTERED 结构化错误(不静默);catalog search 与 is_executable 过滤为不可选;目录留痕=status=登记待实现"
   },
   {
    "id": "fx.transition.窗格",
@@ -1679,7 +1775,10 @@
    "license": null,
    "domain": "render",
    "note": null,
-   "originName": "窗格"
+   "originName": "窗格",
+   "owner": "第二册",
+   "trigger": "对应 gl-transitions 源收录进 templates/effects/glsl,并按第二册 T2.2 判据(逐条编译 + 像素级断言)真渲通过",
+   "degrade": "未注册:fx.apply 报 FX_UNREGISTERED 结构化错误(不静默);catalog search 与 is_executable 过滤为不可选;目录留痕=status=登记待实现"
   },
   {
    "id": "fx.transition.立体翻面雾气飘散",
@@ -1700,7 +1799,10 @@
    "license": null,
    "domain": "render",
    "note": null,
-   "originName": "立体翻面雾气飘散"
+   "originName": "立体翻面雾气飘散",
+   "owner": "第二册",
+   "trigger": "对应 gl-transitions 源收录进 templates/effects/glsl,并按第二册 T2.2 判据(逐条编译 + 像素级断言)真渲通过",
+   "degrade": "未注册:fx.apply 报 FX_UNREGISTERED 结构化错误(不静默);catalog search 与 is_executable 过滤为不可选;目录留痕=status=登记待实现"
   },
   {
    "id": "fx.transition.立方体",
@@ -1721,7 +1823,10 @@
    "license": null,
    "domain": "render",
    "note": null,
-   "originName": "立方体"
+   "originName": "立方体",
+   "owner": "第二册",
+   "trigger": "对应 gl-transitions 源收录进 templates/effects/glsl,并按第二册 T2.2 判据(逐条编译 + 像素级断言)真渲通过",
+   "degrade": "未注册:fx.apply 报 FX_UNREGISTERED 结构化错误(不静默);catalog search 与 is_executable 过滤为不可选;目录留痕=status=登记待实现"
   },
   {
    "id": "fx.transition.竖栅开合",
@@ -1742,7 +1847,10 @@
    "license": null,
    "domain": "render",
    "note": null,
-   "originName": "竖栅开合"
+   "originName": "竖栅开合",
+   "owner": "第二册",
+   "trigger": "对应 gl-transitions 源收录进 templates/effects/glsl,并按第二册 T2.2 判据(逐条编译 + 像素级断言)真渲通过",
+   "degrade": "未注册:fx.apply 报 FX_UNREGISTERED 结构化错误(不静默);catalog search 与 is_executable 过滤为不可选;目录留痕=status=登记待实现"
   },
   {
    "id": "fx.transition.笔刷",
@@ -1763,7 +1871,10 @@
    "license": null,
    "domain": "render",
    "note": null,
-   "originName": "笔刷"
+   "originName": "笔刷",
+   "owner": "第二册",
+   "trigger": "对应 gl-transitions 源收录进 templates/effects/glsl,并按第二册 T2.2 判据(逐条编译 + 像素级断言)真渲通过",
+   "degrade": "未注册:fx.apply 报 FX_UNREGISTERED 结构化错误(不静默);catalog search 与 is_executable 过滤为不可选;目录留痕=status=登记待实现"
   },
   {
    "id": "fx.transition.网格闪白",
@@ -1784,7 +1895,10 @@
    "license": null,
    "domain": "render",
    "note": null,
-   "originName": "网格闪白"
+   "originName": "网格闪白",
+   "owner": "第二册",
+   "trigger": "对应 gl-transitions 源收录进 templates/effects/glsl,并按第二册 T2.2 判据(逐条编译 + 像素级断言)真渲通过",
+   "degrade": "未注册:fx.apply 报 FX_UNREGISTERED 结构化错误(不静默);catalog search 与 is_executable 过滤为不可选;目录留痕=status=登记待实现"
   },
   {
    "id": "fx.transition.翻篇",
@@ -1805,7 +1919,10 @@
    "license": null,
    "domain": "render",
    "note": null,
-   "originName": "翻篇"
+   "originName": "翻篇",
+   "owner": "第二册",
+   "trigger": "对应 gl-transitions 源收录进 templates/effects/glsl,并按第二册 T2.2 判据(逐条编译 + 像素级断言)真渲通过",
+   "degrade": "未注册:fx.apply 报 FX_UNREGISTERED 结构化错误(不静默);catalog search 与 is_executable 过滤为不可选;目录留痕=status=登记待实现"
   },
   {
    "id": "fx.transition.视频通话",
@@ -1826,7 +1943,10 @@
    "license": null,
    "domain": "render",
    "note": null,
-   "originName": "视频通话"
+   "originName": "视频通话",
+   "owner": "第二册",
+   "trigger": "对应 gl-transitions 源收录进 templates/effects/glsl,并按第二册 T2.2 判据(逐条编译 + 像素级断言)真渲通过",
+   "degrade": "未注册:fx.apply 报 FX_UNREGISTERED 结构化错误(不静默);catalog search 与 is_executable 过滤为不可选;目录留痕=status=登记待实现"
   },
   {
    "id": "fx.transition.边纹扩散",
@@ -1847,7 +1967,10 @@
    "license": null,
    "domain": "render",
    "note": null,
-   "originName": "边纹扩散"
+   "originName": "边纹扩散",
+   "owner": "第二册",
+   "trigger": "对应 gl-transitions 源收录进 templates/effects/glsl,并按第二册 T2.2 判据(逐条编译 + 像素级断言)真渲通过",
+   "degrade": "未注册:fx.apply 报 FX_UNREGISTERED 结构化错误(不静默);catalog search 与 is_executable 过滤为不可选;目录留痕=status=登记待实现"
   },
   {
    "id": "fx.transition.雾化抽象",
@@ -1868,7 +1991,10 @@
    "license": null,
    "domain": "render",
    "note": null,
-   "originName": "雾化抽象"
+   "originName": "雾化抽象",
+   "owner": "第二册",
+   "trigger": "对应 gl-transitions 源收录进 templates/effects/glsl,并按第二册 T2.2 判据(逐条编译 + 像素级断言)真渲通过",
+   "degrade": "未注册:fx.apply 报 FX_UNREGISTERED 结构化错误(不静默);catalog search 与 is_executable 过滤为不可选;目录留痕=status=登记待实现"
   },
   {
    "id": "fx.transition.雾化擦除",
@@ -1889,7 +2015,10 @@
    "license": null,
    "domain": "render",
    "note": null,
-   "originName": "雾化擦除"
+   "originName": "雾化擦除",
+   "owner": "第二册",
+   "trigger": "对应 gl-transitions 源收录进 templates/effects/glsl,并按第二册 T2.2 判据(逐条编译 + 像素级断言)真渲通过",
+   "degrade": "未注册:fx.apply 报 FX_UNREGISTERED 结构化错误(不静默);catalog search 与 is_executable 过滤为不可选;目录留痕=status=登记待实现"
   },
   {
    "id": "fx.unknown.Dally Vlog",
@@ -3704,7 +3833,10 @@
    "license": null,
    "domain": "element",
    "note": "落点 elements/ 涟漪序列帧(对应 v1 screen-recording);元素轨表达未接",
-   "originName": null
+   "originName": null,
+   "owner": "第三册",
+   "trigger": "元素轨 fxId 消费通道落地(rs_fx domain=element 的渲染端消费)",
+   "degrade": "已注册 T2 占位:rs_fx.build_clip_fx 跳过该特效并 fxDegraded 留痕(不渲不报错);intent/verify 经 is_executable 判不可选;目录留痕=status=登记待实现"
   },
   {
    "id": "in.fade.down",
@@ -3840,7 +3972,10 @@
    "license": null,
    "domain": "element",
    "note": "screen.keys 卡已存在(v1);作为通用 fxId 的元素轨表达未接",
-   "originName": null
+   "originName": null,
+   "owner": "第三册",
+   "trigger": "元素轨 fxId 消费通道落地(rs_fx domain=element 的渲染端消费)",
+   "degrade": "已注册 T2 占位:rs_fx.build_clip_fx 跳过该特效并 fxDegraded 留痕(不渲不报错);intent/verify 经 is_executable 判不可选;目录留痕=status=登记待实现"
   },
   {
    "id": "in.lower.third",
@@ -3882,7 +4017,10 @@
    "license": null,
    "domain": "element",
    "note": "任意路径遮罩需 GLSL/形状遮罩;clip 级 T2 未落地",
-   "originName": null
+   "originName": null,
+   "owner": "第三册",
+   "trigger": "GLSL/形状遮罩能力落地(clip 级表达)",
+   "degrade": "已注册 T2 占位:rs_fx.build_clip_fx 跳过该特效并 fxDegraded 留痕(不渲不报错);intent/verify 经 is_executable 判不可选;目录留痕=status=登记待实现"
   },
   {
    "id": "in.progress.bar",
@@ -3903,7 +4041,10 @@
    "license": null,
    "domain": "element",
    "note": "落点 elements/ 进度条元素 + 元素轨动画表达(未接,分册02 §6.2)",
-   "originName": null
+   "originName": null,
+   "owner": "第三册",
+   "trigger": "elements/ 素材落点就绪 + 元素轨动画表达落地",
+   "degrade": "已注册 T2 占位:rs_fx.build_clip_fx 跳过该特效并 fxDegraded 留痕(不渲不报错);intent/verify 经 is_executable 判不可选;目录留痕=status=登记待实现"
   },
   {
    "id": "in.ring.progress",
@@ -3924,7 +4065,10 @@
    "license": null,
    "domain": "element",
    "note": null,
-   "originName": null
+   "originName": null,
+   "owner": "第三册",
+   "trigger": "elements/ 素材落点就绪 + 元素轨动画表达落地",
+   "degrade": "已注册 T2 占位:rs_fx.build_clip_fx 跳过该特效并 fxDegraded 留痕(不渲不报错);intent/verify 经 is_executable 判不可选;目录留痕=status=登记待实现"
   },
   {
    "id": "in.scale.pop",
@@ -3970,7 +4114,10 @@
    "license": null,
    "domain": "element",
    "note": null,
-   "originName": null
+   "originName": null,
+   "owner": "第三册",
+   "trigger": "元素轨 fxId 消费通道落地(rs_fx domain=element 的渲染端消费)",
+   "degrade": "已注册 T2 占位:rs_fx.build_clip_fx 跳过该特效并 fxDegraded 留痕(不渲不报错);intent/verify 经 is_executable 判不可选;目录留痕=status=登记待实现"
   },
   {
    "id": "in.skew",
@@ -4111,7 +4258,10 @@
    "license": null,
    "domain": "subtitle",
    "note": "多元素逐个 delay 80–150ms;需字幕/卡片侧逐元素动画表达(未接),总量 ≤800ms 纪律见分册02 §6.2",
-   "originName": null
+   "originName": null,
+   "owner": "第四册",
+   "trigger": "字幕/卡片侧逐元素动画表达落地(总量 ≤800ms 纪律,分册02 §6.2)",
+   "degrade": "已注册 T2 占位:rs_fx.build_clip_fx 跳过该特效并 fxDegraded 留痕(不渲不报错);intent/verify 经 is_executable 判不可选;目录留痕=status=登记待实现"
   },
   {
    "id": "in.stroke.draw",
@@ -4132,7 +4282,10 @@
    "license": null,
    "domain": "artboard",
    "note": "SVG stroke-dashoffset → artboard 更合适(分册02 §6.2)",
-   "originName": null
+   "originName": null,
+   "owner": "第三册",
+   "trigger": "artboard 侧 SVG stroke-dashoffset 动画表达落地",
+   "degrade": "已注册 T2 占位:rs_fx.build_clip_fx 跳过该特效并 fxDegraded 留痕(不渲不报错);intent/verify 经 is_executable 判不可选;目录留痕=status=登记待实现"
   },
   {
    "id": "in.text.char",
@@ -4439,7 +4592,10 @@
    "license": null,
    "domain": "element",
    "note": null,
-   "originName": null
+   "originName": null,
+   "owner": "第三册",
+   "trigger": "GLSL/形状遮罩能力落地(clip 级表达)",
+   "degrade": "已注册 T2 占位:rs_fx.build_clip_fx 跳过该特效并 fxDegraded 留痕(不渲不报错);intent/verify 经 is_executable 判不可选;目录留痕=status=登记待实现"
   },
   {
    "id": "out.scale.shrink",
@@ -4596,7 +4752,10 @@
    "license": null,
    "domain": "subtitle",
    "note": "后进先出,骨架最后退(artboard §九);落点同 in.stagger",
-   "originName": null
+   "originName": null,
+   "owner": "第四册",
+   "trigger": "字幕/卡片侧逐元素动画表达落地(总量 ≤800ms 纪律,分册02 §6.2)",
+   "degrade": "已注册 T2 占位:rs_fx.build_clip_fx 跳过该特效并 fxDegraded 留痕(不渲不报错);intent/verify 经 is_executable 判不可选;目录留痕=status=登记待实现"
   },
   {
    "id": "out.wipe.dir",

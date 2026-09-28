@@ -1,6 +1,6 @@
 """CutFlow v7 回归测试:字幕同步 / 断句连词 / 粗剪废片段 / 平台画幅 / 类型路由。
 
-对应 `docs/OPTIMIZATION-v7.md` 的验收标准。运行:`pytest tests/ -q`
+对应 `docs/archive/OPTIMIZATION-v7.md` 的验收标准。运行:`pytest tests/ -q`
 """
 import json
 import sys
@@ -434,7 +434,7 @@ def test_cutflow_prompt_skill_removed_and_archived():
     skill = (REPO / "skills/cutflow/SKILL.md").read_text(encoding="utf-8")
     ref = next(l for l in skill.splitlines() if "cutflow-prompt" in l)
     assert "archive" in ref, f"SKILL.md 残留未标注引用:{ref}"
-    plan = (REPO / "docs/PLAN.md").read_text(encoding="utf-8")
+    plan = (REPO / "docs/archive/PLAN.md").read_text(encoding="utf-8")
     assert "cutflow-prompt" in plan, "PLAN.md 历史记录应保留(但需带停用横幅)"
     assert "已停用" in plan and "archive" in plan, "PLAN.md 需有停用/归档横幅"
 

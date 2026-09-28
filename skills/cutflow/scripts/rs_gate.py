@@ -22,7 +22,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 from rs_common import emit, ensure_utf8  # noqa: E402
 
-DEFAULT_CUTFORGE = Path(r"E:\平日资料\GitHub\cutforge")
+# T2.4(H4):cutforge 仓定位不写死个人盘符 —— 缺省取**并置兄弟目录**
+# (与 rs_doctor 的 cutforge 检出同一口径);换机/独立部署设 CUTFORGE_REPO 覆盖。
+DEFAULT_CUTFORGE = Path(__file__).resolve().parents[3].parent / "cutforge"
 
 
 def forge_root() -> Path:

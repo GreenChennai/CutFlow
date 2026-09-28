@@ -479,7 +479,8 @@ def cmd_check() -> int:
     ab_dir = artboard_dir()
     descriptors = None
     try:
-        from rs_run import load_capability_descriptors  # noqa: PLC0415 — 懒加载
+        # T2.14:加载器实现在 rs_common(工具层)—— 机械臂不再反向 import 引擎
+        from rs_common import load_capability_descriptors  # noqa: PLC0415 — 懒加载
         descriptors = load_capability_descriptors()
     except Exception:  # noqa: BLE001 — 描述符加载不可用时降级为不校验(check 不因环境红)
         descriptors = None

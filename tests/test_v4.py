@@ -1,6 +1,6 @@
 """CutFlow v4 回归测试:断句 DP / Wordline 重映射 / guard 三重校验 / 增量缓存键 / 变体矩阵。
 
-对应 docs/OPTIMIZATION-v4.md §9 验收清单与 rules/*.md 的门禁项。
+对应 docs/archive/OPTIMIZATION-v4.md §9 验收清单与 rules/*.md 的门禁项。
 运行:pytest tests/ -q
 """
 import json

@@ -91,7 +91,8 @@ def test_p26_1_probe_media_duration_ms_with_real_media(tmp_path):
     subprocess.run([FFMPEG, "-y", "-v", "error", "-f", "lavfi",
                     "-i", "sine=frequency=440:sample_rate=48000",
                     "-t", "2", str(wav)], check=True)
-    ms = rs_align.probe_media_duration_ms(wav, {"ffmpeg_dir": "E:\\Tools\\ffmpeg\\bin"})
+    ms = rs_align.probe_media_duration_ms(
+        wav, {"ffmpeg_dir": str(Path(FFMPEG).parent)})   # T2.4(H4):用本机 ffmpeg 实际目录,不写盘符
     assert ms is not None and 1900 <= ms <= 2200, ms
     # 探测失败(坏文件)返回 None,绝不抛
     bad = tmp_path / "bad.wav"
@@ -380,14 +381,17 @@ def test_p28_2_subtitle_never_emits_sub100ms_card():
           "srcDurationMs": 4400, "finalDurationMs": 2210, "removedMs": 2190,
           "degraded": False, "degradeReasons": []}
     events, meta = rsub.events_from_wordline(wl, 12)
-    # 任何产出的卡,内容字有效时长都不得 <100ms
-    for e in events:
-        assert rsub._ghost_span_ms(e) >= rsub.GHOST_MIN_MS, (e["text"], e["start"], e["end"])
+    # T4.1b/T4.2(第四册):DP 以禁止边界排除幽灵卡;事件层不再并卡/丢弃(丢弃=丢字),
+    # 漏网幽灵卡必须显式暴露:unsatisfied + violations(带替代方案)+ review queue。
     gc = meta["ghostCards"]
-    assert gc["merged"] + len(gc["dropped"]) >= 1, "幽灵句必须被并卡或丢弃并留痕"
-    if gc["dropped"]:
-        assert any("这个待会儿删掉呢" in d for d in gc["dropped"])
-        assert any("幽灵卡" in r for r in meta["degradeReasons"]), meta["degradeReasons"]
+    assert gc["merged"] == 0 and gc["dropped"] == [], "有字级时间时禁止并卡/丢字"
+    ghosts = [e for e in events if rsub._ghost_span_ms(e) < rsub.GHOST_MIN_MS]
+    assert ghosts, "坍缩句的卡必须原样出卡交复核(不再静默丢弃)"
+    issues = [u for u in meta["unsatisfied"] if u["issue"] == "ghostCard"]
+    assert issues and all(u["suggestion"] for u in issues)
+    assert any("幽灵卡" in v for v in meta["violations"]), meta["violations"]
+    qtypes = {q["type"] for q in meta["reviewQueue"]}
+    assert "ghostCard" in qtypes, meta["reviewQueue"]
 
 
 # ================================================================ P29 二次 remap 防护
@@ -551,7 +555,8 @@ def test_p30_3_override_precheck_splits_overlong_at_pause():
     notes = meta["overridePrecheck"]
     assert notes and notes[0]["chars"] == 19 and notes[0]["maxChars"] == 12
     assert notes[0]["splitInto"] == [10, 9], notes[0]      # 恰在空格停顿处拆 10+9(经验贴原案)
-    assert notes[0]["strategy"] == "pause"
+    # T4.13:字级停顿(gap ≥200ms,含空格槽位两侧的间隙)优先于停顿符,二者落点一致
+    assert notes[0]["strategy"] in ("gap", "pause"), notes[0]
     # 内容字一个不丢
     got = "".join(e["text"] for e in events).replace(" ", "")
     assert "依据财税" in got and "文件的规定" in got
@@ -564,8 +569,13 @@ def test_p30_3_precheck_keeps_card_when_no_pause():
     ov = {"cards": [{"text": text}]}
     events, meta = rsub.events_from_override(wl, ov, 12)
     notes = meta["overridePrecheck"]
-    assert notes and notes[0]["strategy"] == "none" and notes[0]["splitInto"] == []
+    # T4.13(第四册):拆不动 → 进复核队列(strategy="review")并给最长可容字卡数,
+    # 编译期即红(violations 可见),不再「留痕后等 rs_verify 硬失败」。
+    assert notes and notes[0]["strategy"] == "review" and notes[0]["splitInto"] == []
+    assert notes[0]["maxFeasibleChars"] == 12, notes[0]
     assert meta["overrideCards"] == 1, "无停顿不得强拆 request"
+    assert meta["violations"], "编译期违规必须可见"
+    assert any(q["type"] == "overrideUnsplittable" for q in meta["reviewQueue"])
 
 
 # ================================================================ 端到端验收(§5,需 ffmpeg)

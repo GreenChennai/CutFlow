@@ -41,9 +41,14 @@ ELEM_DIR = ASSETS / "elements"
 HUAZI_DIR = ASSETS / "huazi"
 MANIFEST = ASSETS / "manifest.json"
 FONTS_JSON = REPO / "skills" / "cutflow" / "templates" / "fonts.json"
-# artboard 路径锁定(用户 2026-09-26 确认,分册01 §5):工作区级为唯一准绳
-ARTBOARD_LOCKED = Path(r"E:\平日资料\GitHub\.agents\skills\artboard")
-FONTS_README = ARTBOARD_LOCKED / "fonts" / "README.md"
+# artboard 路径解析(T2.4/H4):个人盘符不入库 —— 经 rs_common.artboard_dir()
+# (config.json `artboard_dir` → env `CUTFLOW_ARTBOARD_DIR`),缺席为 None,
+# 字体表生成步骤给出可读报错(artboard 是字体索引唯一真相源)。
+sys.path.insert(0, str(REPO / "skills" / "cutflow" / "scripts"))
+from rs_common import artboard_dir  # noqa: E402
+
+ARTBOARD_LOCKED = artboard_dir()
+FONTS_README = (ARTBOARD_LOCKED / "fonts" / "README.md") if ARTBOARD_LOCKED else None
 
 GENERATED_AT = "2026-09-26T00:00:00+08:00"   # 固定构建日,保证幂等
 SELF_SOURCE = "自产"
@@ -1757,8 +1762,10 @@ def _font_family(dir_path: Path, fallback: str) -> tuple[str, str]:
 
 def build_fonts_json() -> None:
     """由 artboard fonts/README.md 生成 templates/fonts.json(逐键一致,禁手改)。"""
-    if not FONTS_README.is_file():
-        raise SystemExit(f"找不到 artboard 字体总目录:{FONTS_README}(检查工作区级 artboard 技能)")
+    if FONTS_README is None or not FONTS_README.is_file():
+        raise SystemExit(f"找不到 artboard 字体总目录:{FONTS_README or '(artboard_dir 未解析到,'
+                                                                    '查 config.json / CUTFLOW_ARTBOARD_DIR)'}"
+                         "(检查工作区级 artboard 技能)")
     text = FONTS_README.read_text(encoding="utf-8")
     fonts = []
     for m in re.finditer(r"^\| \[[\w-]+\]([\w-]+)/INTRO\.md \| (.+?) \| (.+?) \| (.+?) \| (.+?) \|",

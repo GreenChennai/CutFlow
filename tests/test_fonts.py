@@ -32,7 +32,9 @@ import rs_common  # noqa: E402
 import rs_doctor  # noqa: E402
 import rs_subtitle as rs  # noqa: E402
 
-ARTBOARD_FONTS = rs_common.ARTBOARD_LOCKED_DIR / "fonts"
+# T2.4(H4):artboard 目录统一走 rs_common.artboard_dir() 解析(常量已废);
+# 缺席机器给占位路径,相关用例由 _HAS_ARTBOARD skipif 把守。
+ARTBOARD_FONTS = (rs_common.artboard_dir() or Path("<artboard-unset>")) / "fonts"
 
 # 硬编码字体名黑名单(写入 ASS/CSS 的字体必须走查表;系统私有字体名禁现)
 FONT_DENYLIST = ("Microsoft YaHei", "微软雅黑")
@@ -49,7 +51,7 @@ def test_fonts_json_matches_artboard_readme():
     table_dirs = {f["dir"] for f in doc["fonts"]}
     assert table_dirs == art_dirs, \
         f"fonts.json 与 artboard README 不一致:多 {table_dirs - art_dirs} 缺 {art_dirs - table_dirs}"
-    assert doc.get("artboardLockedPath") == str(rs_common.ARTBOARD_LOCKED_DIR)
+    assert doc.get("artboardLockedPath") == str(rs_common.artboard_dir())
     assert doc.get("default", {}).get("subtitle") in table_dirs
 
 
@@ -79,8 +81,10 @@ def test_resolve_font_uses_table_and_caches():
 
 
 def test_resolve_font_degrades_without_table(monkeypatch):
-    """回滚档(分册01 §9):fonts.json 删除 → 内置兜底 + WARN + 留痕。"""
-    monkeypatch.setattr(rs, "FONTS_JSON", Path("Z:/nonexistent/fonts.json"))
+    """回滚档(分册01 §9):fonts.json 删除 → 内置兜底 + WARN + 留痕。
+
+    M14 后读口统一在 rs_common.load_fonts_doc(),patch 指向共享 FONTS_JSON。"""
+    monkeypatch.setattr(rs_common, "FONTS_JSON", Path("Z:/nonexistent/fonts.json"))
     rs._font_state.update({"family": None, "degraded": False, "reason": ""})
     family = rs.resolve_font()
     assert family == rs.FONT_FALLBACK
@@ -125,7 +129,7 @@ def test_generated_huazi_templates_use_table_font():
 @pytest.mark.skipif(not _HAS_ARTBOARD, reason='artboard 技能目录缺席(CI),字体对表由本地/装 artboard 环境把守')
 def test_doctor_artboard_locked_path_check():
     from pathlib import Path as _P
-    locked = str(rs_common.ARTBOARD_LOCKED_DIR)
+    locked = str(rs_common.artboard_dir())
     ok = rs_doctor._artboard_locked_check(locked)
     assert ok["ok"] is True and ok["fatal"] is False
     bad = rs_doctor._artboard_locked_check("C:/definitely/not/artboard")
@@ -136,7 +140,8 @@ def test_doctor_artboard_locked_path_check():
 
 
 def test_doctor_source_registers_locked_check():
+    import re as _re
     src = (SCRIPTS / "rs_doctor.py").read_text(encoding="utf-8")
     assert "_artboard_locked_check" in src, "doctor 未登记 artboard 锁定路径判据"
-    assert str(rs_common.ARTBOARD_LOCKED_DIR) not in src or \
-        "ARTBOARD_LOCKED_DIR" in src, "锁定路径应取 rs_common 常量,不在 doctor 里写字面量"
+    assert "artboard_dir()" in src, "锁定路径应经 rs_common.artboard_dir() 解析(T2.4/H4)"
+    assert not _re.search(r"[Ee]:[\\/]", src), "doctor 不得写个人盘符字面量"

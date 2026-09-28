@@ -27,6 +27,8 @@
 | 产物存在 | 至少一个成片 |
 | **效果使用率(处方九判据,ADR-0059 v2 M13)** | 工程 `intent_decisions.json` 声明了 `effects_prescription` 时:显式转场/入场/出场 ≥ 处方 min(EFFECTS_UNUSED);花哨类 ≤ flashy_max 且不连续、显式转场密度 ≤1 处/8s 且 ≤ 片长÷10(EFFECTS_OVERUSED,密度为告警档);同效果 10s 不重复(EFFECTS_REPEATED);每处显式转场带非「好看」类 reason(EFFECTS_UNMOTIVATED);音效 ≤2/15s 且不重复(SFX_DENSITY);任一秒明暗反转 ≤3 次(FLASH_UNSAFE,安全底线);成片视频流时长零漂移(DURATION_DRIFT,告警档)。无处方 → skipped 留痕 NO_PRESCRIPTION(不误伤旧工程) |
 | **成片体检 QC**(v0.11,`rs_sync --qc`;**v0.12 起 `rs_verify` L0 内置执行**) | 片内黑帧 ≥0.3s = 0;冻结 ≥2.5s = 0;VFR = 0;响度 I∈[-15,-13] LUFS 且 TP ≤ -0.9;静音 ≥2s 仅告警(首尾白名单)。成片缺失/工具不可用 = skipped 留痕(ADR-0021 失败语义),体检 FAIL 才硬失败 |
+| **成片音频内容闸**(ADR-0021,原 SKILL 铁律 22 后半下沉) | 交付前对成片音轨跑 ASR 对账(片头句唯一/相似度达标/无重复段);报告里出现「跳过」也必须核对原因,不得当作通过 |
+| **阈值纪律**(原 SKILL 铁律 23 后半下沉) | 音频闸/对齐闸不过 → **修归一化与坐标系,禁止调阈值**(AUDIO_SIM_MIN / END_TOL_MS 等);渲染后时长断言报警必须查完再交付 |
 
 ```powershell
 python skills/cutflow/scripts/rs_verify.py <工程根>            # L0

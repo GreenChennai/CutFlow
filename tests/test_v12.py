@@ -1,6 +1,6 @@
 """v0.12 迭代回归:安信德 GEO 纯动画实测必修批(B1-B8)+ 立项(I1/I2/I7)。
 
-对账:docs/HANDOFF-v0.12-安信德GEO实测迭代与修复.md §2/§3/§6。
+对账:docs/archive/HANDOFF-v0.12-安信德GEO实测迭代与修复.md §2/§3/§6。
 ffmpeg 实机用例沿用 test_v8/test_v10/test_v11 的 skipif 体例;只测公开 seam。
 """
 from __future__ import annotations

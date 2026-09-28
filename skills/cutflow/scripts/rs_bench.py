@@ -1,7 +1,11 @@
-"""自评抽帧:渲染产物 → 关键点网格图(首2s/尾2s/剪点±1.5s/随机3点),供 Agent 目测。
+"""自评抽帧:渲染产物 → 关键点网格图,供 Agent 目测。
 
 用法:python rs_bench.py <成片.mp4> --ir <project.json> --out <png>
-"""
+      python rs_bench.py <成片.mp4> --ir <project.json> --shots <shots.json> \n             [--wordline <wordline.json>] [--vision <vision.json>] --out <png>
+
+缺省档 = 首尾2s/剪点±1.5s/随机3点(旧启发式);给 --shots 即走**价值选帧**
+(第三册 T3.9:镜头中点+运动峰值+字幕起点前2帧+人脸出现帧,硬上限
+min(24, 3+镜头数),rs_vision.value_frames 同一实现)。"""
 from __future__ import annotations
 
 import argparse
@@ -38,6 +42,29 @@ def video_stream_duration(video: Path, cfg: dict) -> float:
     return media_duration_s(video, cfg)
 
 
+def _value_points(shots_path: Path, wordline: str | None, vision: str | None,
+                  fps: float) -> list[float]:
+    """价值选帧点(T3.9):委托 rs_vision.value_frames;wordline/vision 缺席按无处理。"""
+    import rs_vision  # noqa: PLC0415 — 感知层共享库(第三册新建)
+    doc = json.loads(shots_path.read_text(encoding="utf-8"))
+    shots = doc.get("shots") or []
+    if not shots:
+        die(2, "NO_SHOTS", "shots.json 无镜头,价值选帧不可用")
+    chars: list[dict] = []
+    if wordline and Path(wordline).is_file():
+        wl = json.loads(Path(wordline).read_text(encoding="utf-8"))
+        chars = [c for c in (wl.get("chars") or [])
+                 if isinstance(c, dict) and c.get("startMs") is not None]
+    face_first: dict[int, int] = {}
+    if vision and Path(vision).is_file():
+        vis = json.loads(Path(vision).read_text(encoding="utf-8"))
+        for row in vis.get("shots") or []:
+            ms = int(row.get("faceFirstMs") or -1)
+            if ms > 0:
+                face_first[int(row["index"])] = ms
+    return rs_vision.value_frames(shots, chars, fps=fps, face_first_ms=face_first)
+
+
 def sample_points(duration: float, ir: dict | None, seed: int = 7) -> list[float]:
     pts = [1.0, 2.0, duration - 2.0, duration - 1.0]
     if ir:
@@ -54,6 +81,10 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("video")
     ap.add_argument("--ir", default=None)
+    ap.add_argument("--shots", default=None,
+                    help="shots.json(给出即走价值选帧,T3.9)")
+    ap.add_argument("--wordline", default=None, help="wordline.json(字幕起点前 2 帧选点)")
+    ap.add_argument("--vision", default=None, help="vision.json(人脸出现帧选点,L1)")
     ap.add_argument("--out", required=True)
     ap.add_argument("--cols", type=int, default=4)
     a = ap.parse_args()
@@ -63,7 +94,13 @@ def main() -> int:
     cfg = load_config()
     dur = video_stream_duration(video, cfg)
     ir = json.loads(Path(a.ir).read_text(encoding="utf-8")) if a.ir else None
-    pts = sample_points(dur, ir)
+    if a.shots:
+        pts = _value_points(Path(a.shots), a.wordline, a.vision, fps=30.0)
+        pts = [min(max(p, 0.0), max(dur - 0.05, 0.0)) for p in pts]
+        mode = "value"
+    else:
+        pts = sample_points(dur, ir)
+        mode = "heuristic"
     out = Path(a.out)
     out.parent.mkdir(parents=True, exist_ok=True)
 
@@ -84,8 +121,9 @@ def main() -> int:
         die(4, "BENCH_EMPTY",
             f"抽帧空输出(视频流 {dur:.2f}s,采样点 {[round(t, 2) for t in pts]});"
             "疑似采样点越界或流异常,拒绝假成功(BUGREPORT B6)")
-    return emit(True, "BENCH_OK", f"{n} 个采样点已拼图", {"grid": str(out), "duration_s": round(dur, 2),
-                                                       "points": [round(t, 2) for t in pts]})
+    return emit(True, "BENCH_OK", f"{n} 个采样点已拼图({mode})",
+                {"grid": str(out), "duration_s": round(dur, 2), "mode": mode,
+                 "points": [round(t, 2) for t in pts]})
 
 
 def _xstack_layout(cols: int, rows: int) -> str:

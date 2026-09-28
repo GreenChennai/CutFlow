@@ -10,7 +10,12 @@
   单卡时长 [0.83s, 7s]、CPS ≤9
   成片总时长 vs Wordline        ±0.5s(给了 --video 时用 ffprobe 实测)
   成片音频内容(B10 闸)        片头句=1 次 / 归一相似度 ≥0.90 / 无重复段
-                                (--audio-content;ASR 不可用时跳过,跑出问题即硬失败)
+                                (--audio-content;ASR 不可用时**显式降级留痕**
+                                (contentGate 三态 pass/fail/degraded,T5.6a),
+                                跑出问题即硬失败)
+  独立对账(成片实测路,T5.6c) speech_intervals / check_speech_alignment:
+                                成片音轨实测语音活动 ↔ 字幕时间轴(由 rs_verify
+                                L0 判据 check_subtitle_speech 调用,不经中间产物)
 
 把「人工对轴」变成「阈值告警 + 一键修正」:失败项给出建议平移量。
 """
@@ -29,6 +34,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 from rs_common import emit, ffmpeg_bin, media_duration_s, p95, run  # noqa: E402
 import rs_paths  # noqa: E402  — 阶段路径唯一真相源(ADR-0046),本文件禁止目录字面量
+import segmentation  # noqa: E402  — T4.14 断句上下文审计复用同一实现
 
 MEDIAN_MAX, P95_MAX = 40, 80          # ms(起点偏移)
 END_MEDIAN_MAX, END_P95_MAX = 60, 120  # ms(终点偏移;允许可读性延长,故放宽)
@@ -53,6 +59,17 @@ HOOK_EVERY_SEC = 3.0                  # 3s 一钩子(画面变化密度的理想
 TWIST_EVERY_SEC = 5.0                 # 5s 一反转:任意两变化间隔超此值 → WARN
 ANCHOR_WINDOW_SEC = 7.0               # 前 7s 必须完成情绪锚定(至少一次画面变化)
 WASTE_FRAME_MIN_S = 1.2               # ≥1.2s 全画面无变化即废帧(短剧禁废帧,硬判)
+
+# ---- T5.6c 独立对账(成片实测路;docs/QC-SCORECARD.md 附录 A)----
+# 第二条推导路径:不经任何工程中间产物,直接从**成片音轨**实测语音活动,
+# 与字幕时间轴互推。产物互证(check_alignment 等)拿同一份错误镜像时,
+# 这条成片实测路不受传染 —— 两路结论不一致即红。
+SPEECH_MIN_S = 0.25                   # 语音活动最短区间(音节级;低于 QC 的 0.3/2.0:只找"有没有声")
+SPEECH_NOISE_DB = -35                 # 语音活动门限(低于 QC 的 -30dB:宁多记不少记)
+CARD_LEAD_TOL_S = 0.30                # 卡起点允许早于/晚于语音活动的余量(LEAD_MS + 帧取整 + 呼吸)
+SILENCE_NEAR_S = 0.35                 # 剪点↔静音区对账容差
+CARD_SILENCE_RATIO = 0.30             # 卡起点落实测静默区占比 ≥ 此值 → 字幕时间轴与成片语音错位(红)
+SPEECH_COVER_MIN = 0.70               # 语音活动被字幕卡覆盖的时长占比下限(字幕是否覆盖全部台词)
 
 
 def run_qc(video: Path, cfg: dict | None = None) -> dict:
@@ -313,11 +330,24 @@ def wordline_index(wl: dict) -> tuple[str, list[int]]:
     return "".join(buf), idx
 
 
+def _min_card_dur_ms() -> int:
+    """卡片可读性下限 ms(单一真相源 = rs_subtitle.MIN_DUR_S;失败回退同值)。
+
+    与 rs_subtitle 的契约镜像有 tests/test_rs_sync_min_dur_pin.py 把守:
+    两处值漂移即红。
+    """
+    try:
+        import rs_subtitle  # noqa: PLC0415 — 惰性导入,避免无谓加载断句器
+        return int(rs_subtitle.MIN_DUR_S * 1000)
+    except Exception:  # noqa: BLE001 — 常量镜像的兜底必须与真值一致
+        return 830
+
+
 def check_offsets(events: list[dict], wl: dict) -> list[dict]:
     """按文本顺序匹配每条字幕卡到 wordline,计算偏移(ms)。"""
     text, cmap = wordline_index(wl)
     chars = wl.get("chars", [])
-    cursor, rows = 0, []
+    cursor, rows, matched = 0, [], []
     for e in events:
         t = norm(e["text"])
         if not t:
@@ -330,16 +360,52 @@ def check_offsets(events: list[dict], wl: dict) -> list[dict]:
             continue
         first = cmap[k]
         last = cmap[min(k + len(t) - 1, len(cmap) - 1)]
-        expect = (int(chars[first]["startMs"]) - LEAD_MS) / 1000.0
-        expect_end = (int(chars[last]["endMs"]) + LEAD_MS) / 1000.0
+        expect_ms = int(chars[first]["startMs"]) - LEAD_MS
+        expect = expect_ms / 1000.0
+        speech_end_ms = int(chars[last]["endMs"]) + LEAD_MS
+        # 终点期望双轨(C 组 assetA/assetB 实测驱动):
+        # · endOffsetMs 对「末字+LEAD」——语音覆盖域,把守「切掉语音」(early_end);
+        # · releaseOffsetMs 对「合法终点窗」——END_* 闸注释「允许可读性延长,故放宽」
+        #   的本意:断句器把短语音卡延长到 MIN_DUR_S 是契约行为,不是「滞留」。
+        #   合法窗 = max(末字+LEAD, 起点期望+MIN_DUR_S),再被下一卡起点封顶
+        #   (v17 验收口径:短卡延长被下一卡锚点顶住时不算欠延长)。
+        #   把守「滞留过久」(over_end,END_MAX_RELEASE_MS 硬闸)与终点统计。
+        matched.append((e, expect_ms, speech_end_ms))
         rows.append({"event": e["text"][:14], "matched": True,
                      "actual": round(e["start"], 3), "expected": round(max(0.0, expect), 3),
                      "offsetMs": round((e["start"] - max(0.0, expect)) * 1000, 1),
-                     "endOffsetMs": round((e["end"] - expect_end) * 1000, 1),
+                     "endOffsetMs": round((e["end"] - speech_end_ms / 1000.0) * 1000, 1),
                      "durMs": round((e["end"] - e["start"]) * 1000, 1),
                      "chars": len(t)})
         cursor = k + len(t)
+    _attach_release_offsets(rows, matched)
     return rows
+
+
+def _attach_release_offsets(rows: list[dict],
+                            matched: list[tuple[dict, int, int]]) -> None:
+    """为 matched 行回填 releaseOffsetMs(合法终点窗;见 check_offsets 双轨注释)。
+
+    releaseOffsetMs = endOffsetMs + (speech_end − 合法窗):
+    合法窗 = max(末字+LEAD, 起点期望+MIN_DUR_S),被下一卡起点封顶
+    (延长到顶即契约内,不为负计)。matched 与 rows 中 matched 行按序一一对应。
+    """
+    floor_default = _min_card_dur_ms()
+    ri = 0
+    for j, (e, expect_ms, speech_end_ms) in enumerate(matched):
+        while not rows[ri].get("matched"):
+            ri += 1
+        next_start_ms = None
+        for e2, _s, _e2 in matched[j + 1:]:
+            next_start_ms = int(round(e2["start"] * 1000))
+            break
+        window_ms = expect_ms + floor_default
+        if next_start_ms is not None:
+            window_ms = min(window_ms, next_start_ms - 1)
+        window_ms = max(speech_end_ms, window_ms)
+        rows[ri]["releaseOffsetMs"] = round(
+            rows[ri]["endOffsetMs"] + (speech_end_ms - window_ms), 1)
+        ri += 1
 
 
 OVERLAP_TOL_MS = 34.0                 # 帧取整伪重叠容差 = 1 帧 @30fps(v0.8.1,--frame-ms 可调)
@@ -358,16 +424,19 @@ def summarize(rows: list[dict], events: list[dict], legacy_end: bool = False,
     p95_ms = p95(offs)
     bias = statistics.median([r["offsetMs"] for r in rows if r.get("matched")]) if offs else 0.0
 
-    # 终点偏移:只盯两个真实故障——「比末字早退」(切掉语音)与「滞留过久」(字幕赖着不走)
-    end_offs = [r["endOffsetMs"] for r in rows if r.get("matched") and "endOffsetMs" in r]
+    # 终点偏移双轨(见 check_offsets):统计与「滞留」看 releaseOffsetMs(合法终点窗,
+    # 允许可读性延长);「切掉语音」看 endOffsetMs(语音覆盖,契约内延长不豁免早退)。
+    end_offs = [r.get("releaseOffsetMs", r["endOffsetMs"])
+                for r in rows if r.get("matched") and "endOffsetMs" in r]
     end_abs = [abs(x) for x in end_offs]
     median_end = statistics.median(end_abs) if end_abs else 0.0
     p95_end = p95(end_abs)
     bias_end = statistics.median(end_offs) if end_offs else 0.0
     early_end = [f"{r['event']} {r['endOffsetMs']:.0f}ms"
                  for r in rows if r.get("matched") and r.get("endOffsetMs", 0) < -END_TOL_MS]
-    over_end = [f"{r['event']} +{r['endOffsetMs']:.0f}ms"
-                for r in rows if r.get("matched") and r.get("endOffsetMs", 0) > END_MAX_RELEASE_MS]
+    over_end = [f"{r['event']} +{r.get('releaseOffsetMs', r['endOffsetMs']):.0f}ms"
+                for r in rows if r.get("matched")
+                and r.get("releaseOffsetMs", r["endOffsetMs"]) > END_MAX_RELEASE_MS]
 
     overlaps, bad_dur, short_dur, bad_cps = 0, [], [], []
     tol_s = overlap_tol_ms / 1000.0
@@ -596,6 +665,178 @@ def _audio_check_cached(video: Path, wl_path: Path, outdir: Path, wl: dict,
     return result
 
 
+def content_gate_state(audio_check: dict | None) -> dict:
+    """B10 内容闸三态归一(T5.6a):pass / fail / degraded —— 降级必须显式留痕。
+
+    REVIEW-20260916 根因 2:内容闸 opt-in 且"工具缺失 → skipped"形同静默放行。
+    三态化之后:跑不了(无模型/无服务/无成片)必须以 degraded 态落进
+    sync_rows.json / sync_report.md,让"本轮绿灯不包含内容正确性"可见,
+    不许把降级当成干净的通过。state=absent 仅用于未请求 --audio-content 的
+    独立直调(S9 装配默认携带,absent 也是显式留痕,不是静默)。
+    """
+    if audio_check is None:
+        return {"gate": "B10", "state": "absent", "scope": "content",
+                "note": "本次运行未请求 --audio-content(S9 装配默认携带;独立直调需显式传参)"}
+    if audio_check.get("skipped"):
+        return {"gate": "B10", "state": "degraded", "scope": "content",
+                "reason": str(audio_check.get("skipped"))[:200],
+                "note": "内容闸真跑不了 → 显式降级留痕(三态);本轮绿灯不包含内容正确性,"
+                        "须补跑 ASR 对账或人工抽检"}
+    out = {"gate": "B10", "scope": "content",
+           "state": "pass" if audio_check.get("pass") else "fail"}
+    if not audio_check.get("pass"):
+        out["problems"] = [str(p) for p in (audio_check.get("problems") or [])]
+    else:
+        out["similarity"] = audio_check.get("similarity")
+    return out
+
+
+# ---------------------------------------------------------------- T5.6c 独立对账(成片实测路)
+
+def speech_intervals(video: Path, cfg: dict | None = None,
+                     min_s: float = SPEECH_MIN_S,
+                     noise_db: float = SPEECH_NOISE_DB) -> tuple[list[list[float]] | None, str]:
+    """成片音轨实测语音活动区间(独立证据源,不经任何工程中间产物)。
+
+    返回 (区间秒列表 [[a,b],...], 错误说明);探测失败 → (None, 原因) —— 调用方
+    必须显式降级留痕(ADR-0021 失败语义),绝不静默放行。
+    """
+    try:
+        p = run([ffmpeg_bin(cfg), "-v", "info", "-i", str(video),
+                 "-af", f"silencedetect=n={noise_db:g}dB:d={min_s:g}",
+                 "-f", "null", "-"], timeout=600)
+    except (Exception, SystemExit) as exc:  # noqa: BLE001 — 工具缺席/执行失败留痕(die 的 SystemExit 也要接)
+        return None, f"语音活动探测执行失败:{str(exc)[:120]}"
+    if p.returncode != 0:
+        # rc≠0(坏流/无音轨/解码失败)→ 探测结论不可信,必须显式降级,绝不用残缺 stderr 冒充实测
+        return None, f"语音活动探测失败(exit {p.returncode}):{(p.stderr or '')[-120]}"
+    silences: list[list[float]] = []
+    dur = 0.0
+    for line in (p.stderr or "").splitlines():
+        m = re.search(r"silence_start:\s*([-\d.]+)", line)
+        if m:
+            silences.append([float(m.group(1)), None])
+            continue
+        m = re.search(r"silence_end:\s*([-\d.]+)", line)
+        if m and silences and silences[-1][1] is None:
+            silences[-1][1] = float(m.group(1))
+    try:
+        dur = media_duration_s(video, cfg)
+    except (Exception, SystemExit):  # noqa: BLE001 — 时长探测失败按 0 处理(开放区间照收;die 的 SystemExit 也要接)
+        dur = 0.0
+    if silences and silences[-1][1] is None:
+        silences[-1][1] = dur if dur > 0 else silences[-1][0] + min_s
+    # 语音活动 = 静音的补集;末尾静音后的尾段也是语音
+    speech: list[list[float]] = []
+    cursor = 0.0
+    for a, b in silences:
+        if a > cursor + min_s / 2:
+            speech.append([round(cursor, 2), round(a, 2)])
+        cursor = max(cursor, b)
+    if dur <= 0 or cursor < dur - min_s / 2:
+        speech.append([round(cursor, 2), round(dur, 2) if dur > 0 else round(cursor + min_s, 2)])
+    return [s for s in speech if s[1] > s[0]], ""
+
+
+def final_joins_s(cutlist: dict | None) -> list[float]:
+    """cutlist.applied 的 keep 区间拼接点(成片域,秒):剪点是否落在停顿处的对账对象。
+
+    keep=[[0,4000],[4100,9000]] → join 在成片 4.0s 处(第一段拼完的位置)。
+    """
+    if not cutlist:
+        return []
+    acc = 0.0
+    joins: list[float] = []
+    for a, b in (cutlist.get("keep") or [])[:-1]:
+        acc += int(b) - int(a)
+        joins.append(acc / 1000.0)
+    return joins
+
+
+def check_speech_alignment(events: list[dict], intervals: list[list[float]] | None,
+                           joins_s: list[float] | None = None) -> dict:
+    """成片语音活动 ↔ 字幕时间轴独立对账(T5.6c 成片路;判据细节见 QC-SCORECARD 附录 A)。
+
+    两路结论(与"产物路"重放对账互为第二条推导路径,不一致即红):
+      ① 字幕是否压着语音说 —— 卡起点落在实测静默区的占比(整体平移/未重烧的特征,硬红);
+      ② 字幕是否覆盖全部台词 —— 语音段起点(片头 0.5s/片尾 1.5s 白名单外)没有被任何
+        卡窗口临近覆盖的占比 ≥50% 且 ≥2 处 → 红(整体缺卡/替换特征);
+      ②' 语音时长覆盖率 <70% → 仅告警(底噪/配乐/垫尾会造成合法的不覆盖,
+        机械口径无 ASR 分不出人声与噪声,硬红误伤率不可接受 —— v17 端到端实测教训);
+      ③ 剪点是否在停顿处 —— 成片拼接点 ↔ 实测静默区(WARN 级:配乐会填满停顿,
+        硬红误伤率不可接受,线索留给人工与 rs_diagnose D3a)。
+    """
+    out: dict = {"applied": True, "scope": "content",
+                 "rule": (f"卡起点落实测静默区占比 <{CARD_SILENCE_RATIO:.0%};"
+                          f"白名单外语音起点无卡临近占比 <50%(成片实测,独立对账)")}
+    cards = [(float(e["start"]), float(e["end"])) for e in events
+             if str(e.get("text") or "").strip()]
+    if not cards:
+        out.update({"pass": True, "skipped": "无字幕卡,语音对账不适用"})
+        return out
+    out["cards"] = len(cards)
+    if not intervals:
+        out.update({"pass": False, "intervals": 0,
+                    "problems": [f"成片音轨实测无语音活动,但字幕卡 {len(cards)} 张"
+                                 "(成片音频被替换/静音/与字幕不同源的强特征)"]})
+        return out
+    out["intervals"] = len(intervals)
+    # ① 卡起点压语音(起点允许有 CARD_LEAD_TOL_S 提前量;落在语音区间内或紧邻起点都算)
+    orphan = [round(s, 2) for s, _e in cards
+              if not any(a - CARD_LEAD_TOL_S <= s <= b + CARD_LEAD_TOL_S
+                         for a, b in intervals)]
+    ratio_orphan = len(orphan) / max(1, len(cards))
+    out["orphanStarts"] = orphan[:20]
+    out["orphanStartRatio"] = round(ratio_orphan, 3)
+    # ② 语音起点覆盖:每个 ≥0.3s 语音段的起点,须有一张卡窗口临近
+    #    (片头 0.5s / 片尾 1.5s 白名单:垫尾/收尾音效合法,不计入)
+    tail_cut = intervals[-1][1] - 1.5
+    onsets = [(a, b) for a, b in intervals if b - a >= 0.30
+              and a >= 0.5 and a <= tail_cut]
+    uncovered = [round(a, 2) for a, _b in onsets
+                 if not any(cs - CARD_LEAD_TOL_S <= a <= ce + CARD_LEAD_TOL_S * 2
+                            for cs, ce in cards)]
+    ratio_uncovered = (len(uncovered) / len(onsets)) if onsets else 0.0
+    out["speechOnsets"] = len(onsets)
+    out["uncoveredOnsets"] = uncovered[:10]
+    out["uncoveredOnsetRatio"] = round(ratio_uncovered, 3)
+    # ②' 语音时长覆盖率(告警级)
+    covered = 0.0
+    total = 0.0
+    for a, b in intervals:
+        span = b - a
+        total += span
+        cov = sum(max(0.0, min(b, ce + CARD_LEAD_TOL_S) - max(a, cs - CARD_LEAD_TOL_S))
+                  for cs, ce in cards)
+        covered += min(cov, span)
+    cover_ratio = (covered / total) if total > 0 else 0.0
+    out["speechCoverRatio"] = round(cover_ratio, 3)
+    problems: list[str] = []
+    if ratio_orphan >= CARD_SILENCE_RATIO:
+        problems.append(f"字幕卡起点 {len(orphan)}/{len(cards)} 落在实测静默区"
+                        f"(≥{CARD_SILENCE_RATIO:.0%};样本 {orphan[:3]})——"
+                        "字幕时间轴与成片语音错位(整体平移/烧录未同步的特征)")
+    if ratio_uncovered >= 0.5 and len(uncovered) >= 2:
+        problems.append(f"实测语音段起点 {len(uncovered)}/{len(onsets)} 无字幕卡临近"
+                        f"(≥50%;样本 {uncovered[:3]})——台词未被字幕覆盖/字幕缺卡/音频被替换")
+    warns: list[str] = []
+    if cover_ratio < SPEECH_COVER_MIN:
+        warns.append(f"成片实测语音活动仅 {cover_ratio:.0%} 被字幕卡覆盖"
+                     f"(<{SPEECH_COVER_MIN:.0%};底噪/配乐/垫尾可致合法不覆盖,请人工核对)")
+    # ③ 剪点是否在停顿处(WARN 级,不翻总判定;配乐填满停顿会误伤,故只留痕)
+    bad_joins = [round(j, 2) for j in (joins_s or [])
+                 if any(a + SILENCE_NEAR_S > j > b - SILENCE_NEAR_S for a, b in intervals)]
+    out["joinsTotal"] = len(joins_s or [])
+    out["joinsMidSpeech"] = bad_joins[:10]
+    if bad_joins:
+        warns.append(f"{len(bad_joins)}/{len(joins_s or [])} 个成片拼接点落在实测语音"
+                     "活动内(剪点未停在停顿处;WARN 级,请人工核对/对照 rs_diagnose D3a)")
+    out["pass"] = not problems
+    out["problems"] = problems
+    out["warns"] = warns
+    return out
+
+
 def check_card_overlap(events: list[dict], ir: dict | None,
                        min_overlap_ms: int = 1) -> list[dict]:
     """字幕卡 ↔ artboard 动画卡 时间窗重叠(动画压字幕)。
@@ -630,6 +871,27 @@ def check_card_overlap(events: list[dict], ir: dict | None,
                             "cardWindow": [w["startMs"], w["endMs"]],
                             "eventWindow": [es, ee]})
     return out
+
+
+# ---------------------------------------------------------------- T4.14 断句上下文审计
+
+def segment_audit(events: list[dict], wl: dict | None = None) -> dict:
+    """「异常换句」断句审计(T4.14):逐卡边界检查固定搭配/动宾/引文切断嫌疑。
+
+    复用 segmentation.audit_boundaries 同一实现(rs_diagnose 的断句审计同源,
+    口径不漂移)。**WARN 级**:嫌疑条目 100% 附可读理由,供 Agent/人工判读,
+    不翻转 sync 总判定(判据:每条嫌疑可解释;硬闸仍由字数/重叠门禁承担)。
+    """
+    texts = [e.get("text") or "" for e in events]
+    terms = tuple(str(t) for t in ((wl or {}).get("terms") or []) if t)
+    issues = segmentation.audit_boundaries(texts, terms=terms)
+    findings = [f"{i['between'][0]}|{i['between'][1]} 「{i['left']}」‖「{i['right']}」: "
+                + ";".join(i["reasons"]) for i in issues]
+    return {"applied": True, "warnOnly": True,
+            "cards": len(texts), "suspects": len(issues),
+            "items": issues, "findings": findings,
+            "rule": "卡边界不得切断固定搭配/动宾/引文(嫌疑条目逐条可解释;WARN 级,人工判读兜底)",
+            "pass": not issues}
 
 
 def expected_duration_s(wl: dict, cfg: dict | None = None) -> tuple[float, dict]:
@@ -731,6 +993,22 @@ def write_report(res: dict, path: Path, video_check: dict | None) -> None:
             for pr in ac.get("problems") or []:
                 lines.append(f"- 问题:{pr}")
             lines.append("")
+    # T5.6a:内容闸三态显式化 —— degraded 不是干净的通过,必须让读者看见
+    cg = res.get("contentGate")
+    if cg:
+        state = str(cg.get("state"))
+        label = {"pass": "通过(成片 ASR 与 wordline 对账一致)",
+                 "fail": "未通过对账(见 audioCheck.problems)",
+                 "degraded": "降级(显式留痕;三态之一,不是通过)",
+                 "absent": "未运行(未请求 --audio-content)"}[state]
+        lines += ["## 内容闸状态(B10 三态:pass / fail / degraded;T5.6a)", "",
+                  f"- 状态:**{state}** — {label}"]
+        if cg.get("reason"):
+            lines.append(f"- 降级原因:{cg['reason']}")
+        if state == "degraded":
+            lines.append("- ⚠ **本轮绿灯不包含内容正确性**(内容闸降级):"
+                         "请补跑 ASR 对账(`rs_sync --audio-content`)或人工抽检后,再宣称完成")
+        lines.append("")
     if res.get("earlyEnd"):
         lines += ["## 字幕早退明细(字幕在末字说完前消失 → 会切掉语音)", ""] + \
                  [f"- {x}" for x in res["earlyEnd"][:20]] + [""]
@@ -744,6 +1022,16 @@ def write_report(res: dict, path: Path, video_check: dict | None) -> None:
     if res.get("shortDuration"):
         lines += ["## 时长过短明细(<0.83s,建议按「必并」合卡)", ""] + \
                  [f"- {x}" for x in res["shortDuration"][:20]] + [""]
+    sa = res.get("segmentAudit")
+    if sa:
+        verdict = ("✓ 无嫌疑边界" if sa.get("pass")
+                   else f"⚠ {sa.get('suspects')} 处嫌疑(逐条可解释,请人工判读)")
+        lines += ["## 断句上下文审计(T4.14,WARN 级——固定搭配/动宾/引文切断嫌疑)", "",
+                  f"- 规则:{sa.get('rule')}",
+                  f"- 判定:{verdict}"]
+        for f in (sa.get("findings") or [])[:20]:
+            lines.append(f"- 疑似异常换句:{f}")
+        lines.append("")
     if res.get("cardOverlaps"):
         lines += ["## 字幕 ↔ 动画卡时间窗重叠(动画压字幕)", ""] + \
                  [f"- {c['event']} ↔ {c['card']} 重叠 {c['overlapMs']}ms" for c in res["cardOverlaps"][:20]] + [""]
@@ -829,6 +1117,9 @@ def main() -> int:
                     help="忽略 audio_check.json 缓存,强制重跑 ASR 对账")
     ap.add_argument("--qc", dest="qc", action="store_true",
                     help="R1 成片体检:黑帧/冻结/VFR/响度机械闸(需 --video;静音仅告警)")
+    ap.add_argument("--segment-audit", dest="segment_audit", action="store_true",
+                    help="T4.14 断句上下文审计:逐卡检查固定搭配/动宾/引文切断嫌疑"
+                         "(WARN 级,条目逐条可解释;结果进 sync_report 与 S9 判据流)")
     a = ap.parse_args()
     a.video = a.video or a.video_pos
 
@@ -853,6 +1144,9 @@ def main() -> int:
     rows = check_offsets(events, wl)
     res = summarize(rows, events, legacy_end=a.legacy_end, overlap_tol_ms=tol_ms)
     res["cardOverlaps"] = []
+    # T4.14 断句上下文审计(WARN 级):进 S9 判据流(sync_rows.json / sync_report)
+    if a.segment_audit:
+        res["segmentAudit"] = segment_audit(events, wl)
     if a.ir:
         try:
             res["cardOverlaps"] = check_card_overlap(
@@ -879,6 +1173,8 @@ def main() -> int:
     outdir.mkdir(parents=True, exist_ok=True)
 
     # B10 音频内容闸:成片音轨 ASR 与 wordline 对账(有 problem → 硬失败)
+    # T5.6a:三态归一(pass/fail/degraded)落 res["contentGate"],降级必须显式留痕,
+    # 不许"工具缺失 → skipped"形同静默放行(REVIEW-20260916 根因 2)。
     audio_check = None
     if a.audio_content:
         if not a.video:
@@ -896,6 +1192,7 @@ def main() -> int:
         else:
             audio_check = {"skipped": f"成片不存在:{video_path}"}
             res["audioCheck"] = audio_check
+    res["contentGate"] = content_gate_state(audio_check)
 
     # R1 成片体检:黑帧/冻结/VFR/响度(需 --video;任何 FAIL → 总判定失败)
     if a.qc:
@@ -934,6 +1231,11 @@ def main() -> int:
                                                       ensure_ascii=False, indent=1), encoding="utf-8")
     msg = (f"偏移中位数 {res['medianMs']}ms / 95 分位 {res['p95Ms']}ms;"
            f"{'通过' if res['pass'] else '未通过'}")
+    cg = res.get("contentGate") or {}
+    if cg.get("state") == "degraded":
+        msg += f";内容闸降级({str(cg.get('reason', ''))[:60]})——绿灯不含内容正确性"
+    elif cg.get("state"):
+        msg += f";内容闸 {cg['state']}"
     return emit(res["pass"], "SYNC_OK" if res["pass"] else "SYNC_FAIL", msg,
                 {"report": str(outdir / "sync_report.md"), **res, "video": video_check},
                 exit_code=0 if res["pass"] else 4)

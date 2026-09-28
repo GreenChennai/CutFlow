@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "description": "字幕约束分级策略表(T4.4)。唯一数据真相源:segmentation / rs_subtitle / rs_verify 三处共读,不再各写常量。硬约束违反 = 非法解(DP 排除 / 门禁阻断);软约束违反 = 只报告 + 给替代方案,不阻断交付。内置回退常量见 segmentation.py(数值必须与本表一致,tests/test_subtitle_policy.py 对拍)。",
+  "constraints": {
+    "hard": {
+      "maxChars": { "9x16": 12, "3x4": 15, "16x9": 22 },
+      "noOverlap": true,
+      "noInWordCut": "降级路径(wordFallback)除外;词内强惩罚 -3.0 并留痕",
+      "ghostMinMs": 100
+    },
+    "soft": {
+      "cpsMax": { "9x16": 9.0, "3x4": 9.0, "16x9": 9.0 },
+      "durRangeS": [0.83, 7.0],
+      "minGapFrames": 2,
+      "beatRangeS": [1.5, 3.5],
+      "minChars": 2
+    }
+  },
+  "sources": {
+    "maxChars": "rules/subtitles.md §4.4:Netflix 16 字是横屏标准;竖屏 CJK 屏宽约 60%,9:16 取 10-12,3:4 取 15",
+    "cpsMax": "Netflix 简体中文:成人 ≤9 字/秒(儿童 ≤7 / SDH ≤11 如需再分级扩展本表)",
+    "durRangeS": "Netflix:min 5/6s(0.83s)/ max 7s",
+    "beatRangeS": "ADR-0004 视觉节拍 1.5-3.5s;>4s 必切,<0.8s 必并(均由 DP/复核承载,门禁不强制)",
+    "ghostMinMs": "P28-2:内容字有效时长 <100ms 的卡 = 幽灵卡,DP 以禁止边界排除(T4.1b)"
+  },
+  "onViolation": {
+    "hard": "100% 进 violations 且带可执行替代方案(override / 平台预设放宽);绝不静默改写文本分组",
+    "soft": "只报告(violations / sync_report),不阻断交付;残余项可由 Agent 复核通道(review_queue)承接"
+  }
+}

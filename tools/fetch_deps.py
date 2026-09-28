@@ -5,7 +5,7 @@
   python tools/fetch_deps.py vqa    # ~630MB,QORA 看图问答(Rust 引擎,免 Python)
   python tools/fetch_deps.py        # 查看部署状态
 
-自带 ASR(见 docs/OPTIMIZATION-v5.md R1):
+自带 ASR(见 docs/archive/OPTIMIZATION-v5.md R1):
   python tools/fetch_deps.py asr                      # ASR 部署状态
   python tools/fetch_deps.py asr --onnx               # 轻量:tools/.venv-asr + numpy/onnxruntime/jieba(~200MB)
   python tools/fetch_deps.py asr --pkg                # 精度:上面再装官方 funasr(含 torch-cpu,~1-2GB,有字级时间戳)

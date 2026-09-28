@@ -21,6 +21,8 @@
 
 > **新画幅要改三处**:`rs_common.RATIOS`(比例→宽高)+ `segmentation.MAX_CHARS/CPS_MAX`(每卡字数与语速上限)+ `rs_subtitle.STYLES[*].size/.margin_v`(三档样式的字号与位置)。**其余模块一律查表**,禁止再写 `1080x1920` 字符串比较 —— `tests/test_v7.py::test_ratio_tables_are_consistent` 会在漏改时红。
 
+> **画幅/平台只查表(原 SKILL 铁律 21 下沉)**:比例→宽高的唯一真相源是 `rs_common.RATIOS`,平台参数的唯一真相源是 `templates/platforms.json`;CPS 上限按当前比例取(`segmentation.cps_max_for`),禁止写死 9x16 口径。
+
 ## 3. 首发四平台
 
 | 平台 | key | 比例 | 画布 | 风格 | 每卡字数 | 安全区(顶/底) |
@@ -33,6 +35,7 @@
 - **小红书为什么能放宽到 15 字**:3:4 屏宽介于 9:16 与 16:9 之间,且底部没有抖音那样的评论遮挡带,安全区下探更深。
 - **B站**字幕贴底走半透明条(弹幕默认在顶部 1/3,不冲突)。
 - 平台只定义"默认值";**brief 里写死的值优先**。
+- **安全区铁律(原 SKILL 铁律 12 下沉)**:字幕与关键信息**不得进入 safeArea 的顶/底条带**(数值以上表与 `templates/platforms.json` 为准,本册是安全区的唯一文档出处);**Logo 默认避开字幕带**(排版行为见 `rules/branding.md`);动画卡安全区另有让位字幕带的加严档(见 `rules/artboard.md`)。
 
 ## 4. 用法
 

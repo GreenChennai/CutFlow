@@ -3,6 +3,8 @@
 用法:
   rs_verify.py <工程根>                 # L0 机械自检(秒级,每次产出后都该跑)
   rs_verify.py <工程根> --level L1      # 追加"待目测清单"(不自动判定,交给 Agent/用户)
+  rs_verify.py <工程根> --score         # L0 + 成片及格线评分卡(五维 100 分制;
+                                        #  总分 <75 非零退出并指出低分维,T5.1/T5.2)
   rs_verify.py <工程根> --mark-first --result pass   # 记录首次检查已通过
   rs_verify.py <工程根> --status        # 只看验证状态
 
@@ -12,6 +14,9 @@
   L2 人工验收  用户显式要求                       — 所有权在用户
 
 铁律:**输出必须携带 verifyLevel 与 firstCheckDone**;缺失即视为未验证。
+铁律(T5.7 门禁分层诚实):每条结论必须带 scope ∈ mechanical(产物自洽)/
+content(成片实测)/ human(须人工判定);文本层禁止无 scope 限定的"通过/OK"——
+L0 只表述为"机械闸通过(L0)",绝不把"L0 通过"说成"成片没问题"。
 """
 from __future__ import annotations
 
@@ -32,6 +37,9 @@ import segmentation  # noqa: E402
 
 CST = timezone(timedelta(hours=8))
 PICTURE_STAGES = {"S3", "S4", "S5"}          # 任一被重跑 → 画面变了 → 提示 L1
+# T4.4:每卡字数 / CPS / 时长阈值统一读 templates/subtitle-policy.json
+# (segmentation / rs_subtitle / rs_verify 三处共读,不再各写常量);
+# DEFAULT_MAX_CHARS 仅作策略表缺失时的内置回退(与 segmentation 内置常量同源)。
 DEFAULT_MAX_CHARS = segmentation.MAX_CHARS
 
 # ---------------------------------------------------------------- 版权门禁(方案 §5.5.3,初值可配)
@@ -135,7 +143,7 @@ def _max_chars(root: Path) -> int:
                 return v
         except json.JSONDecodeError:
             pass
-    return DEFAULT_MAX_CHARS[ratio]
+    return segmentation.max_chars_for(ratio)   # T4.4:回退档走策略表,不再直读常量
 
 
 def check_ir(root: Path) -> dict:
@@ -233,7 +241,11 @@ def check_subtitles(root: Path) -> dict:
     events = rs_sync.parse_ass(ass)
     if not events:
         return {"name": "字幕合规(字数/CPS/时长/不重叠)", "ok": False, "detail": "ASS 无 Dialogue 事件"}
+    # T4.4:阈值统一走策略表(max_chars 查 pipeline 快照失败时回退策略表,
+    # 不再直接取本模块常量;CPS/时长由 check_constraints/cps_max_for 内部共读策略表)。
     max_chars = _max_chars(root)
+    if max_chars == DEFAULT_MAX_CHARS.get(_ratio_of(root)):
+        max_chars = segmentation.max_chars_for(_ratio_of(root))
     cards = []
     for i, e in enumerate(events):
         txt = e["text"].replace(" ", "")
@@ -270,6 +282,153 @@ def check_alignment(root: Path) -> dict:
             "detail": f"中位数 {res['medianMs']}ms / 95 分位 {res['p95Ms']}ms"
                       + (f";未匹配 {len(res['unmatched'])}" if res["unmatched"] else ""),
             "summary": res}
+
+
+def check_replay_remap(root: Path) -> dict:
+    """独立对账·产物路(T5.6c):重放「源 wordline + cutlist → final wordline」纯函数,
+    与盘上 wordline.final.json 逐字对拍。
+
+    REVIEW-20260916 根因 1:错误发生在管线内部时同时传染 wordline/ass/成片,
+    ass↔wordline 互证全绿。本判据是**第二条推导路径**:从源域独立重推导一遍
+    final 域,单侧篡改源 wordline / final wordline / cutlist 任一未同步重映射,
+    重放结果与盘面必然不一致 → 红。三个都改得天衣无缝属于"重新剪了一版",
+    不在本判据的拦截语义内(那要走全流程重跑)。
+    """
+    name = "Wordline 推导链重放对账(源+cutlist→final,独立对账)"
+    cl_path = rs_paths.resolve(root, "cut") / "cutlist.applied.json"
+    src_path = rs_paths.wordline_json(root)
+    fin_path = rs_paths.wordline_json(root, final=True)
+    if not cl_path.is_file():
+        return {"name": name, "ok": True,
+                "skipped": "尚未做粗剪(无 cutlist.applied.json),重放对账不适用"}
+    if not (src_path.is_file() and fin_path.is_file()):
+        return {"name": name, "ok": True,
+                "skipped": "缺源 wordline 或 wordline.final.json(未 remap),重放对账不适用"}
+    try:
+        cl = json.loads(cl_path.read_text(encoding="utf-8"))
+        src = json.loads(src_path.read_text(encoding="utf-8"))
+        fin = json.loads(fin_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        return {"name": name, "ok": False, "detail": f"产物解析失败:{exc}"}
+    keep = cl.get("keep") or []
+    if not keep:
+        return {"name": name, "ok": True, "skipped": "cutlist 无 keep 区间,重放对账不适用"}
+    import rs_align  # noqa: PLC0415 — remap 纯函数单一实现(CONTEXT.md 引擎→机械臂白名单)
+    replay = rs_align.remap_wordline(src, keep, cl)
+    diffs: list[str] = []
+    rc, fc = replay.get("chars") or [], fin.get("chars") or []
+    if len(rc) != len(fc):
+        diffs.append(f"字数不一致:盘上 {len(fc)} vs 重放 {len(rc)}"
+                     "(幽灵字符/字符被增删,重映射未同步)")
+    else:
+        for b, a in zip(fc, rc):   # b=盘上,a=重放
+            if (int(b["startMs"]), int(b["endMs"])) != (int(a["startMs"]), int(a["endMs"])):
+                diffs.append(f"字「{b.get('ch')}」#{b.get('i')} 时间 "
+                             f"{b['startMs']}/{b['endMs']}ms ≠ 重放 {a['startMs']}/{a['endMs']}ms")
+                if len(diffs) >= 3:
+                    break
+    rs_sents, fs_sents = replay.get("sentences") or [], fin.get("sentences") or []
+    if [(s.get("span"), s.get("text")) for s in fs_sents] != \
+            [(s.get("span"), s.get("text")) for s in rs_sents]:
+        diffs.append(f"句子结构不一致:盘上 {len(fs_sents)} 句 vs 重放 {len(rs_sents)} 句")
+    if int(fin.get("finalDurationMs") or 0) != int(replay.get("finalDurationMs") or 0):
+        diffs.append(f"finalDurationMs 不一致:盘上 {fin.get('finalDurationMs')} vs "
+                     f"重放 {replay.get('finalDurationMs')}(cutlist keep 未同步)")
+    detail = (f"重放一致({len(fc)} 字/{len(fs_sents)} 句,keep {len(keep)} 段)" if not diffs
+              else "; ".join(diffs[:3]) + (f"(共 {len(diffs)} 处)" if len(diffs) > 3 else ""))
+    return {"name": name, "ok": not diffs, "detail": detail,
+            "diffs": diffs, "charCount": len(fc), "keepSegments": len(keep)}
+
+
+def check_subtitle_speech(root: Path) -> dict:
+    """独立对账·成片路(T5.6c):成片音轨**实测**语音活动 ↔ 字幕时间轴。
+
+    REVIEW-20260916 根因 2 的补位:ass↔wordline 是产物互证,字幕整体平移且
+    wordline 同步被改时全绿;本判据从成片音轨独立实测(silencedetect 语音活动),
+    与工程产物无关 —— 字幕没压着语音说/台词没被字幕覆盖/成片音频被替换,这里现形。
+    探测不可用(无 ffmpeg/解码失败)→ skipped + degraded 显式降级留痕(ADR-0021),
+    绝不静默放行。判据实现单一来源在 rs_sync(rs_diagnose 同源),这里只做装配。
+    """
+    name = "字幕↔成片语音活动独立对账(成片实测,T5.6c)"
+    ass = rs_paths.resolve(root, "output") / "subtitles.ass"
+    videos = list_videos(root)
+    if not videos:
+        return {"name": name, "ok": True, "skipped": "尚无成片(中间态不算失败)"}
+    if not ass.is_file():
+        return {"name": name, "ok": True, "skipped": "尚无字幕(S7 未跑,中间态不算失败)"}
+    events = rs_sync.parse_ass(ass)
+    if not events:
+        return {"name": name, "ok": True, "skipped": "ASS 无 Dialogue 事件(由字幕合规判据报告)"}
+    intervals, err = rs_sync.speech_intervals(videos[-1])
+    if intervals is None:
+        return {"name": name, "ok": True, "degraded": True,
+                "skipped": f"成片语音活动探测不可用({err}),独立对账降级留痕(非通过)"}
+    cl_path = rs_paths.resolve(root, "cut") / "cutlist.applied.json"
+    joins: list[float] = []
+    if cl_path.is_file():
+        try:
+            joins = rs_sync.final_joins_s(json.loads(cl_path.read_text(encoding="utf-8")))
+        except (json.JSONDecodeError, OSError):
+            joins = []
+    res = rs_sync.check_speech_alignment(events, intervals, joins_s=joins)
+    problems = res.get("problems") or []
+    warns = res.get("warns") or []
+    detail = "; ".join(problems[:2]) if problems else (
+        f"{res.get('cards', 0)} 卡压着 {res.get('intervals', 0)} 段实测语音"
+        f"(落静默区 {res.get('orphanStartRatio', 0):.0%},"
+        f"无卡临近起点 {res.get('uncoveredOnsetRatio', 0):.0%},"
+        f"时长覆盖 {res.get('speechCoverRatio', 0):.0%})")
+    if warns:
+        detail += ";⚠ " + "; ".join(warns[:2])
+    return {"name": name, "ok": not problems, "detail": detail,
+            "problems": problems, "warns": warns,
+            "metrics": {k: v for k, v in res.items()
+                        if k in ("orphanStartRatio", "speechCoverRatio",
+                                 "uncoveredOnsetRatio", "orphanStarts",
+                                 "uncoveredOnsets", "joinsMidSpeech")},
+            "video": videos[-1].name}
+
+
+def check_content_gate(root: Path) -> dict:
+    """B10 内容闸三态回读(T5.6a):S9 的内容闸结论必须以 pass/fail/degraded 呈现。
+
+    S9 装配默认携带 --audio-content,其三态结论落在 sync_rows.json 的
+    summary.contentGate;本判据把它带回 L0 输出面 —— fail 即红;
+    degraded(无模型/无服务真跑不了)保持绿灯但**显式留痕**(degraded=True),
+    让"本轮绿灯不包含内容正确性"在每一次 rs_verify 都可见,不许静默跳过。
+    """
+    name = "内容闸状态回读(B10 三态:pass/fail/degraded,T5.6a)"
+    p = rs_paths.resolve(root, "output") / "sync_rows.json"
+    if not p.is_file():
+        return {"name": name, "ok": True, "skipped": "S9 未跑(无 sync_rows.json)"}
+    try:
+        doc = json.loads(p.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        return {"name": name, "ok": False, "detail": f"sync_rows.json 解析失败:{exc}"}
+    summary = doc.get("summary") if isinstance(doc, dict) else None
+    cg = summary.get("contentGate") if isinstance(summary, dict) else None
+    if not isinstance(cg, dict) or not cg.get("state"):
+        return {"name": name, "ok": True,
+                "skipped": "sync_rows 无 contentGate 记录(旧版产物;重跑 S9 后生效)"}
+    state = str(cg["state"])
+    if state == "fail":
+        return {"name": name, "ok": False,
+                "detail": "内容闸 fail:" + "; ".join(str(x) for x in (cg.get("problems") or [])[:2]),
+                "contentGate": cg}
+    if state == "degraded":
+        return {"name": name, "ok": True, "degraded": True,
+                "detail": f"内容闸降级(显式留痕):{cg.get('reason', '')[:120]}"
+                          "——本轮绿灯不包含内容正确性,须补跑 ASR 对账或人工抽检",
+                "contentGate": cg}
+    if state == "absent":
+        return {"name": name, "ok": True, "degraded": True,
+                "detail": "内容闸未随本次 S9 运行(--audio-content 未请求;S9 装配默认携带,"
+                          "独立直调需显式传参)——绿灯不包含内容正确性",
+                "contentGate": cg}
+    sim = cg.get("similarity")
+    return {"name": name, "ok": True,
+            "detail": f"内容闸通过(成片 ASR↔wordline 对账一致{f',sim={sim}' if sim else ''})",
+            "contentGate": cg}
 
 
 def list_videos(root: Path) -> list[Path]:
@@ -771,6 +930,65 @@ def check_safe_area(root: Path) -> dict:
             "overlayRects": len(rects)}
 
 
+# ---------------------------------------------------------------- 安全区内容占位(第三册 T3.5)
+
+# 常量放判据旁(不进模块常量区):采样帧中「带内有画面内容」占比超过即红。
+SAFE_AREA_CONTENT_FRAMES = 0.30
+
+
+def check_safe_area_content(root: Path) -> dict:
+    """安全区内容占位(T3.5):回答「字幕带/顶部带会不会压到画面内容」——
+
+    check_safe_area 只做几何校验(字幕带不越平台禁区),无法回答压没压到**人/主体**。
+    本判据对成片均匀采样,对底部字幕带/顶部带做「内容占用」粗判:肤色占比(YCbCr
+    经典域,粗判压脸)+ 与前帧的时序差(粗判压运动主体;烧录字幕是静止小笔画,
+    被这两个信号天然排除)。任一带的内容帧占比 ≥ SAFE_AREA_CONTENT_FRAMES → 红。
+    平台未声明/尚无成片/解码 0 帧 → skipped 显式留痕(ADR-0021 失败语义,不误伤)。
+    """
+    name = "安全区内容占位(字幕带/顶部带压画面内容,第三册 T3.5)"
+    areas = _platform_safe_areas(root)
+    if not areas:
+        return {"name": name, "ok": True,
+                "skipped": "工程未声明平台(params.platform),无安全带口径可校验"}
+    videos = list_videos(root)
+    if not videos:
+        return {"name": name, "ok": True, "skipped": "尚无成片(中间态不算失败)"}
+    video = videos[-1]
+    sa = areas[0]
+    try:
+        bottom_frac = float(sa.get("bottom") or 0.25)
+        top_frac = float(sa.get("top") or 0.12)
+    except (TypeError, ValueError):
+        bottom_frac, top_frac = 0.25, 0.12
+    try:
+        import rs_vision  # noqa: PLC0415 — 感知层共享库(第三册新建)
+        occ = rs_vision.band_occupancy(video, rs_common.load_config(),
+                                       bottom_frac=bottom_frac, top_frac=top_frac)
+    except (OSError, ValueError) as exc:
+        return {"name": name, "ok": True,
+                "skipped": f"画面解码不可用({exc}),判据缺席留痕"}
+    frames = int(occ.get("frames") or 0)
+    if frames == 0:
+        return {"name": name, "ok": True, "skipped": "成片解码 0 帧,判据缺席留痕(零静默)"}
+    bottom = float(occ.get("bottom", {}).get("contentRatio") or 0.0)
+    top = float(occ.get("top", {}).get("contentRatio") or 0.0)
+    lb = str(sa.get("label") or "?")
+    viols: list[str] = []
+    if bottom >= SAFE_AREA_CONTENT_FRAMES:
+        viols.append(f"SAFE_AREA_CONTENT:字幕带被画面内容占据({bottom:.0%} 采样帧;"
+                     f"可能压主体/压脸,平台 {lb})")
+    if top >= SAFE_AREA_CONTENT_FRAMES:
+        viols.append(f"SAFE_AREA_CONTENT:顶部带被画面内容占据({top:.0%} 采样帧;"
+                     f"可能被平台 UI 遮挡,平台 {lb})")
+    return {"name": name, "ok": not viols,
+            "detail": "; ".join(viols),
+            "violations": viols,
+            "platform": lb,
+            "frames": frames,
+            "bottomContentRatio": bottom,
+            "topContentRatio": top}
+
+
 def check_assets(root: Path) -> dict:
     """素材商用与归因一致性 L0 判据(M12/ADR-0053/R42,分册01 §7/§8)。
 
@@ -1047,10 +1265,10 @@ def check_effects_usage(root: Path) -> dict:
 
     # ⑧ 光敏安全(FLASH_UNSAFE):任一 1s 窗口明暗反转 ≤3(WCAG 2.3.1 同口径)
     fl = usage["flashes"]
-    for i, t in enumerate(fl):
-        win = [x for x in fl if t <= x < t + 1.0]
+    for fi, ft in enumerate(fl):              # M10:改 fi/ft,不再遮蔽上方 effects 检查的 i/t
+        win = [x for x in fl if ft <= x < ft + 1.0]
         if len(win) > 3:
-            viols.append(f"FLASH_UNSAFE:{t:.2f}s 起 1s 内 {len(win)} 次明暗反转 > 3"
+            viols.append(f"FLASH_UNSAFE:{ft:.2f}s 起 1s 内 {len(win)} 次明暗反转 > 3"
                          "(判据 8,WCAG 2.3.1;安全底线不可回滚)")
             break
 
@@ -1109,9 +1327,36 @@ def _video_stream_duration_s(video: Path) -> float:
     return 0.0
 
 
+# ---------------------------------------------------------------- scope 分层(T5.7 门禁分层诚实)
+# 每条结论必须能回答"这是什么强度的结论":
+#   mechanical 产物自洽(对照中间产物) / content 成片实测(对照成片实际内容) / human 须人工判定
+SCOPE_MECHANICAL, SCOPE_CONTENT, SCOPE_HUMAN = "mechanical", "content", "human"
+SCOPE_TAG = {SCOPE_MECHANICAL: "机械", SCOPE_CONTENT: "实测", SCOPE_HUMAN: "人工"}
+
+CHECK_SCOPE: dict = {
+    check_ir: SCOPE_MECHANICAL,
+    check_wordline: SCOPE_MECHANICAL,
+    check_cutlist: SCOPE_MECHANICAL,
+    check_greenscreen: SCOPE_MECHANICAL,
+    check_copyright: SCOPE_MECHANICAL,
+    check_subtitles: SCOPE_MECHANICAL,
+    check_safe_area: SCOPE_MECHANICAL,
+    check_safe_area_content: SCOPE_CONTENT,
+    check_alignment: SCOPE_MECHANICAL,
+    check_replay_remap: SCOPE_MECHANICAL,
+    check_subtitle_speech: SCOPE_CONTENT,
+    check_content_gate: SCOPE_CONTENT,
+    check_artifacts: SCOPE_MECHANICAL,
+    check_qc: SCOPE_CONTENT,
+    check_assets: SCOPE_MECHANICAL,
+    check_matte: SCOPE_MECHANICAL,
+    check_effects_usage: SCOPE_MECHANICAL,
+}
+
 L0_CHECKS = (check_ir, check_wordline, check_cutlist, check_greenscreen, check_copyright,
-             check_subtitles, check_safe_area, check_alignment, check_artifacts, check_qc,
-             check_assets, check_matte, check_effects_usage)
+             check_subtitles, check_safe_area, check_safe_area_content, check_alignment,
+             check_replay_remap, check_subtitle_speech, check_content_gate,
+             check_artifacts, check_qc, check_assets, check_matte, check_effects_usage)
 
 
 def collect_l0(root: Path, copyright_opts: dict | None = None) -> dict:
@@ -1122,19 +1367,28 @@ def collect_l0(root: Path, copyright_opts: dict | None = None) -> dict:
             kw = {k: v for k, v in copyright_opts.items()
                   if k in ("max_single", "max_total", "min_commentary")
                   and isinstance(v, (int, float))}
-            checks.append(check_copyright(root, **kw))
+            c = check_copyright(root, **kw)
         else:
-            checks.append(fn(root))
+            c = fn(root)
+        # T5.7:每条判据结论必须带 scope;缺失即装配事故,当场补 mechanical 并留痕
+        c["scope"] = CHECK_SCOPE.get(fn, SCOPE_MECHANICAL)
+        checks.append(c)
     hard = [c for c in checks if not c.get("skipped")]
     failed = [c for c in hard if not c["ok"]]
-    # REVIEW-20260916 根因 5:L0 是机械自检,只保证产物自洽,不保证内容正确。
-    # scope 显式写出,防"通过=没问题"的表述漂移。
-    return {"level": "L0", "scope": "mechanical",
-            "scopeNote": "L0=机械自检(产物自洽);内容正确性需 rs_diagnose(contentVerdict)",
+    # REVIEW-20260916 根因 5:L0 是机械自检,只保证产物自洽(+ 成片实测判据),
+    # 不保证内容正确/观感合格。scope 显式写出,防"通过=没问题"的表述漂移。
+    scopes = {"mechanical": sum(1 for c in checks if c["scope"] == SCOPE_MECHANICAL),
+              "content": sum(1 for c in checks if c["scope"] == SCOPE_CONTENT)}
+    return {"level": "L0", "scope": SCOPE_MECHANICAL,
+            "scopeNote": "L0=机械闸(产物自洽)+成片实测判据;通过不等于内容正确/观感合格"
+                         "(内容诊断 rs_diagnose;人工项见 [人工] 标注与评分卡签核清单)",
+            "checkScopes": {c["name"]: c["scope"] for c in checks},
+            "scopeBreakdown": scopes,
             "checks": checks,
             "pass": not failed,
             "failed": [c["name"] for c in failed],
             "skipped": [c["name"] for c in checks if c.get("skipped")],
+            "degraded": [c["name"] for c in checks if c.get("degraded")],
             "at": now()}
 
 
@@ -1171,23 +1425,37 @@ def l1_payload(root: Path) -> dict:
             "note": "L1 判定权在 Agent/用户;脚本只产出清单与抽帧命令,不自动判定"}
 
 
-def write_report(res: dict, path: Path, l1: dict | None = None) -> None:
-    scope_note = ("L0 通过 = 机械自检通过(产物自洽),**不等于内容正确**;"
-                  "内容正确性请跑 rs_diagnose 或 rs_verify --content"
-                  if res.get("scope") == "mechanical" and res["pass"] else "")
+def _mark(c: dict) -> str:
+    """逐项标记(T5.7):任何 ✓/✗ 都必须带 scope 限定,缺席标注为「— 未涉及」。"""
+    if c.get("skipped"):
+        return "— 未涉及" + ("[实测·降级]" if c.get("degraded") else "")
+    tag = SCOPE_TAG.get(str(c.get("scope") or ""), "?")
+    return ("✓" if c["ok"] else "✗") + f"[{tag}]"
+
+
+def write_report(res: dict, path: Path, l1: dict | None = None,
+                 score: dict | None = None) -> None:
+    # T5.7:总判定必须写成「机械闸(L0)」——禁止把 L0 通过表述成"没问题"。
+    verdict = ("机械闸通过(L0)" if res["pass"] else "机械闸未通过(L0)")
     lines = [f"# 自检报告({res['level']})", "",
-             f"- 时间:{res['at']}", f"- 判定:**{'通过' if res['pass'] else '未通过'}**"]
-    if scope_note:
-        lines.append(f"- 边界:{scope_note}")
+             f"- 时间:{res['at']}", f"- 判定:**{verdict}**",
+             "- 边界:L0 通过 = 机械闸(产物自洽)+ 成片实测判据通过,"
+             "**不等于内容正确/观感合格**;内容诊断走 rs_diagnose / rs_verify --content,"
+             "人工项见 ⚠[人工] 标注与评分卡签核清单"
+             + ("" if res["pass"] else "(本轮机械闸未通过,先修红项)")]
+    if res.get("degraded"):
+        lines.append(f"- 降级留痕:{'、'.join(res['degraded'])}"
+                     "(判据缺席已显式标注,不计为通过)")
     lines.append("")
-    lines += ["", "| 检查项 | 结果 | 说明 |", "|---|---|---|"]
+    lines += ["", "| 检查项 | scope | 结果 | 说明 |", "|---|---|---|---|"]
     for c in res["checks"]:
-        mark = "— 未涉及" if c.get("skipped") else ("✓" if c["ok"] else "✗")
-        lines.append(f"| {c['name']} | {mark} | {c.get('detail') or c.get('skipped') or ''} |")
+        tag = SCOPE_TAG.get(str(c.get("scope") or ""), "?")
+        lines.append(f"| {c['name']} | {tag} | {_mark(c)} | "
+                     f"{c.get('detail') or c.get('skipped') or ''} |")
     # 版权 L1/用户项显式标注(方案 R7):机械闸过了也不算 PASS,须人工判定
     for c in res["checks"]:
         for x in c.get("l1Pending") or []:
-            lines.append(f"| {c['name']}·L1/用户项 | ⚠ | {x} |")
+            lines.append(f"| {c['name']}·L1/用户项 | 人工 | ⚠[人工] | {x} |")
     if res.get("failed"):
         lines += ["", "## 未通过项", ""] + [f"- {x}" for x in res["failed"]]
     if l1:
@@ -1196,7 +1464,233 @@ def write_report(res: dict, path: Path, l1: dict | None = None) -> None:
         if l1["benchCommands"]:
             lines += ["", "```powershell"] + l1["benchCommands"] + ["```"]
         lines += ["", f"> {l1['note']}"]
+    if score:
+        lines += _score_lines(score)
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+# ---------------------------------------------------------------- 成片及格线评分卡(T5.1/T5.2)
+
+# 五维 100 分制(docs/QC-SCORECARD.md 是维表与扣分规则的文档单一出处);
+# 半机械维的 [人] 部分不进机械总分 —— 机械可判满分 = 100 − 人工 9 = 91,
+# 未判定(判据缺席)的分值既不计入得分也不计入已判满分(诚实口径,防"缺席=满分")。
+SCORE_PASS_LINE = 75
+
+_SCORE_HUMAN_ITEMS = [
+    ("D3", "剪点上下文语义连贯(逐刀前后人工复核;工具面 rs_diagnose D3a/D3b)", 4),
+    ("D3", "整体节奏观感(有无拖沓/跳跃/废镜头)", 2),
+    ("D4", "主体裁切/压脸/画面观感目测(抽帧清单 rs_bench 价值选帧档)", 3),
+]
+
+# 每维"怎么查 / 怎么修"(T5.2:低分维必须给出诊断指引,不许只丢一个数字)
+SCORE_GUIDES = {
+    "D1": ("怎么查:sync_report.md 偏移表;rs_diagnose D1(成片 ASR 独立对轴)与 "
+           "verify_report「独立对账」两项。怎么修:整体偏移走 rs_align calibrate 平移;"
+           "字幕时间轴错位重跑 S7/S8;音频被替换须回 S1 重转写。"),
+    "D2": ("怎么查:sync_report.md 的 CPS/时长/孤卡明细。怎么修:调 brief 每卡字数/CPS "
+           "重跑 S7;手改过字幕的工程走 06_成片输出/rebuild.py(勿重跑 S7 冲掉手改)。"),
+    "D3": ("怎么查:cutlist guard 标红刀;rs_diagnose D3a 剪点上下文。怎么修:rs_cut 重切, "
+           "或手工改 action 后 `rs_cut.py --apply`(勿重跑 S2 detect),再从 S3 级联。"),
+    "D4": ("怎么查:verify_report 安全区/体检小节;rs_bench 抽帧网格(价值选帧档)。怎么修:"
+           "卡片/Logo 落位走 rs_artboard --apply 后级联;黑帧/冻结回查素材头尾与拼接。"),
+    "D5": ("怎么查:rs_ingest deliverables 的缺失清单。怎么修:补 metadata/清单"
+           "(rs_ingest deliverables)、归因与决策说明书(rs_ingest decisions)。"),
+}
+
+
+def _score_cards(root: Path) -> list[dict]:
+    """评分卡自用:ASS → 逐卡(字数/时长/CPS/孤卡嫌疑),不依赖任何 check 的内部结构。"""
+    ass = rs_paths.resolve(root, "output") / "subtitles.ass"
+    if not ass.is_file():
+        return []
+    cards: list[dict] = []
+    for i, e in enumerate(rs_sync.parse_ass(ass)):
+        content = "".join(ch for ch in e["text"] if ch not in rs_sync.STRIP)
+        dur_ms = max(1, int(round((e["end"] - e["start"]) * 1000)))
+        cards.append({"i": i, "text": e["text"], "chars": len(content),
+                      "durMs": dur_ms, "cps": len(content) / (dur_ms / 1000.0)})
+    return cards
+
+
+def build_scorecard(root: Path, l0: dict | None = None) -> dict:
+    """五维评分卡(机械可判部分自动算分,人工项与判据缺席项显式留痕)。
+
+    计分纪律(与 QC-SCORECARD.md 维表一致):
+      · state=pass 计满分;state=fail 计 0;state=pending(判据缺席)既不得分也
+        不进「已判满分」分母 —— 缺席不许冒充满分,这是假正常闭环的计分面;
+      · [人] 项(human)单列签核清单,不计入机械总分;
+      · 总分 < SCORE_PASS_LINE → 门禁拦截(由 main() 落 SCORE_FAIL 非零退出)。
+    """
+    res = l0 if l0 is not None else collect_l0(root)
+
+    def chk(sub: str) -> dict | None:
+        return next((c for c in res.get("checks", []) if sub in c.get("name", "")), None)
+
+    def item(dim: str, name: str, points: int, c: dict | None, ok: bool | None = None) -> dict:
+        if c is not None and c.get("skipped"):
+            return {"dim": dim, "name": name, "points": points, "state": "pending",
+                    "detail": f"判据缺席:{c.get('skipped')}"}
+        good = c["ok"] if ok is None else ok
+        return {"dim": dim, "name": name, "points": points,
+                "state": "pass" if good else "fail",
+                "detail": str(c.get("detail") or "")[:160] if c else ""}
+
+    def ratio_item(dim: str, name: str, points: int, ratio: float | None, detail: str) -> dict:
+        """节拍类连续计分项:达标率(0..1)× 满分;无样本 → pending。"""
+        if ratio is None:
+            return {"dim": dim, "name": name, "points": points, "state": "pending",
+                    "detail": "无字幕卡(中间态),节拍达标率无样本"}
+        earned = int(round(points * max(0.0, min(1.0, ratio))))
+        return {"dim": dim, "name": name, "points": points,
+                "state": "pass" if earned >= points else ("fail" if earned == 0 else "partial"),
+                "earned": earned, "ratio": round(ratio, 3), "detail": detail}
+
+    align = chk("字幕↔Wordline 对齐")
+    subs = chk("字幕合规")
+    replay = chk("重放对账")
+    speech = chk("语音活动独立对账")
+    cutlist = chk("粗剪 guard")
+    qc = chk("成片体检")
+    safe_geo = chk("安全区硬校验")
+    safe_content = chk("安全区内容占位")
+    artifacts = chk("产物存在")
+    cards = _score_cards(root)
+    s = (align or {}).get("summary") or {}
+
+    # ---- D1 声画与字幕同步 35(机械;锚点 = rs_sync 同步门禁线,rules/align.md §6)
+    d1 = [
+        item("D1", "对齐起点中位 ≤ 同步门禁线", 12, align,
+             ok=bool(s.get("chars")) and s.get("medianMs", 10**9) <= rs_sync.MEDIAN_MAX),
+        item("D1", "对齐起点 95 分位 ≤ 分位线", 5, align,
+             ok=bool(s.get("chars")) and s.get("p95Ms", 10**9) <= rs_sync.P95_MAX),
+        item("D1", "字幕终点早退 = 0", 8, align, ok=bool(s.get("chars")) and not s.get("earlyEnd")),
+        item("D1", "字幕滞留过久 = 0", 3, align, ok=bool(s.get("chars")) and not s.get("overLongEnd")),
+        item("D1", "未匹配字幕卡 = 0", 2, align, ok=bool(s.get("chars")) and not s.get("unmatched")),
+        item("D1", "Wordline 推导链重放一致(独立对账·产物路)", 2, replay),
+        item("D1", "字幕↔成片语音活动一致(独立对账·成片路)", 3, speech),
+    ]
+
+    # ---- D2 字幕可读性 20(机械;锚点 = subtitle-policy.json / rules/subtitles.md §8)
+    viol = (subs or {}).get("violations") or []
+    d2 = [
+        item("D2", "CPS 全部 ≤ 上限", 8, subs, ok=bool(cards) and not (s.get("badCps") or [])),
+        item("D2", "字数全部合规(策略表上限)", 6, subs,
+             ok=bool(cards) and not [v for v in viol if "字数" in v]),
+        item("D2", "无孤卡(内容字 <4 的卡)", 4, subs,
+             ok=bool(cards) and not [c for c in cards if c["chars"] < 4]),
+        item("D2", "卡片时间无重叠", 2, subs,
+             ok=bool(cards) and not s.get("overlaps")
+             and not [v for v in viol if "时间重叠" in v]),
+    ]
+
+    # ---- D3 剪辑连贯与节奏 20(半机械:机械 14 + 人工 6)
+    short_n = len([c for c in cards if c["durMs"] / 1000.0 < rs_sync.DUR_MIN - 1e-6])
+    beat_ratio = (1 - short_n / len(cards)) if cards else None
+    d3 = [
+        item("D3", "剪点 guard 全过(刀刀落在静音区)", 8, cutlist),
+        ratio_item("D3", "卡时长节拍达标率(无必并短卡)", 6, beat_ratio,
+                   f"短卡 {short_n}/{len(cards)}(达标率 "
+                   f"{(1 - short_n / len(cards)):.0%})" if cards else ""),
+    ]
+
+    # ---- D4 画面安全与观感 15(半机械:机械 12 + 人工 3)
+    d4 = [
+        item("D4", "安全区几何(字幕带/贴片不越平台禁区)", 4, safe_geo),
+        item("D4", "安全区内容占位(字幕带不压主体)", 4, safe_content),
+        item("D4", "成片体检(黑帧/冻结/VFR/响度)", 4, qc),
+    ]
+
+    # ---- D5 交付完整性 10(机械)
+    out_dir = rs_paths.resolve(root, "output")
+    deliverables_md = (out_dir / "deliverables.md").is_file()
+    attribution = (rs_paths.resolve(root, "deliver") / "说明书" / "素材归因.md").is_file()
+    decisions_md = (out_dir / "决策说明书.md").is_file()
+    subs_ok = (out_dir / "subtitles.ass").is_file()
+    d5 = [
+        item("D5", "成片产物存在", 3, artifacts),
+        {"dim": "D5", "name": "字幕产物 + 交付清单(deliverables.md)",
+         "points": 3, "state": "pass" if (subs_ok and deliverables_md) else "fail",
+         "detail": "" if (subs_ok and deliverables_md) else
+         f"subtitles.ass {'在' if subs_ok else '缺'} / deliverables.md {'在' if deliverables_md else '缺'}"},
+        {"dim": "D5", "name": "素材归因(说明书/素材归因.md)", "points": 2,
+         "state": "pass" if attribution else "fail",
+         "detail": "" if attribution else "交付目录缺 说明书/素材归因.md"},
+        {"dim": "D5", "name": "决策说明书(决策说明书.md)", "points": 2,
+         "state": "pass" if decisions_md else "fail",
+         "detail": "" if decisions_md else "成片输出缺 决策说明书.md(rs_ingest decisions)"},
+    ]
+
+    human = [{"dim": dim, "name": name, "points": pts, "state": "human"}
+             for dim, name, pts in _SCORE_HUMAN_ITEMS]
+
+    dims = []
+    for did, name, items in (("D1", "声画与字幕同步", d1), ("D2", "字幕可读性", d2),
+                             ("D3", "剪辑连贯与节奏", d3), ("D4", "画面安全与观感", d4),
+                             ("D5", "交付完整性", d5)):
+        h_pts = sum(h["points"] for h in human if h["dim"] == did)
+        judged = [i for i in items if i["state"] != "pending"]
+        earned = sum(i["points"] if i["state"] == "pass" else i.get("earned", 0) for i in judged)
+        lost = [i for i in judged
+                if i["state"] in ("fail", "partial") and i["points"] > i.get("earned", 0)]
+        dims.append({"id": did, "name": name, "items": items,
+                     "maxMech": sum(i["points"] for i in items),
+                     "humanPoints": h_pts,
+                     "judgedMax": sum(i["points"] for i in judged),
+                     "earned": earned,
+                     "lost": sum(i["points"] - i.get("earned", 0) for i in lost),
+                     "guide": SCORE_GUIDES[did]})
+
+    score = sum(d["earned"] for d in dims)
+    judged_max = sum(d["judgedMax"] for d in dims)
+    full_mech = sum(d["maxMech"] for d in dims)
+    pending = [{"dim": i["dim"], "item": i["name"], "points": i["points"], "detail": i["detail"]}
+               for d in dims for i in d["items"] if i["state"] == "pending"]
+    low_dims = [{"id": d["id"], "name": d["name"], "earned": d["earned"],
+                 "judgedMax": d["judgedMax"], "lost": d["lost"],
+                 "items": [i["name"] for i in d["items"]
+                           if i["state"] in ("fail", "partial") and i["points"] > i.get("earned", 0)],
+                 "guide": d["guide"]}
+                for d in dims if d["lost"] > 0]
+    return {"version": 1, "passLine": SCORE_PASS_LINE,
+            "score": score, "mechFull": full_mech, "judgedMax": judged_max,
+            "humanPoints": sum(h["points"] for h in human),
+            "pendingPoints": full_mech - judged_max,
+            "pass": score >= SCORE_PASS_LINE,
+            "dims": [{k: v for k, v in d.items() if k != "items"} for d in dims],
+            "dimItems": {d["id"]: d["items"] for d in dims},
+            "lowDims": low_dims, "pending": pending, "humanItems": human,
+            "note": ("机械可判满分 %d(人工 %d 分另行签核);判据缺席 %d 分未计入已判满分,"
+                     "缺席不冒充满分" % (full_mech, sum(h['points'] for h in human),
+                                         full_mech - judged_max)),
+            "at": now()}
+
+
+def _score_lines(score: dict) -> list[str]:
+    """评分卡 → 报告小节(T5.7:所有结论带 scope/状态限定,无裸"通过")。"""
+    lines = ["", "## 成片及格线评分卡(五维 100 分制;机械可判部分)", "",
+             f"- **总分:{score['score']} / 已判满分 {score['judgedMax']}"
+             f"(机械满分 {score['mechFull']},及格线 {score['passLine']})**",
+             f"- 判定:**{'达到及格线' if score['pass'] else '低于及格线(门禁拦截)'}**"
+             f"(机械可判部分;{score['note']})", "",
+             "| 维度 | 得分/已判 | 失分 | 说明 |", "|---|---|---|---|"]
+    for d in score["dims"]:
+        note = ";".join(i["name"] for i in
+                        (score["dimItems"][d["id"]]) if i["state"] in ("fail", "partial")) or "—"
+        lines.append(f"| {d['id']} {d['name']}(人工 {d['humanPoints']} 分另签) "
+                     f"| {d['earned']}/{d['judgedMax']} | {d['lost']} | {note} |")
+    if score["lowDims"]:
+        lines += ["", "### 低分维诊断指引", ""]
+        for d in score["lowDims"]:
+            lines += [f"- **{d['id']} {d['name']}**(失 {d['lost']} 分:"
+                      f"{'、'.join(d['items'][:4])})", f"  - {d['guide']}"]
+    if score["pending"]:
+        lines += ["", "### 未判定项(判据缺席,不计分不冒充通过)", ""]
+        for p in score["pending"]:
+            lines.append(f"- [{p['dim']}] {p['item']}({p['points']} 分):{p['detail']}")
+    lines += ["", "### 人工签核项([人];不计入机械总分,交付前逐条确认)", ""]
+    for h in score["humanItems"]:
+        lines.append(f"- [ ] [{h['dim']}] {h['name']}({h['points']} 分)")
+    return lines
 
 
 # ---------------------------------------------------------------- CLI
@@ -1214,6 +1708,9 @@ def main() -> int:
     ap.add_argument("--result", default="pass", choices=["pass", "fail"])
     ap.add_argument("--content-budget", dest="content_budget", type=float, default=900.0,
                     help="--content 诊断预算秒(默认 900;超时输出阶段性结论)")
+    ap.add_argument("--score", dest="score", action="store_true",
+                    help="成片及格线评分卡(T5.1/T5.2):五维 100 分制,机械可判部分自动算分,"
+                         "总分 <75 非零退出并指出低分维与诊断指引(与 verifyLevel 缺失同等强度)")
     ap.add_argument("--copyright-max-single", dest="copyright_max_single", type=float,
                     default=None, help="版权门禁:单部引用占比上限(默认 0.30;初值可配)")
     ap.add_argument("--copyright-max-total", dest="copyright_max_total", type=float,
@@ -1280,9 +1777,11 @@ def main() -> int:
                     res["pass"] = False
                     res["failed"].append("内容诊断(rs_diagnose)")
     l1 = l1_payload(root) if a.level == "L1" else None
+    # T5.1:评分卡在 L0 判据跑完后复用同一份结论算分(不二次跑判据)
+    score = build_scorecard(root, l0=res) if a.score else None
     out = root / a.out
     out.mkdir(parents=True, exist_ok=True)
-    write_report(res, out / "verify_report.md", l1)
+    write_report(res, out / "verify_report.md", l1, score)
 
     st = load_verify(root)
     st["lastL0"] = {"at": res["at"], "level": "L0", "result": "pass" if res["pass"] else "fail"}
@@ -1291,9 +1790,12 @@ def main() -> int:
     save_verify(root, st)
 
     first_done = bool((st.get("firstCheck") or {}).get("done"))
-    msg = f"L0 {'通过' if res['pass'] else '未通过'}({len(res['checks']) - len(res['skipped'])} 项)"
+    # T5.7:表述必须是「机械闸(L0)」—— L0 通过 ≠ 成片没问题
+    msg = f"机械闸{'通过' if res['pass'] else '未通过'}(L0,{len(res['checks']) - len(res['skipped'])} 项)"
     if res["failed"]:
         msg += f";未过:{','.join(res['failed'][:3])}"
+    if res.get("degraded"):
+        msg += f";降级留痕:{','.join(res['degraded'][:3])}"
     if content_verdict is not None:
         msg += f";内容诊断 {content_verdict['verdict']}" + (
             f"({len(content_verdict.get('suspiciousSpans') or [])} 处疑点)"
@@ -1305,6 +1807,16 @@ def main() -> int:
             "pictureChanged": picture_changed(root)}
     if l1:
         data["l1"] = l1
+    if score is not None:
+        data["score"] = {k: v for k, v in score.items() if k != "dimItems"}
+        msg += (f";评分卡 {score['score']} 分/已判满分 {score['judgedMax']}"
+                f"(及格线 {score['passLine']},机械可判部分)")
+        # T5.2:及格线门禁 —— 低分拦截与 verifyLevel 缺失同等强度
+        if not score["pass"]:
+            low = ";".join(f"{d['id']} {d['name']}(失 {d['lost']} 分)"
+                           for d in score["lowDims"][:3])
+            msg += f";低于及格线,低分维:{low}(诊断指引见 verify_report.md 评分卡小节)"
+            return emit(False, "SCORE_FAIL", msg, data, exit_code=4)
     return emit(res["pass"], "VERIFY_OK" if res["pass"] else "VERIFY_FAIL", msg, data,
                 exit_code=0 if res["pass"] else 4)
 

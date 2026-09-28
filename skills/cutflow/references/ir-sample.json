@@ -1,0 +1,19 @@
+{
+ "version": 1,
+ "slug": "demo",
+ "fps": 30,
+ "canvas": {"width": 1080, "height": 1920},
+ "tracks": [
+  {"kind": "video", "name": "main", "clips": [
+    {"src": "01_原始素材/a.mp4", "startMs": 0, "durationMs": 12000,
+     "sourceInMs": 3000, "reframe": {"anchorY": 0.35},
+     "motion": {"in": "fadeIn", "inMs": 400}}]},
+  {"kind": "video", "name": "overlay", "clips": [
+    {"src": "03_创作素材/artboard/c01/export/c01.png", "startMs": 800, "durationMs": 2000}]},
+  {"kind": "audio", "name": "a1", "clips": [
+    {"src": "06_成片输出/_build/sfx/whoosh.wav", "startMs": 800, "role": "sfx"}]}
+ ],
+ "bgm": {"src": "03_创作素材/bgm.mp3", "gainDb": -18, "ducking": true},
+ "subtitle": {"ass": "06_成片输出/subtitles.ass", "source": "05_时间线工程/wordline.json"},
+ "outputs": ["9x16"]
+}

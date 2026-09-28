@@ -484,7 +484,8 @@ def build_decision_notes(root: Path) -> str | None:
     与 00_制作简报/intent_decisions.json(未被 --auto 跑过的工程也能看懂编译结果)。
     没有任何决策信息时返回 None(非意图流程的旧工程不强造说明书)。
     """
-    import rs_run  # noqa: PLC0415 — 延迟导入,避免 rs_ingest 常规路径变重
+    from rs_common import intent_decisions_of  # noqa: PLC0415 — T2.14:数据读取口在工具层,
+    # 机械臂不再为此反向 import 引擎(此前 `import rs_run` 只为一个 JSON 读取函数)
     pipeline: dict = {}
     pj = rs_paths.pipeline_json(root)
     if pj.is_file():
@@ -493,7 +494,7 @@ def build_decision_notes(root: Path) -> str | None:
         except (json.JSONDecodeError, OSError, UnicodeDecodeError):
             pipeline = {}
     log = [d for d in (pipeline.get("decision_log") or []) if isinstance(d, dict)]
-    intent = [d for d in rs_run.intent_decisions_of(root) if isinstance(d, dict)]
+    intent = [d for d in intent_decisions_of(root) if isinstance(d, dict)]
     if not log and not intent:
         return None
     by_src: dict[str, list[dict]] = {}

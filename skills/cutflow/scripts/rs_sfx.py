@@ -195,9 +195,10 @@ def from_ending(ir: dict, wordline: dict | None) -> list[dict]:
                 total = max(total, int(c.get("startMs", 0)) + int(c.get("durationMs", 0)))
     if total:
         asset = _pick("ending", "outro_bell")
+        # M5:legacy 变体回落名真实投入使用(此前算出未用,回落名被硬编码遮蔽)
         legacy = "bell" if asset is None or str(asset.get("id", "")).endswith(".legacy") \
             else "outro_bell"
-        return [{"atMs": max(0, total - 800), "src": _src_of(asset, "bell"),
+        return [{"atMs": max(0, total - 800), "src": _src_of(asset, legacy),
                  "trigger": "ending", "conf": 0.8, "gainDb": DEFAULT_GAIN_DB,
                  "note": "片尾定格"}]
     return []

@@ -43,13 +43,20 @@ LICENSE = "Pixabay Content License"
 
 
 def pixabay_key() -> str:
-    """key 三级读取(env → 本仓 config → artboard config 只读借用)。"""
+    """key 三级读取(env → 本仓 config → artboard config 只读借用)。
+
+    T2.4(H4):第三级 artboard 目录经 rs_common.artboard_dir() 解析
+    (config.json `artboard_dir` → env `CUTFLOW_ARTBOARD_DIR`),个人盘符字面量
+    不入库;解析不到则跳过该级(返回空串由上层报"未配置",不臆测)。"""
     k = os.environ.get("ARTBOARD_PIXABAY_KEY", "").strip()
     if k:
         return k
-    for cfg in (Path(__file__).resolve().parents[3] / "config.json",
-                Path(__file__).resolve().parents[2] / "config.json",
-                Path(r"E:\平日资料\GitHub\.agents\skills\artboard\config.json")):
+    cands = [Path(__file__).resolve().parents[3] / "config.json",
+             Path(__file__).resolve().parents[2] / "config.json"]
+    ab = rs_common.artboard_dir()
+    if ab is not None:
+        cands.append(ab / "config.json")
+    for cfg in cands:
         try:
             v = str(json.loads(cfg.read_text(encoding="utf-8")).get("pixabay_key", "") or "")
         except (OSError, json.JSONDecodeError, ValueError):
@@ -116,6 +123,36 @@ def _api_search(kind: str, query: str, limit: int) -> list[dict]:
 
 # ---------------- 音乐 / 音效(playwright 真浏览器通道) ----------------
 
+# H5:sound-effect 的搜索/详情页路径与 slug 形态与 music 不同,一律按 kind 选表
+# (旧实现对 sound_effect 仍抓 /music/ slug → 恒不命中,静默 0 结果)。
+_SEARCH_PATH = {"music": "music/search", "sound_effect": "sound-effects/search"}
+_DETAIL_BASE = {"music": "https://pixabay.com/music/",
+                "sound_effect": "https://pixabay.com/sound-effects/"}
+_SLUG_STRICT = {
+    "music": re.compile(r'href="/music/([a-z0-9-]{10,80})/"'),
+    "sound_effect": re.compile(r'href="/sound-effects/([a-z0-9-]{10,80})/"'),
+}
+# 宽松兜底正则:严格正则落空但它能命中 → 说明页面有结果条目而选择器失配(改版),
+# 必须结构化上报,不许混进"真无结果"。
+_SLUG_LOOSE = re.compile(r'href="/(?:music|sound-effects)/([a-z0-9-]{5,160})/"')
+_NO_RESULT_MARKERS = ("No results found", "没有找到相关", "did not return any results")
+
+
+def extract_slugs(kind: str, html: str) -> tuple[list[str], str]:
+    """搜索页 HTML → (去重 slug 序列, 状态);状态 ∈ ok|no_results|selector_mismatch。
+
+    判据(H5):严格正则命中 → ok;页面带"无结果"标记 → no_results(真无结果);
+    宽松正则命中或两者皆空(疑似改版/反爬) → selector_mismatch,由调用方报
+    结构化错误,绝不静默归零。
+    """
+    strict = list(dict.fromkeys(_SLUG_STRICT[kind].findall(html)))
+    if strict:
+        return strict, "ok"
+    if any(marker in html for marker in _NO_RESULT_MARKERS):
+        return [], "no_results"
+    return [], "selector_mismatch"
+
+
 def _playwright_ready() -> bool:
     try:
         import playwright  # noqa: F401,PLC0415
@@ -124,98 +161,69 @@ def _playwright_ready() -> bool:
         return False
 
 
-def _music_search_urls(kind: str, query: str) -> list[str]:
-    """搜索页 → 歌曲 slug → 详情页 URL 列表(sound_effect 走 sound-effects 搜索)。"""
+def music_search(kind: str, query: str, limit: int) -> list[dict]:
+    """音乐/音效搜索:搜索页 slug → 逐详情页取 JSON-LD(限 limit 条,浏览器复用)。
+
+    slug 抽取与详情页 URL 一律按 kind 选路径(H5);0 结果区分"真无结果"
+    (返回空列表)与"选择器失配"(PIXABAY_SELECTOR_MISMATCH 结构化错误)。
+    """
+    if kind not in _SEARCH_PATH:
+        return [{"error": "BAD_KIND", "message": f"音乐/音效通道不支持 kind={kind}"}]
     if not _playwright_ready():
         return [{"error": "MUSIC_CHANNEL_MISSING",
-                 "message": "playwright 未安装(music 通道需真浏览器绕 403 反爬;"
-                            "pip install playwright && python -m playwright install chromium)。"
-                            "photo/video 通道不受影响"}]
+                 "message": "playwright 未安装(music 通道需真浏览器)"}]
     from playwright.sync_api import sync_playwright  # noqa: PLC0415
-    path = "sound-effects/search" if kind == "sound_effect" else "music/search"
-    url = f"https://pixabay.com/{path}/{urllib.parse.quote(query)}/"
+    base = f"https://pixabay.com/{_SEARCH_PATH[kind]}/{urllib.parse.quote(query)}/"
     out = []
     with sync_playwright() as pw:
         b = pw.chromium.launch(headless=True)
         pg = b.new_page(user_agent=UA)
-        pg.goto(url, timeout=45000, wait_until="domcontentloaded")
-        pg.wait_for_timeout(6000)
-        html = pg.content()
-        b.close()
-    for slug in dict.fromkeys(re.findall(r'href="/music/([a-z0-9-]{10,80})/"', html)):
-        out.append(f"https://pixabay.com/music/{slug}/")
-        if len(out) >= 24:
-            break
+        try:
+            pg.goto(base, timeout=45000, wait_until="domcontentloaded")
+            pg.wait_for_timeout(6000)
+            html = pg.content()
+            slugs, status = extract_slugs(kind, html)
+            if status == "selector_mismatch":
+                return [{"error": "PIXABAY_SELECTOR_MISMATCH",
+                         "message": f"搜索页未抽出 {kind} 的任何条目({base});"
+                                    "疑似页面改版或反爬拦截,选择器与真实结果失配"
+                                    "(如实上报,不并入\"无结果\")",
+                         "pageUrl": base}]
+            if status == "no_results":
+                return []
+            for slug in slugs:
+                if len(out) >= limit:
+                    break
+                song_url = _DETAIL_BASE[kind] + slug + "/"
+                pg.goto(song_url, timeout=45000, wait_until="domcontentloaded")
+                pg.wait_for_timeout(2500)
+                page_html = pg.content()
+                item = _meta_from_html(page_html, song_url, slug)
+                if item is not None:
+                    out.append(item)
+        finally:
+            b.close()
     return out
 
 
-def _music_meta(song_url: str) -> dict | None:
-    """歌曲详情页 JSON-LD → name/contentUrl/duration/author。"""
-    from playwright.sync_api import sync_playwright  # noqa: PLC0415
-    with sync_playwright() as pw:
-        b = pw.chromium.launch(headless=True)
-        pg = b.new_page(user_agent=UA)
-        pg.goto(song_url, timeout=45000, wait_until="domcontentloaded")
-        pg.wait_for_timeout(3500)
-        html = pg.content()
-        b.close()
+def _meta_from_html(html: str, song_url: str, slug: str) -> dict | None:
+    """详情页 HTML → JSON-LD 元数据条目(name/url/duration/author + 许可四字段)。"""
     for j in re.findall(r'<script type="application/ld\+json">(.*?)</script>', html, re.S):
         try:
             d = json.loads(j)
         except json.JSONDecodeError:
             continue
         cu = d.get("contentUrl") or ""
-        if cu:
-            author = d.get("byArtist", {}).get("name", "unknown") if isinstance(
-                d.get("byArtist"), dict) else "unknown"
-            return {"name": d.get("name") or song_url.rstrip("/").rsplit("/", 1)[-1],
-                    "url": cu, "durationMs": _pt_duration_to_ms(d.get("duration", "")),
-                    "author": author or "unknown", "pageUrl": song_url,
-                    **_license_block(author or "unknown", song_url)}
+        if not cu:
+            continue
+        author = (d.get("byArtist") or {}).get("name", "unknown") \
+            if isinstance(d.get("byArtist"), dict) else "unknown"
+        return {"id": slug, "name": d.get("name") or slug,
+                "url": cu,
+                "durationMs": _pt_duration_to_ms(d.get("duration", "")),
+                "author": author or "unknown", "pageUrl": song_url,
+                **_license_block(author or "unknown", song_url)}
     return None
-
-
-def music_search(kind: str, query: str, limit: int) -> list[dict]:
-    """音乐/音效搜索:搜索页 slug → 逐详情页取 JSON-LD(限 limit 条,浏览器复用)。"""
-    if not _playwright_ready():
-        return [{"error": "MUSIC_CHANNEL_MISSING",
-                 "message": "playwright 未安装(music 通道需真浏览器)"}]
-    from playwright.sync_api import sync_playwright  # noqa: PLC0415
-    path = "sound-effects/search" if kind == "sound_effect" else "music/search"
-    base = f"https://pixabay.com/{path}/{urllib.parse.quote(query)}/"
-    out = []
-    with sync_playwright() as pw:
-        b = pw.chromium.launch(headless=True)
-        pg = b.new_page(user_agent=UA)
-        pg.goto(base, timeout=45000, wait_until="domcontentloaded")
-        pg.wait_for_timeout(6000)
-        html = pg.content()
-        slugs = list(dict.fromkeys(re.findall(r'href="/music/([a-z0-9-]{10,80})/"', html)))
-        for slug in slugs:
-            if len(out) >= limit:
-                break
-            song_url = f"https://pixabay.com/music/{slug}/"
-            pg.goto(song_url, timeout=45000, wait_until="domcontentloaded")
-            pg.wait_for_timeout(2500)
-            page_html = pg.content()
-            for j in re.findall(r'<script type="application/ld\+json">(.*?)</script>', page_html, re.S):
-                try:
-                    d = json.loads(j)
-                except json.JSONDecodeError:
-                    continue
-                cu = d.get("contentUrl") or ""
-                if not cu:
-                    continue
-                author = (d.get("byArtist") or {}).get("name", "unknown") \
-                    if isinstance(d.get("byArtist"), dict) else "unknown"
-                out.append({"id": slug, "name": d.get("name") or slug,
-                            "url": cu,
-                            "durationMs": _pt_duration_to_ms(d.get("duration", "")),
-                            "author": author or "unknown", "pageUrl": song_url,
-                            **_license_block(author or "unknown", song_url)})
-                break
-        b.close()
-    return out
 
 
 def search(kind: str, query: str, limit: int) -> list[dict]:
@@ -228,10 +236,15 @@ def fetch(kind: str, query: str, out_dir: Path, pick: int = 1,
           limit: int = 8) -> tuple[int, dict]:
     """search → 下载第 pick 条到 out_dir,返回 (exit_code, 结果块, 登记建议)。"""
     items = search(kind, query, max(limit, pick))
+    # H5:通道异常(缺组件/选择器失配/反爬)先透传结构化错误,不与"真无结果"混谈
+    errs = [i for i in items if i.get("error")]
+    if errs:
+        return 4, {"code": errs[0].get("error", "PIXABAY_SEARCH_FAIL"),
+                   "message": errs[0].get("message", "搜索通道异常")}
     items = [i for i in items if i.get("url")]
     if not items:
         return 4, {"code": "PIXABAY_NO_RESULTS",
-                   "message": f"无可用结果({kind}: {query});网络/反爬/key 均可能,见 search 输出"}
+                   "message": f"真无结果({kind}: {query});可换关键词或稍后再试"}
     if pick > len(items):
         pick = 1
     it = items[pick - 1]

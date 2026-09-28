@@ -37,5 +37,5 @@
 
 ## 关联
 
-- `rules/roughcut.md`、`docs/OPTIMIZATION-v4.md` §3.3 / §4.1
+- `rules/roughcut.md`、`docs/archive/OPTIMIZATION-v4.md` §3.3 / §4.1
 - 依赖 ADR-0011(Wordline)

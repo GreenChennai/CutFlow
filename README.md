@@ -74,7 +74,7 @@ S0 素材(幕布检测门禁)→ S1 自带 ASR 转写+字级对齐+能量校准 
 ```
 
 - **S8 烧录**只用现有 `subtitles.ass` 重烧,绝不重新生成字幕——手改字幕不会被覆盖;
-- **S9 三重机械闸**:①字幕↔Wordline 对齐断言(中位 ≤40ms);②成片音频内容闸(ASR 对账:片头句唯一 / 相似度 ≥0.90 / 无重复段);③QC 体检(黑帧 / 冻结 / VFR / 响度);
+- **S9 三重机械闸**:①字幕↔Wordline 对齐断言(门禁判据见 rules/verify.md §2);②成片音频内容闸(ASR 对账:片头句唯一 / 相似度 ≥0.90 / 无重复段);③QC 体检(黑帧 / 冻结 / VFR / 响度);
 - **阶段缓存 + 一键重建**:缓存键含脚本 hash 与 brief 参数,`--status / --only / --from` 只重跑真变了的部分。
 
 ### 手改之后怎么重建(不需要 AI 从头跑)
@@ -160,15 +160,17 @@ python skills\cutflow\scripts\rs_doctor.py --report
 
 CutFlow 的"剪得好"不是玄学,每条数值都有出处(完整索引见 [ITERATION-GUIDE §10](docs/ITERATION-GUIDE-v0.11.md)):
 
-| 口径 | 数值 | 出处 |
+> 数值单一化(第一册 T1.3):本表只登记**出处**,不复述数值——每个口径只有「一处文档出处 + 一处机器常量」,`tests/test_doc_single_source.py` 把守。
+
+| 口径 | 唯一文档出处(机器常量) | 出处 |
 |---|---|---|
-| 总线响度 | -14 LUFS ±1 / TP ≤ -1 dBTP(双 pass loudnorm) | EBU R128 口径;-14 为 Spotify/YouTube 归一化对齐值(非平台强制) |
-| 字幕 | ≤16 字/行、≤2 行、成人 ≤9 CPS、0.83–7s、间距 ≥2 帧 | Netflix 简体中文 Timed Text 规范 |
-| 视觉节拍 | 卡时长 1.5–3.5s;镜头/视觉变化 2–3s 窗口 | Cutting(康奈尔)好莱坞 75 年镜头时长实证 |
-| A/V 同步 | 超前 ≤40ms / 滞后 ≤60ms 告警 | EBU R37(ATSC IS-191 更严者作参考) |
-| 粗剪防护 | margin 前 150/后 300ms;碎刀 <120ms 放弃;碎片 <100ms 并刀 | auto-editor `--margin/--smooth` 精神 |
-| punch-in | 1.4x 起步、密度 15s/≤3 处 | Frame.io/r.editors 共识 + Hitchcock 规则(经验值,已标注) |
-| 片尾 | 口播结尾保留 0.5–0.8s 自然底噪 | 听觉自然度经验值(ADR-0043) |
+| 总线响度 | `rules/compose.md`(`rs_render.LOUDNESS_TARGET`) | EBU R128 口径;目标值取 Spotify/YouTube 归一化对齐点(非平台强制) |
+| 字幕字数/CPS/时长/间距 | `rules/subtitles.md` §4.4(`segmentation.MAX_CHARS`) | Netflix 简体中文 Timed Text 规范 |
+| 视觉节拍 | `rules/subtitles.md` §4.5 | Cutting(康奈尔)好莱坞 75 年镜头时长实证 |
+| A/V 同步 | `rules/verify.md` §2(`rs_sync.MEDIAN_MAX`) | EBU R37(ATSC IS-191 更严者作参考) |
+| 粗剪防护 | `rules/roughcut.md` §8.5(`rs_cut.MARGIN_IN_MS/MARGIN_OUT_MS`) | auto-editor `--margin/--smooth` 精神 |
+| punch-in | `rules/compose.md` 渲染一节 | Frame.io/r.editors 共识 + Hitchcock 规则(经验值,已标注) |
+| 片尾 | `rules/roughcut.md` §2.1 | 听觉自然度经验值(ADR-0043) |
 
 找不到权威出处的数值一律标注「经验值」——不把行业传说包装成规范。
 
@@ -219,36 +221,14 @@ CutFlow 的"剪得好"不是玄学,每条数值都有出处(完整索引见 [ITE
 | `proxy` | 网络代理 | 如 `http://127.0.0.1:7890`;没有留空 |
 | `artboard_dir` | artboard 技能路径 | 生成片头/封面/动画卡用 |
 
-## 🧰 常用命令速查
+## 🧰 查命令(单一真相源)
 
-> Agent 请先读 [capabilities.json](skills/cutflow/capabilities.json)(机器可读能力目录,由 argparse 自动生成),不读源码。
-
-| 环节 | 命令 |
-|---|---|
-| 意图编译(提示词入口) | `rs_intent.py compile --brief 00_制作简报\brief.json --plan 00_制作简报\plan.json --out 00_制作简报`(`--dry-run` 打印推断表) |
-| 全自动流水线 | `rs_run.py --auto`(无人值守:自动裁决+留痕;L2 验收仍归用户) |
-| 阶段状态 / 增量 | `rs_run.py --status` / `--from S3` / `--only S7` / `--explain S7` |
-| 一键重建 | `rs_run.py --init`(生成 rebuild.py)/ `--rollback` |
-| 分级自检 | `rs_verify.py <工程>` / `--mark-first --result pass` |
-| 转写 | `python tools\fun_asr.py <媒体>` / `--probe` |
-| 对齐(S1) | `rs_align.py build --media <素材> --out 05_时间线工程\wordline.json`(专名错 → `--terms-file 00_制作简报\terms.txt` 热词重跑) |
-| wordline 平滑 / 时长修正 | `rs_align.py smooth …` / `rs_align.py refresh-durations 05_时间线工程\wordline.json --media <素材>`(只改时长不动字符时间) |
-| 粗剪(S2) | `rs_cut.py 05_时间线工程\wordline.json --detect all --media 源 --out 04_粗剪决策` → `--apply`(自动同步时长账;`--protect` 标保护区) |
-| 按文本裁片 | `rs_cut.py 05_时间线工程\wordline.json --from-text "只想要的引文"`(引文外走 guard) |
-| CutList→IR(S3) | `rs_ir.py build --from-cutlist 04_粗剪决策\cutlist.applied.json --slug X --out 05_时间线工程\project.json`(`--punch-in-auto` 启用变焦掩饰) |
-| 挂动画卡(I7 / O2) | `rs_ir.py add-overlay --manifest 03_创作素材\artboard\manifest.json --plan 00_制作简报\cards.json` / `rs_artboard.py gen-cards --from 00_制作简报\cards.json` |
-| 字幕(S7) | `rs_subtitle.py --from-wordline 05_时间线工程\wordline.final.json --platform douyin --out 06_成片输出`(`--override` 复核回灌,余字自动重组) |
-| 对齐自检+体检(S9) | `rs_sync.py --wordline 05_时间线工程\wordline.final.json --ass 06_成片输出\subtitles.ass --video 成片.mp4 --audio-content --qc` |
-| 封面文案(S10) | `rs_meta.py --wordline ... --brief 00_制作简报\brief.md --platform douyin,bili` |
-| 决策说明书 | `rs_ingest.py decisions <工程>`(每个参数从哪来,改一条重跑一段) |
-| 剪映草稿 | `rs_jy_draft.py 05_时间线工程\project.json --name <名>`(`--dry-run` 打印 IR→草稿映射表;只写 5.9 明文草稿) |
-| 清理 | `rs_cleanup.py <工程> [--apply]` |
-| CutForge 桥:编辑器视图/变更识别 | `rs_editor.py view/timeline/check/diff <工程>`(只读;diff 输出编辑器改动的人话摘要) |
-| CutForge 桥:标注 | `rs_notes.py list/stats <工程> [--state open]`(含孤儿统计) |
-| CutForge 桥:OpLog 审计 | `rs_oplog.py tail/report <工程> [--actor agent]`(AI 改了什么) |
-| CutForge 桥:门禁 | `rs_gate.py M0–M7 --json`(透传 cutforge 侧门禁退出码;**范围以 gate.py 注册表为准**,无里程碑参数报错) |
-
-全部脚本支持 `--json` 协议输出(`{"ok","code","message","data"}`),便于 Agent 消费。
+> **命令不在此维护手写表**(单一真相源,第一册 T1.2)。查命令只有两个入口:
+>
+> 1. 读 [capabilities.json](skills/cutflow/capabilities.json)——机器可读能力目录,由 argparse 自动生成(每工具含用途/阶段/门禁/参数摘要/keywords),手改会被防漂移测试打回;
+> 2. `python skills/cutflow/scripts/rs_caps.py search <关键词>`——按命令名/用途/关键词检索(如 `search 字幕`、`search 粗剪`、`search 剪映`)。
+>
+> 细节一律 `<script> --help`;全部脚本支持 `--json` 协议输出(`{"ok","code","message","data"}`)。
 
 ## 🤖 Agent 治理(省 Token,也省踩坑)
 
@@ -258,7 +238,8 @@ CutFlow 的"剪得好"不是玄学,每条数值都有出处(完整索引见 [ITE
 | 手册命令对拍门禁 | SKILL/rules 里每条 `rs_*` 命令都能被 argparse 接受,漂移即红(`tests/check_manual_cmds.py`) |
 | Hard Rule 25 | 禁止为一次性任务现写剪辑逻辑脚本;可复用的必须升格为官方 `rs_*` 子命令 |
 | `rs_verify` 分级验证 | L0 机械自检每次必跑;L1 语义目测首次/画面变更(`--auto` 时降级为抽帧留证);L2 验收归用户 |
-| 上下文预算 | 指标与趋势记录见 [docs/context-budget.md](docs/context-budget.md) |
+| CutForge 四桥 | `rs_editor`/`rs_notes`/`rs_oplog`/`rs_gate`(M0–M7;**范围以 gate.py 注册表为准**,无里程碑参数报错),命令全表查 capabilities.json |
+| 上下文预算 | 指标与趋势记录见 [docs/context-budget.md](docs/context-budget.md);门禁见 `tests/test_context_budget.py` |
 
 Agent 编排总控见 [skills/cutflow/SKILL.md](skills/cutflow/SKILL.md);领域术语见 [CONTEXT.md](CONTEXT.md);videoType 剪辑手册见 `skills/cutflow/rules/video-types/`;平台预设见 `skills/cutflow/rules/platforms.md`。
 
@@ -267,7 +248,7 @@ Agent 编排总控见 [skills/cutflow/SKILL.md](skills/cutflow/SKILL.md);领域�
 ```
 CutFlow/
 ├── skills/cutflow/
-│   ├── SKILL.md               # Agent 入口:分工表 + 铁律 + 命令速查(270 行体量锁)
+│   ├── SKILL.md               # Agent 入口:分工表 + 铁律 + 路由表(≤200 行体量锁,第一册 T1.1)
 │   ├── capabilities.json      # 能力目录(自动生成,禁手改)
 │   ├── CONTEXT.md             # 领域术语表
 │   ├── rules/                 # 按需加载的规则分册(intake/subtitles/roughcut/jianying/
@@ -277,11 +258,13 @@ CutFlow/
 ├── tests/                     # 全量测试(含手册命令对拍门禁 check_manual_cmds.py)
 ├── tools/                     # fetch_ffmpeg / fetch_deps / fun_asr / CutFlowConfigEditor
 ├── docs/
-│   ├── adr/                   # 架构决策记录(0001–0044)
+│   ├── adr/                   # 架构决策记录(0001–0059)
 │   ├── CHANGELOG.md           # 版本台账
-│   ├── BACKLOG.md             # 欠账台账(条条带证据)
+│   ├── BACKLOG.md             # 欠账台账(条条带证据,带 owner 册号)
 │   ├── ITERATION-GUIDE-v0.11.md  # 剪辑水平迭代总纲(权威数值出处索引)
-│   └── context-budget.md      # 上下文预算指标与基线
+│   ├── BASELINE-v0.20.md      # 仓库现状基线(第零册固化)
+│   ├── context-budget.md      # 上下文预算指标与基线
+│   └── archive/               # 历史迭代文档(OPTIMIZATION/PLAN/HANDOFF/ITERATION…,第一册 T1.6 归档)
 └── config.example.json        # 复制为 config.json(已被 gitignore)
 ```
 

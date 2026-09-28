@@ -39,6 +39,7 @@ sys.path.insert(0, str(SCRIPTS))
 import rs_paths  # noqa: E402  — 阶段路径唯一真相源,测试同样不走目录字面量
 import rs_beat   # noqa: E402
 import rs_editor  # noqa: E402  — contentId 回退口径与 rs_edit 同源(P22-1)
+import rs_ir    # noqa: E402  — C 组帧网格量化后的夹具排布对拍
 
 
 def _ffmpeg() -> str | None:
@@ -93,9 +94,13 @@ def _starts_of(durs: list[int]) -> list[int]:
 
 
 CARD_STARTS = _starts_of(CARD_DURS)
-# beat.snap 后的期望切点 = 全部吸附到 500ms 网格;超窗样本(WARN_IDX)保持原值
+# C 组帧网格量化(T2.16a)后 IR 段长取整帧(rs_ir.frame_quantize_ms,半升):
+# 期望切点的基线 = 量化后连续链;beat.snap 后 = 全部吸附到 500ms 网格,
+# 超窗样本(WARN_IDX)保持量化后起点原值(禁强制吸附)。
+_Q_DURS = [rs_ir.frame_quantize_ms(d, 30) for d in CARD_DURS]
+_Q_STARTS = _starts_of(_Q_DURS)
 EXPECTED_STARTS = [s if i == WARN_IDX else round(s / 500) * 500
-                   for i, s in enumerate(CARD_STARTS)]
+                   for i, s in enumerate(_Q_STARTS)]
 
 
 def _synth_clicks_wav(path: Path, seconds: int = CLICK_SEC) -> None:
@@ -269,7 +274,15 @@ def test_beat_snap_sequence_and_out_of_window_warn(tmp_path, mixcut_assets):
 
     ir = _build_ir(proj, cutlist)
     clips = _video_clips(ir)
-    assert [c["startMs"] for c in clips] == CARD_STARTS, "夹具排布应逐卡连续"
+    # C 组帧网格量化(T2.16a)后 IR 段长取整帧:排布仍逐卡连续(累计量化值),
+    # 每段时长对夹具值的偏差 ≤1 帧@30fps(33.4ms)。beat.snap 的 60ms 窗
+    # 仍能吃掉该量化抖动(夹具切点距拍 50ms,量化后 ≤34ms)。
+    q_starts, acc = [], 0
+    for d in CARD_DURS:
+        q_starts.append(acc)
+        acc = rs_ir.frame_quantize_ms(d, 30) + acc   # 与 rs_ir.build_from_cutlist 同式
+    assert [c["startMs"] for c in clips] == q_starts, "夹具排布应逐卡连续(量化后)"
+    assert all(abs(c["durationMs"] - d) <= 34 for c, d in zip(clips, CARD_DURS))
 
     # beat.snap 序列:一次 apply 批量吸附全部切点(锚点 = 原生 id;rs_ir v0.20 起产
     # 原生 id,ADR-0048 寻址设计:原生 id 优先,cf- 仅无 id 旧 IR 回退)
@@ -283,9 +296,10 @@ def test_beat_snap_sequence_and_out_of_window_warn(tmp_path, mixcut_assets):
                                    ensure_ascii=False), encoding="utf-8")
     out = _run("rs_edit.py", "apply", str(proj), "--ops", str(ops_path), "--actor", "agent")
     data = out["data"]
+    q_clips_baseline = q_starts  # C 组量化后的 IR 起点(本测试上文已算出)
     moved = [i for i, c in enumerate(_video_clips(
         json.loads(rs_paths.project_json(proj).read_text(encoding="utf-8"))))
-        if c["startMs"] != CARD_STARTS[i]]
+        if c["startMs"] != q_clips_baseline[i]]
     assert len(moved) >= 3, f"至少 3 个切点被吸附,实际 {len(moved)}"
     assert data["idempotent"] >= 1 and len(data["warnings"]) == 1, data
 
@@ -295,14 +309,15 @@ def test_beat_snap_sequence_and_out_of_window_warn(tmp_path, mixcut_assets):
     for i in moved:
         assert abs(_snap_beat_drift(beats, starts[i])) <= 60, f"切点 {i} 未落拍"
     wi = WARN_IDX
-    assert starts[wi] == CARD_STARTS[wi], "超窗切点必须原样保留(禁强制吸附)"
+    assert starts[wi] == q_clips_baseline[wi], "超窗切点必须原样保留(禁强制吸附)"
     assert abs(_snap_beat_drift(beats, starts[wi])) > 60
     warn = data["warnings"][0]
     assert "超出吸附窗" in warn and "不动" in warn, warn
 
     # 链式无缝:吸附后任一切点不得早于前卡结束(渲染端时间重叠校验的同口径;
     # 前卡结束 = 原始切点 + 原始时长,durationMs 不随 snap 改变)
-    ends = [CARD_STARTS[i] + CARD_DURS[i] for i in range(len(clips))]
+    ir0 = _video_clips(ir)
+    ends = [q_clips_baseline[i] + ir0[i]["durationMs"] for i in range(len(ir0))]
     for i in range(1, len(starts)):
         assert starts[i] >= ends[i - 1] - 1, f"边界 {i} 出现时间重叠({starts[i]} < {ends[i - 1]})"
 

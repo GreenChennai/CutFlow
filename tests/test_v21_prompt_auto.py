@@ -560,7 +560,7 @@ def test_auto_full_run_reproducible_and_convergent(tmp_path, monkeypatch):
 def test_auto_relationship_documented():
     """N3:--auto 与既有 automation 模式的关系必须写清(SKILL Hard Rule 1 + incremental)。"""
     skill = (REPO / "skills" / "cutflow" / "SKILL.md").read_text(encoding="utf-8")
-    assert "--auto" in skill and "不是新状态机" in skill and "L2 验收仍归用户" in skill
+    assert "--auto" in skill and "不是新状态机" in skill and "L2 最终验收归用户" in skill
     inc = (REPO / "skills" / "cutflow" / "rules" / "incremental.md").read_text(encoding="utf-8")
     assert "全程无人值守" in inc and "decision_log" in inc and "决策说明书" in inc
     assert "宁可漏删不可错删" in inc

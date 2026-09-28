@@ -225,8 +225,8 @@ def screen_proj(tmp_path_factory):
 
 def test_waiting_unit_enum_guard_and_speech_filter(tmp_path):
     """waiting 枚举/guard 档位/防误删过滤:纯函数直测,不依赖 ffmpeg。"""
-    assert "waiting" in rs_cut.REASONS, "reason 封闭枚举必须含 waiting(共 10 项)"
-    assert len(rs_cut.REASONS) == 10
+    assert "waiting" in rs_cut.REASONS, "reason 封闭枚举必须含 waiting(共 11 项)"
+    assert len(rs_cut.REASONS) == 11
     assert rs_cut.GUARD_REQUIRED["waiting"] == ("wordClipped", "tailKeep"), \
         "waiting 段无语音:inSilence/outSilence 天然满足,只硬要求不切字 + 后留余量"
     screen = tmp_path / "screen.json"

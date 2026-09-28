@@ -176,24 +176,27 @@ def _check_forge_path_contract() -> tuple[bool, str]:
 
 
 def _artboard_locked_check(wpi) -> dict:
-    """M12(ADR-0053):artboard 路径锁定检出——工作区级路径是唯一准绳(用户级
-    codebuddy 副本与它内容不一致,不作准)。锁定路径在本机真实存在而配置指到
-    他处 → fatal;锁定路径缺席的机器(如 CI)跳过此判据,不造零环境误报。"""
-    from rs_common import ARTBOARD_LOCKED_DIR
-    if not wpi or not ARTBOARD_LOCKED_DIR.is_dir():
+    """M12(ADR-0053):artboard 路径锁定检出。锁定路径经 rs_common.artboard_dir()
+    解析(config.json `artboard_dir` → env `CUTFLOW_ARTBOARD_DIR`;T2.4/H4:个人
+    盘符绝不入库)。路径缺席的机器(如 CI)跳过此判据不造零环境误报;路径在而
+    配置指到他处 → fatal。"""
+    from rs_common import artboard_dir
+    locked = artboard_dir()
+    if not wpi or locked is None or not locked.is_dir():
         return _check("artboard_dir 指向工作区级锁定路径", True,
                       str(wpi or "(未配置)"),
                       fatal=False, group="趣味素材",
-                      hint="本机无锁定路径或未配置,跳过比对")
+                      hint="本机未解析到锁定路径(config.artboard_dir /"
+                           " CUTFLOW_ARTBOARD_DIR),跳过比对")
     try:
         same = os.path.normcase(str(Path(wpi).resolve())) == \
-            os.path.normcase(str(ARTBOARD_LOCKED_DIR.resolve()))
+            os.path.normcase(str(locked.resolve()))
     except OSError:
         same = False
     return _check(
         "artboard_dir 指向工作区级锁定路径", same, str(wpi), fatal=not same,
         group="趣味素材",
-        hint=f"用户已锁定 {ARTBOARD_LOCKED_DIR} 为准(2026-09-26);"
+        hint=f"用户已锁定 {locked} 为准(2026-09-26);"
              "请把 config.artboard_dir 改到该路径")
 
 

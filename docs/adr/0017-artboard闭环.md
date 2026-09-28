@@ -42,4 +42,4 @@
 
 - `rules/artboard.md`、`rs_artboard.py`
 - 依赖 ADR-0013(增量)、ADR-0016(一键重建)
-- `docs/OPTIMIZATION-v5.md` §5
+- `docs/archive/OPTIMIZATION-v5.md` §5

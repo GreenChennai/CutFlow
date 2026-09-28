@@ -24,6 +24,7 @@ import hashlib
 import json
 import re
 import sys
+from collections.abc import Iterable
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -67,12 +68,22 @@ def load_manifest() -> dict | None:
     return doc if isinstance(doc, dict) and isinstance(doc.get("assets"), list) else None
 
 
-def assets(kind: str | None = None) -> list[dict]:
-    """索引条目(kind 过滤;manifest 缺失 → 空表,由调用方决定兜底)。"""
+def assets(kind: str | Iterable[str] | None = None) -> list[dict]:
+    """索引条目(kind 过滤;manifest 缺失 → 空表,由调用方决定兜底)。
+
+    T2.1(H1):kind 支持单值或可迭代(如 `["sfx","bgm"]`,CLI 侧逗号拆分后传入);
+    空可迭代视同不过滤。非法 kind 由 CLI 层报 BAD_KIND,本函数不做校验。
+    """
     doc = load_manifest()
     if doc is None:
         return []
-    out = [a for a in doc["assets"] if not kind or a.get("kind") == kind]
+    kinds: set[str] | None
+    if kind is None or (isinstance(kind, str)):
+        kinds = {kind} if kind else None
+    else:
+        sel = set(kind)
+        kinds = sel or None                    # 空列表/空集合 → 不过滤
+    out = [a for a in doc["assets"] if not kinds or a.get("kind") in kinds]
     return sorted(out, key=lambda a: str(a.get("id", "")))
 
 
@@ -592,6 +603,19 @@ def cmd_scan(a: argparse.Namespace) -> int:
                 {"stats": stats, "changed": changed})
 
 
+def _split_kinds(raw: str | None) -> list[str] | None:
+    """`--kind sfx,bgm` → `["sfx","bgm"]`(T2.1/H1:必须拆开再过滤,否则静默 0 条)。
+
+    非法 kind 抛 ValueError(由调用方转 BAD_KIND 结构化错误,不静默)。"""
+    if not raw:
+        return None
+    kinds = [k.strip() for k in raw.split(",") if k.strip()]
+    bad = [k for k in kinds if k not in KINDS]
+    if bad:
+        raise ValueError(f"未知 kind:{bad}(可选 {'/'.join(KINDS)})")
+    return kinds or None
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="CutFlow 素材库(ADR-0053)")
     sub = ap.add_subparsers(dest="command", required=True)
@@ -647,15 +671,15 @@ def main() -> int:
     sp.add_argument("--gain-db", dest="gain_db", type=int, default=-14)
 
     a = ap.parse_args()
-    if a.command == "list":
-        if a.kind:
-            bad = [k for k in a.kind.split(",") if k not in KINDS]
-            if bad:
-                return emit(False, "BAD_KIND", f"未知 kind:{bad}(可选 {'/'.join(KINDS)})",
-                            exit_code=EXIT_INPUT)
-        return cmd_list(a)
-    if a.command == "search":
-        return cmd_search(a)
+    try:
+        if a.command == "list":
+            a.kind = _split_kinds(a.kind)      # H1:拆成列表,assets() 按集合过滤
+            return cmd_list(a)
+        if a.command == "search":
+            a.kind = _split_kinds(a.kind)
+            return cmd_search(a)
+    except ValueError as exc:
+        return emit(False, "BAD_KIND", str(exc), exit_code=EXIT_INPUT)
     if a.command == "get":
         return cmd_get(a)
     if a.command == "check":

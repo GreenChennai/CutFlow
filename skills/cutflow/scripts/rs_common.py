@@ -14,16 +14,69 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 import segmentation  # noqa: E402  — 纯标准库,提供统一的标点口径(PUNCT_WS)
 import rs_paths  # noqa: E402  — 阶段路径唯一真相源(ADR-0046);目录名禁止字面量
+# T2.13:退出码与结果 code 唯一注册表。本模块是唯一被允许反向依赖 rs_codes 的
+# 地方(方向:rs_codes 只依赖标准库;其余脚本继续从 rs_common 取 EXIT_*/emit)。
+from rs_codes import (EXIT_DEP, EXIT_EXEC, EXIT_INPUT, EXIT_OK,  # noqa: F401
+                      require_registered)
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 CONFIG_PATH = REPO_ROOT / "config.json"
 
-EXIT_OK, EXIT_INPUT, EXIT_DEP, EXIT_EXEC = 0, 2, 3, 4
+# artboard 技能目录解析(T2.4/H4):个人机器盘符绝不入库 —— 唯一准绳经
+# artboard_dir() 解析(config.json `artboard_dir` → 环境变量 `CUTFLOW_ARTBOARD_DIR`
+# → None)。锁定目录缺席的机器(如 CI)由消费方跳过判据,不 fatal。
+def artboard_dir() -> Path | None:
+    """artboard 技能目录唯一解析口(T2.4/H4);解析不到返回 None,不 fatal。"""
+    raw = ""
+    try:
+        if CONFIG_PATH.is_file():
+            raw = str(json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+                      .get("artboard_dir", "") or "")
+    except (OSError, json.JSONDecodeError, ValueError):
+        raw = ""
+    if not raw:
+        raw = os.environ.get("CUTFLOW_ARTBOARD_DIR", "").strip()
+    return Path(raw) if raw else None
 
-# artboard 技能路径锁定(M12/ADR-0053,用户 2026-09-26 确认):工作区级为唯一准绳。
-# 用户级 codebuddy 副本与它内容不一致,**不作准**;rs_doctor 检出 config.artboard_dir
-# 与本路径不一致时报错(锁定目录缺席的机器——如 CI——跳过此判据)。
-ARTBOARD_LOCKED_DIR = Path(r"E:\平日资料\GitHub\.agents\skills\artboard")
+
+# ---------------------------------------------------------------- 字体查表(M14 三处合一)
+
+FONTS_JSON = Path(__file__).resolve().parents[1] / "templates" / "fonts.json"
+FONT_DIR_FALLBACK = "source-han-sans"     # default.subtitle 缺省(artboard scaffold 口径)
+
+
+def load_fonts_doc() -> dict | None:
+    """读 templates/fonts.json(共享读口;缺失/损坏 → None,调用方自行降级留痕)。"""
+    if not FONTS_JSON.is_file():
+        return None
+    try:
+        doc = json.loads(FONTS_JSON.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError):
+        return None
+    return doc if isinstance(doc, dict) and isinstance(doc.get("fonts"), list) else None
+
+
+def resolve_font_family(default_dir: str | None = None) -> str | None:
+    """fonts.json 查表:`default.subtitle`(或显式目录名)→ 代表款 family。
+
+    M14 三处合一(rs_subtitle.resolve_font / rs_artboard._css_font /
+    rs_artboard.default_fonts 此前各写一套「取 default → 查 family」且异常
+    处理各异)。查不到返回 None —— 兜底字体与 WARN 留痕由调用方按各自口径给。
+    """
+    doc = load_fonts_doc()
+    if not doc:
+        return None
+    dkey = default_dir or (doc.get("default") or {}).get("subtitle")
+    hit = next((f for f in doc["fonts"] if f.get("dir") == dkey), None) if dkey else None
+    return str(hit["family"]) if hit and hit.get("family") else None
+
+
+def default_font_dir() -> str:
+    """default.subtitle(空/表缺失回退 FONT_DIR_FALLBACK,不给空值)。"""
+    doc = load_fonts_doc()
+    if not doc:
+        return FONT_DIR_FALLBACK
+    return str((doc.get("default") or {}).get("subtitle") or FONT_DIR_FALLBACK)
 
 # IR 版本唯一真相源(R09/R41):project.json 的 version 恒为 1(与两仓 schema 的
 # const 一致);schema 自身演进用 schemaVersion 表达,不动这个整数。
@@ -192,12 +245,19 @@ def write_text_atomic(path: str | Path, text: str) -> None:
 
 
 def emit(ok: bool, code: str, message: str, data=None, exit_code: int = EXIT_OK) -> int:
+    """统一 CLI 结果协议输出(T2.13 加固:code 必须已在 rs_codes 注册)。
+
+    未登记 code 直接抛 UnregisteredCodeError —— 让"随手编一个 code"在测试期
+    就红,而不是静默外放一个 Agent 无法对账的新字符串。
+    """
+    require_registered(code)
     print(json.dumps({"ok": ok, "code": code, "message": message, "data": data},
                      ensure_ascii=False, default=str))
     return exit_code
 
 
 def die(exit_code: int, code: str, message: str, data=None) -> "None":
+    require_registered(code)
     print(json.dumps({"ok": False, "code": code, "message": message, "data": data},
                      ensure_ascii=False, default=str))
     sys.exit(exit_code)
@@ -265,6 +325,9 @@ def proportional_timeout(duration_s: float, *, factor: float = 4.0, floor: int =
     · `env` 给出环境变量名(如 CUTFLOW_SEG_TIMEOUT):显式设置且为正整数时完全
       覆盖(手工兜底优先于自动推算);
     · floor 是保守下限(小时级素材也不会低于既有常量),factor 覆盖慢机器余量。
+
+    T2.12 起 `factor/floor/env` 的取值由 stages.json 的 timeoutPolicy 声明,
+    调用方一律走 `policy_timeout(key)`,不再手抄常量 —— 本函数保留为机械核心。
     """
     if env:
         raw = os.environ.get(env, "").strip()
@@ -275,6 +338,83 @@ def proportional_timeout(duration_s: float, *, factor: float = 4.0, floor: int =
     except (TypeError, ValueError):
         dur = 0.0
     return int(max(float(floor), dur * factor))
+
+
+# ---------------------------------------------------------------- 超时策略(T2.12 唯一入口)
+#
+# 散落的 CUTFLOW_*_TIMEOUT 环境变量 + 各处手抄 floor 常量,收敛为
+# templates/stages.json 的 timeoutPolicy(阶段级)与 policies(辅助键)单一声明。
+# rs_run(阶段子进程/自检)与直调脚本(rs_render/rs_align/rs_greenscreen)共用
+# 同一个解析函数;gen_stages.py 再生 stages.json 时原样保留本表(T2.10 零 diff)。
+
+STAGES_JSON = Path(__file__).resolve().parents[1] / "templates" / "stages.json"
+
+# 策略表缺失/条目残缺时的内置缺省(与 v0.20 rs_run.DEFAULT_STAGE_TIMEOUT_SEC 同值,
+# 保证无表环境下 rs_run 主链行为零漂移)
+FALLBACK_STAGE_TIMEOUT = 3600
+
+_TIMEOUT_POLICIES: dict[str, dict] | None = None
+_STAGES_CONTRACT: dict[str, dict] | None = None
+
+
+def stages_contract() -> dict[str, dict]:
+    """stages.json 阶段契约(id → 条目;T2.10,生成器 tools/gen_stages.py 的产物)。
+
+    表缺失/坏 JSON → 空表(调用方降级为无契约字段,绝不崩主流程);进程内缓存。
+    """
+    global _STAGES_CONTRACT
+    if _STAGES_CONTRACT is None:
+        doc: dict = {}
+        if STAGES_JSON.is_file():
+            try:
+                doc = json.loads(STAGES_JSON.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError, UnicodeDecodeError):
+                doc = {}
+        _STAGES_CONTRACT = {str(s.get("id")): s for s in (doc.get("stages") or [])
+                            if isinstance(s, dict) and s.get("id")}
+    return _STAGES_CONTRACT
+
+
+def timeout_policies() -> dict[str, dict]:
+    """stages.json 的超时策略总表:阶段 id 的 timeoutPolicy + `policies` 辅助键。
+
+    表缺失/坏 JSON → 空表(policy_timeout 回落内置缺省,绝不崩主流程);进程内缓存。
+    """
+    global _TIMEOUT_POLICIES
+    if _TIMEOUT_POLICIES is None:
+        pol: dict[str, dict] = {}
+        for sid, st in stages_contract().items():
+            if isinstance(st.get("timeoutPolicy"), dict):
+                pol[sid] = st["timeoutPolicy"]
+        # `policies` 辅助键(VERIFY/SEG/STEP/…)是顶层段,不随 stages 条目进契约
+        doc: dict = {}
+        if STAGES_JSON.is_file():
+            try:
+                doc = json.loads(STAGES_JSON.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError, UnicodeDecodeError):
+                doc = {}
+        for k, v in (doc.get("policies") or {}).items():
+            if isinstance(v, dict):
+                pol[str(k)] = v
+        _TIMEOUT_POLICIES = pol
+    return _TIMEOUT_POLICIES
+
+
+def policy_timeout(key: str, duration_s: float = 0.0) -> int:
+    """T2.12 统一超时入口(stages.json timeoutPolicy 单一实现)。
+
+    解析顺序:policy.env 显式设置(正整数)完全覆盖 → max(base, duration_s×factor)。
+    key 未登记或条目残缺 → 内置缺省 FALLBACK_STAGE_TIMEOUT(平超时,零漂移)。
+    """
+    pol = timeout_policies().get(str(key)) or {}
+    base = pol.get("base")
+    if not isinstance(base, (int, float)) or isinstance(base, bool) or base <= 0:
+        base = FALLBACK_STAGE_TIMEOUT
+    factor = pol.get("factor")
+    if not isinstance(factor, (int, float)) or isinstance(factor, bool) or factor < 0:
+        factor = 0.0
+    return proportional_timeout(duration_s, factor=float(factor),
+                                floor=int(base), env=str(pol.get("env") or ""))
 
 
 def run(cmd: list[str], timeout: int = 3600, quiet: bool = True,
@@ -362,3 +502,59 @@ def ensure_workdir(slug: str) -> Path:
     root = Path(cfg["workdir_root"]) / slug
     rs_paths.ensure(root)
     return root
+
+
+# ---------------------------------------------------------------- 能力描述符目录(T2.14 下沉)
+#
+# 「算法能力表」加载器原在 rs_run(引擎);rs_stylepack(机械臂)为查能力描述符
+# 曾反向 import 引擎(T2.14 分层违规)。加载器本质是数据访问,下沉到工具层,
+# rs_run/rs_intent 保留同名出口(兼容既有调用),分层方向归位:人人只 import 工具层。
+
+CAPS_DIR = Path(__file__).resolve().parents[1] / "templates" / "capabilities"
+
+
+def load_capability_descriptors(caps_dir: Path | None = None) -> dict[str, dict]:
+    """算法能力注册表:templates/capabilities/*.json,每能力一文件。
+
+    坏文件(坏 JSON / 缺 id / id 重复)WARN 跳过,绝不崩主流程;`_` 前缀文件是
+    体例样板,不进注册表(原 rs_run 实现,原样下沉)。
+    `caps_dir` 显式给定时读该目录(测试注入/工具自检用),缺省用内置 CAPS_DIR。
+    """
+    d = caps_dir if caps_dir is not None else CAPS_DIR
+    out: dict[str, dict] = {}
+    if not d.is_dir():
+        return out
+    for f in sorted(d.glob("*.json")):
+        if f.name.startswith("_"):
+            continue
+        try:
+            desc = json.loads(f.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError, UnicodeDecodeError) as exc:
+            print(f"[WARN] 能力描述符 {f.name} 解析失败,已跳过:{exc}", file=sys.stderr)
+            continue
+        cid = desc.get("id") if isinstance(desc, dict) else None
+        if not cid:
+            print(f"[WARN] 能力描述符 {f.name} 缺 id,已跳过", file=sys.stderr)
+            continue
+        if str(cid) in out:
+            print(f"[WARN] 能力描述符 id 重复:{cid}({f.name}),后者已跳过", file=sys.stderr)
+            continue
+        out[str(cid)] = desc
+    return out
+
+
+def intent_decisions_of(root) -> list:
+    """读 00_制作简报/intent_decisions.json 的 decisions(缺文件/坏 JSON → 空表)。
+
+    原 rs_run 实现(数据访问,与编排无关),T2.14 下沉到工具层:
+    rs_ingest(机械臂)的交付对账曾为此反向 import 引擎。
+    """
+    p = rs_paths.resolve(root, "brief") / "intent_decisions.json"
+    if not p.is_file():
+        return []
+    try:
+        doc = json.loads(p.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError):
+        return []
+    out = doc.get("decisions") if isinstance(doc, dict) else None
+    return out if isinstance(out, list) else []

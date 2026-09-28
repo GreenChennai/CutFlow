@@ -102,11 +102,16 @@ CAPABILITY_DEPS: dict[str, dict] = {
         "degradeText": "不可降级且过质量门禁才启用(none/gate,ADR-0050)",
     },
     "vision.track": {
-        "label": "目标跟踪", "use": "跟拍/贴纸跟随",
-        "modules": ["bytetrack"], "imports": ["bytetrack"],
-        "size_mb": 20, "backend": "py",
-        "probe": "import bytetrack", "degrade": "static-center",
-        "degradeText": "静态中心锚点(static-center,跟随变固定)",
+        # 第三册 T3.4(2026-09-27):READY 档由「bytetrack(从未部署,恒降级)」重定义为
+        # 「cv2 本地检测(Haar 人脸+帧差粗框,权重随 opencv 分发零下载)」——诚实纪律:
+        # 描述符必须反映真实可用档,而不是挂一个永远 probe 不过的名字装 READY。
+        # module 键 opencv-track 与 vision.cv 的 opencv 是同一个 pip 包(opencv-python),
+        # 分开登记只为保住清单 1:1 门禁(test_fetchable ②)。
+        "label": "主体跟踪", "use": "横转竖主体锚/跟拍",
+        "modules": ["opencv-track"], "imports": ["cv2"],
+        "size_mb": 60, "backend": "py",
+        "probe": "import cv2", "degrade": "static-center",
+        "degradeText": "主体跟踪缺失→居中锚(static-center,显式留痕)",
     },
     "vision.cv": {
         "label": "OpenCV 基础视觉", "use": "帧差/黑场/剪贴检测",
@@ -114,6 +119,16 @@ CAPABILITY_DEPS: dict[str, dict] = {
         "size_mb": 60, "backend": "py",
         "probe": "import cv2", "degrade": "none",
         "degradeText": "不可降级(degrade none):缺组件即不启用对应检测",
+    },
+    "vision.sense": {
+        # 第三册 T3.7/T3.8:画面感知 L1 标签层(vision.json 的 hasFace/安全带占用/
+        # 骨架辅助标签)。与 vision.cv 共用 opencv-python;缺失 → 显式降级 L0-only,
+        # 结构档照常产出(ADR-0049 三态;绝不静默)。
+        "label": "画面感知 L1 标签", "use": "vision.json 逐镜 hasFace/安全带占用",
+        "modules": ["opencv-sense"], "imports": ["cv2"],
+        "size_mb": 60, "backend": "py",
+        "probe": "import cv2", "degrade": "L0-only",
+        "degradeText": "L1 标签缺失→仅 L0 结构档(字段缺席显式留痕,结构产物不失败)",
     },
     "fx.glsl": {
         "label": "GLSL 转场渲染(T2/B3)", "use": "gl-transitions 特效转场(分册02 §1.2)",
@@ -423,8 +438,10 @@ def install_component(module: str) -> int:
     """
     cap_id = MODULE_TO_CAP.get(module) or (module if module in CAPABILITY_DEPS else None)
     if cap_id is None:
-        print(f"未知组件:{module}(可选:{'/'.join(sorted(MODULE_TO_CAP))})")
-        return EXIT_INPUT
+        # T2.15:未知组件走统一协议(ok=false + 非零退出),不再裸 print
+        return emit(False, "BAD_ARGS",
+                    f"未知组件:{module}(可选:{'/'.join(sorted(MODULE_TO_CAP))})",
+                    {"module": module}, exit_code=EXIT_INPUT)
     entry = CAPABILITY_DEPS[cap_id]
     module = entry["modules"][0]        # 能力 id 形式的入参归一成发行模块名
     if _probe_ok(entry):
@@ -483,10 +500,10 @@ def _write_config_deps(module: str, meta: dict) -> None:
 
 def cmd_state(as_json: bool) -> int:
     rows = state_all()
+    # T2.15:无论 --json 与否,输出都以统一协议 JSON 收口(人读表格保留在前)
+    ok_msg = (f"{sum(1 for r in rows if r['state'] == 'READY')}/{len(rows)} 就绪")
     if as_json:
-        return emit(True, "FETCHABLE_STATE",
-                    f"{sum(1 for r in rows if r['state'] == 'READY')}/{len(rows)} 就绪",
-                    {"components": rows})
+        return emit(True, "FETCHABLE_STATE", ok_msg, {"components": rows})
     print("能力组件三态(ADR-0049;安装: rs_fetchable.py install <module>):")
     for r in rows:
         mark = {"READY": "READY ", "MISSING": "MISSING", "FAILED": "FAILED "}[r["state"]]
@@ -494,14 +511,13 @@ def cmd_state(as_json: bool) -> int:
               f"~{r['size_mb']}MB {r['backend']:<10} 降级档 {r['degrade']}")
         if r["state"] != "READY":
             print(f"          {r['message']}")
-    return EXIT_OK
+    return emit(True, "FETCHABLE_STATE", ok_msg, {"components": rows})
 
 
 def cmd_install(module: str) -> int:
     if not module:
-        print("用法: rs_fetchable.py install <module>"
-              f"(可选:{'/'.join(sorted(MODULE_TO_CAP))})")
-        return EXIT_INPUT
+        return emit(False, "BAD_ARGS", "用法: rs_fetchable.py install <module>"
+                    f"(可选:{'/'.join(sorted(MODULE_TO_CAP))})", exit_code=EXIT_INPUT)  # T2.15
     return install_component(module)
 
 
@@ -538,19 +554,25 @@ def cmd_update(check: bool, apply_: bool, no_fetch: bool) -> int:
           + ("--apply 才更新(显式触发)。" if stale else "全部一致。"))
     if apply_ and stale:
         if no_fetch:
-            print("--apply 与 --no-fetch 互斥:离线不更新。")
-            return EXIT_DEP
+            # T2.15:失败路径同样走统一协议(非零退出 + ok=false)
+            return emit(False, "DEP_MISSING", "--apply 与 --no-fetch 互斥:离线不更新。",
+                        {"modules": [r["module"] for r in stale]}, exit_code=EXIT_DEP)
         rc = EXIT_OK
         for r in stale:
             rc = max(rc, install_component(r["module"]))
         return rc
-    return EXIT_OK
+    # T2.15:比对(未显式 --apply)是干跑 —— 以统一协议 JSON 收口
+    return emit(True, "DRY_RUN",
+                f"差异 {len(stale)} 个;" + ("--apply 才更新(显式触发)。" if stale else "全部一致。"),
+                {"diffs": len(stale), "modules": [r["module"] for r in rows]})
 
 
 def cmd_rollback(module: str) -> int:
     """清理组件写进 config 的回写项(下载件保留不删,ADR-0049 回滚语义)。"""
     if not module:
-        print("用法: rs_fetchable.py rollback <module>")
+        # T2.15:缺参提示走统一协议(非零退出 + ok=false),不再裸 print
+        emit(False, "BAD_ARGS", "用法: rs_fetchable.py rollback <module>",
+             exit_code=EXIT_INPUT)
         return EXIT_INPUT
     p = config_path()
     cfg = json.loads(p.read_text(encoding="utf-8")) if p.is_file() else {}

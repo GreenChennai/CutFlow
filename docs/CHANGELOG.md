@@ -1,5 +1,111 @@
 # Changelog
 
+## v0.21.0 (2026-09-28) — 多册迭代:Token 治理 · 缺陷清零 · 感知层 · 断句重构 · 成片评分卡(第零–五册)
+
+依据:《CutFlow-多册迭代计划》第零册(现状基线固化)+ 分册 01–05。基线 v0.20.0(HEAD `e775e56`),
+测试 948+ → **1596 全绿**(默认套件 1592;`e2e` 4 例按 marker 单跑)。**行为变更项均已逐条标注**;
+本批改动不含 commit/push,提交时机归用户。
+
+### 新增
+
+- **感知层 `rs_vision.py`(第三册,治「瞎子剪辑」)**:`rs_shot` 逐镜数值档案 v2(motionScore/brightness/
+  contrast/colorfulness/stability 等,全数值可复算)→ `rs_vision vision/skeleton/report`:vision.json 聚合
+  (schema 校验,坏结构/超 64KB 必红)、skeleton.json 骨架摘要(**≤2KB**,超预算逐级压缩留痕)、
+  三级感知预算(L0 结构零模型零网络默认开 / L1 本地标签可选 / L2 VLM 描述显式开启);**价值选帧**
+  (镜头中点+运动峰值+字幕起点前 2 帧)替换均匀抽帧并接进 S9 装配(`rs_run` 给 `rs_bench` 追加
+  `--shots`,缺席回退启发式留痕);`rs_edit context --with-vision` 画面准入(仍 ≤12KB);
+  `rs_verify` L0 新判据**安全区内容占位 SAFE_AREA_CONTENT**(人脸/内容压字幕带报红)。
+  门禁:`tests/test_shot_profile.py` / `test_vision_json.py` / `test_skeleton.py` / `test_value_frames.py` /
+  `test_safe_area_content.py` / `test_sense_tier.py` / `test_edit_with_vision.py`
+- **成片评分卡(第五册 T5.1/T5.2)**:`docs/QC-SCORECARD.md` 五维 100 分制维表与扣分规则单一出处
+  (声画同步 35/可读性 20/连贯节奏 20/画面安全 15/交付完整 10;机械可判满分 91,人工签核 9 另列);
+  `rs_verify.py <工程根> --score` 自动算分,**总分 <75 → 退出码 4(SCORE_FAIL)**,拦截输出带
+  总分/已判满分、逐维失分与诊断指引;判据缺席既不得分也不进分母(反假正常)。
+  门禁:`tests/test_qc_scorecard.py` 12 例
+- **独立对账双路(第五册 T5.6c,假正常闭环)**:产物路 `check_replay_remap`(从源 wordline + cutlist
+  重放 remap 与盘上 final 逐字对拍,单侧篡改即红)+ 成片路 `check_subtitle_speech`(对成片跑
+  silencedetect 实测语音活动,字幕压静默区 ≥30% / 台词覆盖不足即红);内容闸三态
+  (pass/fail/degraded/absent 显式留痕,禁止把降级表述成通过);S9 装配默认携带 `--audio-content`。
+  门禁:`tests/test_false_green.py` 三类错误传染样例 **3/3 报红**、干净基线不误报
+- **断句金标与词表治理(第四册)**:`tests/fixtures/segboundary_gold.json` **358 例**金标
+  (`tests/test_segboundary_gold.py`,防分词/断句回归);`tools/wordlist_patch.py` 词表补丁机制
+  (`tests/test_wordlist_patch.py`);`templates/subtitle-policy.json` 每卡字数/CPS 档单一出处
+  (`tests/test_subtitle_policy.py`)
+- **流程契约(第二册 B 组)**:`templates/stages.json` 12 阶段契约(`tools/gen_stages.py` 机械抽取,
+  禁手改,漂移即红)+ `tests/test_stages_contract.py`;状态机分册 `rules/pipeline-state.md` +
+  `tests/test_pipeline_states.py`;**`rs_codes.py` 退出码与结果 code 唯一注册表**(`emit`/`die` 强制校验,
+  未登记即抛错)+ `tests/test_codes_registry.py`(全仓静态对拍;清 R08/R36);CONTEXT.md `rs_*`
+  **脚本分层表**(工具/机械臂/引擎/桥)+ `tests/test_import_direction.py` import 方向对拍;
+  `tests/test_json_contract.py` 166 例(工程/wordline/cutlist 等契约面)
+- **工程层快照与 e2e 框架(第五册)**:`tests/snapshots/` **12 盘面**(视频类型 × 改动状态)+
+  `tests/test_snapshots.py`(零 diff 断言);`tests/e2e/` 冒烟 4 例(合成素材全链 S0→S11 + 二次
+  `--from S0` 幂等收敛 8/8 命中缓存);`pytest.ini` marker 纪律(`perf` 不进常规门禁 / `e2e` 默认排除)
+- **第一册治理设施**:`tests/test_context_budget.py`(SKILL ≤200 行/分册 ≤150 行-可声明超限理由/
+  SKILL+README ≤470 行;AGENTS/CLAUDE 合一;references 目录表↔rs_paths 对拍)、
+  `tests/test_doc_single_source.py`(**五类数值口径单一出处**:响度/单卡时长/每卡字数/对齐偏移/
+  粗剪 margin,白名单集中管理 + `<!-- single-source-ignore -->` 逃生口;SKILL 命令↔能力目录对拍)、
+  `tests/test_backlog_consistency.py`(BACKLOG 同 ID 多行结论冲突即红);`docs/METRICS.md` 度量看板
+- 效果目录 **53 条「登记待实现」补齐三要素**(归属册号/触发条件/降级行为与留痕,T2.9):
+  `rs_effects.enrich_pending` 幂等补齐,`tests/test_med_fixes.py` 全量审计
+
+### 修复
+
+- **第二册 A 组:21 缺陷清零**(第零册附录 A 高危 7 + 中危 14,每条红→绿回归):
+  - **H1** `rs_asset --kind sfx,bgm` 未拆逗号静默 0 条 → 拆分后按类过滤(`tests/test_asset_kind_multi.py`)
+  - **H2** t2_glsl 统一头忽略入参恒采 `v_uv` → 采样入参 `uv`,UV 变换转场不再静默错画(`tests/test_t2_uv_sampling.py`)
+  - **H3** zoompan 出场分支 `lt(in,n_frames)` 恒真 → 出场缩放真实发生(`tests/test_fx_out_animation.py`)
+  - **H4** 个人机器绝对路径进共享代码(ARTBOARD_LOCKED_DIR/pixabay key)→ config → 环境变量兜底(`tests/test_no_absolute_machine_path.py`)
+  - **H5** pixabay `sound_effect` 通道仍用 `/music/` 正则恒空 → slug 选择器按 kind 选正则(`tests/test_pixabay_selector.py`)
+  - **H6** 烧录 ASS 帧网格平移写 `_build/` 副本、盘上 `subtitles.ass` 分叉 → **对齐前移 S7 生成期**,盘面 = 烧录单一真相源(`tests/test_ass_grid_single_source.py`)
+  - **H7** `detect_retake` 复制粘贴 `ratio()` 连算两遍剪枝退化 → 删除,剪枝真实省算(`tests/test_retake_prune.py`)
+  - **M1–M14** 逐条修复 + 防复发断言(`tests/test_med_fixes.py`)
+- **C 组:3 条真实素材端到端揪出 4 个真 bug**(assetA 364s/41 段、assetB 78s、assetC 16x9 独立素材仓;
+  评分卡 81/77/77 全过及格线,见 `docs/METRICS.md`):
+  - **rs_ir keep 段长帧网格量化**:拼接端逐段把视频 round 到整帧,误差随段数累积(41 段实测
+    +68.7ms)→ 量化后归零(`tests/test_frame_exact_segments.py`)
+  - **rs_sync 终点偏移双轨**:单卡最短时长档(见 `rules/subtitles.md` §8)契约内的可读性延长被误判
+    「滞留」→ 拆双轨:`endOffsetMs` 守语音覆盖域(早退判据一字未松)/`releaseOffsetMs` 看合法终点窗
+    (被下一卡起点封顶)——**行为变更**:滞留闸口径换轨(`tests/test_rs_sync_min_dur_pin.py`)
+  - **rs_subtitle 16x9 安全区**:三档样式 margin_v 90/110/120 全部低于 B站 safeArea 底 16% → 收敛到
+    180,并加「(style,ratio) × 平台 margin_v 不变量」门禁防再犯——**行为变更**:16x9 字幕带整体上移
+    (`tests/test_subtitle_safe_area.py`)
+  - **rs_artboard 清单路径基准**:manifest 的 project/output 在「工程根下/独立素材仓」两态写法,读出口
+    一律按 cwd 解析 → 主引擎假成功/假跳过/apply 误判 → `_item_base` 与 `_item_prefix` 互逆,export/
+    export-fallback/apply 全走该基准(`tests/test_artboard_item_base.py`)
+
+### 重构
+
+- **断句链重构(第四册)**:「门禁强制断句」四根因归零(R1 可读性后处理反写 DP 结果/R2 合并不做
+  CPS·时长回检/R3 断句方案预检强拆/R4 DP 无语义层)→ **约束进求解、门禁只断言**;
+  **I1 语义单元罚分进 DP**(否定词跨卡/复合词跨卡罚分、「的」字头卡降权;`tests/test_semantic_penalty.py`);
+  **I2 `--terms` 端到端接线**(brief 术语表自动喂入 S7,候选边界 termsHit 命中留痕;
+  `tests/test_terms_pipeline.py`);断句回归集 REGRESSION **11 → 44 例**;ADR-0060:分词引擎无评测不换件
+  (保留 jieba + 金标把守)——**行为变更**:断句结果可能变化
+- **Token 治理(第一册)**:`SKILL.md` 270 → 169 行 / `README.md` 296 → 279 行(手写命令速查表退役,
+  单一真相源 = `capabilities.json`,`rs_caps.py` 再生成);`docs/` 顶层 20 → 6(15 份历史迭代文档 3333 行
+  归档 `docs/archive/`);`AGENTS.md`/`CLAUDE.md` 合一(后者一行引用);CONTEXT.md 增分层表与治理词条;
+  rules 册头「超限理由」标注纪律(实测见 `docs/context-budget.md`)
+
+### 门禁
+
+- 文档面(第一册):行数预算 + 五类数值口径单一出处 + BACKLOG 同 ID 结论冲突检测(见上;首批落地即
+  修掉 W6/尾部黑场等「清账 vs 台账仍挂开账」互斥)
+- 流程面(第二册):stages 契约漂移即红 / code 未登记即抛 / 分层 import 方向逐仓对拍 / json 契约 166 例
+- 感知面(第三册):三级感知预算(L0 代码路径爆破断言零网络零模型零解码)、skeleton ≤2KB、
+  vision.json ≤64KB、SAFE_AREA_CONTENT 进 L0
+- 验收面(第五册):评分卡 <75 = SCORE_FAIL;假正常三样例红判据;`pytest.ini` marker 纪律
+
+### 文档
+
+- `docs/BASELINE-v0.20.md`(第零册,只读基线:体量表/重复口径表/感知视野边界/断句根因链 R1–R4/
+  缺陷台账 H1–H7 + M1–M14 逐条带复现命令,2026-09-27 逐条实测)
+- `docs/QC-SCORECARD.md`(评分卡维表/扣分规则/独立对账双路设计/内容闸三态)、`docs/METRICS.md`
+  (六项指标可复算 + 历史趋势表)、`docs/context-budget.md`(结构预算实测 + 渲染性能趋势)
+- ADR-0060(分词引擎无评测不换件);`references/project-layout.md`(目录表↔`rs_paths.STAGE_DIRS`
+  逐条对拍)+ `references/ir-sample.json`(过 `rs_ir validate` 样例)
+- `docs/BACKLOG.md` v0.21.0 收口对账:I1/I2 勾销(第四册 T4.5/T4.6)、R08/R36 清账(第二册 T2.13)、
+  v4/v5/v7 真实素材欠账逐条对账(本轮覆盖范围 + 残余缺口)、C 组建议新条目
+
 ## v0.20.0 (2026-09-26) — v2 迭代:剪得好看——素材库/转场特效/缺陷止血/效果语法(M11–M15)
 
 依据:《CutFlow-迭代计划-v2-20260925》(00 主册 + 分册01–06;ADR-0053~0059)。测试 783 → 948+
@@ -65,12 +171,12 @@
 ## v0.19.0 (2026-09-25) — 多风格迭代:多风格引擎级落地 + 自然语言改片 + 懒加载 + 成品区分离
 
 依据:《CutFlow-多风格迭代方案-v1.md》(桌面,2183 行)M0–M10;ADR-0045~0052。测试基线 457 → 全绿
-(v0.19 全量见 `docs/BASELINE-v0.19.md` 与本轮终验)。**不含任何 commit/push,提交时机归用户。**
+(v0.19 全量见 `docs/archive/BASELINE-v0.19.md` 与本轮终验)。**不含任何 commit/push,提交时机归用户。**
 
 ### M0 冻结与基线
 
 - ADR-0045~0052 八篇进 `docs/adr/`(中文化/路径真相源/能力注册表/编辑层/懒加载/抠像重建/风格包/成品边界);
-  基线报告 `docs/BASELINE-v0.19.md`(CutFlow 457 绿 / cutforge 112 绿 / 两仓 HEAD)。
+  基线报告 `docs/archive/BASELINE-v0.19.md`(CutFlow 457 绿 / cutforge 112 绿 / 两仓 HEAD)。
 
 ### M1 阶段目录全量中文化 + 路径唯一真相源(ADR-0045/0046)
 
@@ -339,7 +445,7 @@
 ### M1 · 契约固化
 
 1. **口径修正**(3.10 清单):`rules/incremental.md` 与 `rs_run.py` 的 "S0–S10" → **S0–S11**(命中归零);`project.schema.json` 补录 `subtitle.source`(`rs_jy_draft.py` 实际读写但契约缺失的既有口径缺陷)。
-2. **ADR-0031 撞车重编号**:`0031-成片内容诊断.md` → **`0032-成片内容诊断.md`**(绿幕门禁保留 0031);同步 `rs_diagnose.py`、`rs_verify.py`、`docs/REVIEW-20260916` 引用;38 个编号唯一、引用无悬挂。
+2. **ADR-0031 撞车重编号**:`0031-成片内容诊断.md` → **`0032-成片内容诊断.md`**(绿幕门禁保留 0031);同步 `rs_diagnose.py`、`rs_verify.py`、`docs/archive/REVIEW-20260916-假正常诊断根因.md` 引用;38 个编号唯一、引用无悬挂。
 3. **新增 ADR-0033~0038**(文件真相源+OpLog 合并 / 五份 schema 唯一契约 / OpenCut 只读策略 / ARL-1.0 混合授权 / N 后端注册表 / 剪映能力对等边界),README 编号范围更新 0001–0038。
 4. **CONTEXT.md**:「时间线与渲染」改 N 后端注册表表述;「平台与画幅」补常量生成词条;新增「CutForge 与同步」分区(工程真相源/OpLog/冲突/锚点/标注/孤儿标注/无头运行/N 后端注册表八词条)。
 
@@ -415,7 +521,7 @@
 
 ## v0.12 (2026-09-14) — 安信德 GEO 纯动画实测批修(B1-B8)· 纯动画 IR 组装器(I7)· 热词(I1)· 文本裁片(I2)
 
-来源:安信德 GEO 品牌宣传工程(pure-animation,16:9 / 19 卡 / 158.93s)实机复盘;对账 `docs/HANDOFF-v0.12-安信德GEO实测迭代与修复.md`。**测试 250 → 281 全绿**(新增 `tests/test_v12.py` 31 用例)。
+来源:安信德 GEO 品牌宣传工程(pure-animation,16:9 / 19 卡 / 158.93s)实机复盘;对账 `docs/archive/HANDOFF-v0.12-安信德GEO实测迭代与修复.md`。**测试 250 → 281 全绿**(新增 `tests/test_v12.py` 31 用例)。
 
 ### 必修 Bug(现象 → 根因 → 修法)
 
@@ -455,7 +561,7 @@ ADR-0027(纯动画 IR 组装器)、ADR-0028(ASR 热词链路)落盘;CONTEXT.md �
 
 ## v0.12 (2026-09-14) — 安信德 GEO 纯动画实测批修(B1-B8)· 纯动画 IR 组装器(I7)· 热词(I1)· 文本裁片(I2)
 
-来源:安信德 GEO 品牌宣传工程(pure-animation,16:9 / 19 卡 / 158.93s)实机复盘;对账 `docs/HANDOFF-v0.12-安信德GEO实测迭代与修复.md`。**测试 250 → 281 全绿**(新增 `tests/test_v12.py` 31 用例)。
+来源:安信德 GEO 品牌宣传工程(pure-animation,16:9 / 19 卡 / 158.93s)实机复盘;对账 `docs/archive/HANDOFF-v0.12-安信德GEO实测迭代与修复.md`。**测试 250 → 281 全绿**(新增 `tests/test_v12.py` 31 用例)。
 
 ### 必修 Bug(现象 → 根因 → 修法)
 
@@ -529,7 +635,7 @@ ADR-0027(纯动画 IR 组装器)、ADR-0028(ASR 热词链路)落盘;CONTEXT.md �
 - **#B8 rebuild 起点陷阱**:`rs_ir build` 检测手注痕迹(chroma/background/manualEdit)拒绝覆盖(`IR_MANUAL_EDITS`,`--force` 显式确认);`05_ir/rebuild.py` 模板写明"手改 IR → 跑 `06_output/rebuild.py`"。
 - **#B9 L0 中间态不误报**:阶段式运行后字幕缺失 → skipped(未涉及),不再 ✗。
 - **#B10 S9 成片音频内容闸(ADR-0021)**:`rs_sync --video 成片 --audio-content` —— 音轨 ASR 与 wordline 对账(片头句=1 次 / 相似度 ≥0.90 / 无重复段),结果缓存;B1 级"时长正常但内容损坏"从此有机械闸。
-- 测试 195 → **214 全绿**;新增 `tests/test_v9.py`(19 用例);修复记录:`docs/BUGFIX-20260913-B1-B10.md`。
+- 测试 195 → **214 全绿**;新增 `tests/test_v9.py`(19 用例);修复记录:`docs/archive/BUGFIX-20260913-B1-B10.md`。
 
 ## v0.8.1 (2026-09-13) — 词边界切分 · Agent 复核 override · v2 重跑 bug 批修（ADR-0020）
 
@@ -600,7 +706,7 @@ ADR-0027(纯动画 IR 组装器)、ADR-0028(ASR 热词链路)落盘;CONTEXT.md �
 **R1 删除第二个技能组(#5)**
 
 - `skills/cutflow-prompt/` 内容归档到 `docs/archive/cutflow-prompt/SKILL.md` 后删除;`tools/install.ps1` 现在只安装 `cutflow`。
-- 同步清理引用:`skills/cutflow/SKILL.md` 的"AI 生视频"指引改为指向归档;`docs/PLAN.md` 加停用横幅并标注 §6.3(历史段落不改写);`docs/CHANGELOG.md` 的历史记录保留不动。
+- 同步清理引用:`skills/cutflow/SKILL.md` 的"AI 生视频"指引改为指向归档;`docs/archive/PLAN.md` 加停用横幅并标注 §6.3(历史段落不改写);`docs/CHANGELOG.md` 的历史记录保留不动。
 
 **R2 `videoType` 取代 `rules/genres/`(#6)**
 
@@ -629,7 +735,7 @@ ADR-0027(纯动画 IR 组装器)、ADR-0028(ASR 热词链路)落盘;CONTEXT.md �
 
 ## v0.7.0 (2026-09-12) — 字幕同步 · 断句连词 · 粗剪废片段（OPTIMIZATION-v7 #1/#2/#3/#11）
 
-针对用户三大成片问题（字幕与声音对不上 / 断句切词 / 口播废片段没剪掉）落地。测试 118 → **137 全绿**（新增 `tests/test_v7.py` 19 项）。基线方案见 `docs/OPTIMIZATION-v7.md`。
+针对用户三大成片问题（字幕与声音对不上 / 断句切词 / 口播废片段没剪掉）落地。测试 118 → **137 全绿**（新增 `tests/test_v7.py` 19 项）。基线方案见 `docs/archive/OPTIMIZATION-v7.md`。
 
 **R1 字幕↔音频同步三件套(#1)**
 
@@ -669,7 +775,7 @@ ADR-0027(纯动画 IR 组装器)、ADR-0028(ASR 热词链路)落盘;CONTEXT.md �
 - `rules/subtitles.md`：连词禁切 / 打分函数 / 释放余量边界 / 终点门禁。
 - `rules/roughcut.md`：新检测器、guard 分档表、门禁。
 - `rules/align.md`：`charTimingEstimated` 坑位。
-- `docs/OPTIMIZATION-v7.md`：#1 方案 3 记录落地修订。
+- `docs/archive/OPTIMIZATION-v7.md`：#1 方案 3 记录落地修订。
 
 **R4 附带（部分 #7 鲁棒性）**
 
@@ -766,7 +872,7 @@ P0 三件套(OPTIMIZATION-v6.md)+ 真实素材一条龙实测驱动的 11 项修
 
 ## v0.4.0 (2026-09-10) — 从「一次性出片」到「可增量 · 可对齐 · 一条龙」
 
-针对用户提出的 5 条痛点(粗剪不合格 / 三对齐失效 / 各阶段不可编辑 / 断句不合理 / 不够一条龙)做架构级重构。按 `docs/OPTIMIZATION-v4.md` 落地,新增 ADR-0011~0014。
+针对用户提出的 5 条痛点(粗剪不合格 / 三对齐失效 / 各阶段不可编辑 / 断句不合理 / 不够一条龙)做架构级重构。按 `docs/archive/OPTIMIZATION-v4.md` 落地,新增 ADR-0011~0014。
 
 **P1 粗剪不合格 → 新增 S2 粗剪阶段(ADR-0012)**
 

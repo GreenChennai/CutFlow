@@ -143,7 +143,7 @@ def map_src_to_final(t_src_ms: float, segments: list[dict]) -> float:
 | 跨度覆盖率 | ≥ 99%((首字起点→末字终点)÷ 转写声明区间,`rs_align.time_coverage`;仅对漏转写敏感,<0.99 软警告) |
 | `conf` 中位数 | ≥ 0.8 |
 | 单调性 | `startMs` 严格单调不减,无负时长 |
-| 字幕↔音频偏移(`rs_sync`) | 中位数 ≤ 40ms,95 分位 ≤ 80ms |
+| 字幕↔音频偏移(`rs_sync`) | 判据统一见 `rules/verify.md` §2(机器常量 `rs_sync.MEDIAN_MAX/P95_MAX`) |
 | 音画切点一致 | 100% 切点同帧或差 ≤ 1 帧 |
 
 未过门禁**不得进入 S3**;降级模式须在 `sync_report.md` 与 `deliverables.md` 中显式标注。

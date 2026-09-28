@@ -31,8 +31,8 @@
             "description": "唯一 id;可执行条目 id == fxId(一经发布不得改名)"
           },
           "label": {"type": "string", "minLength": 1, "description": "中文名(人读,允许改)"},
-          "category": {"enum": ["in", "out", "combo", "transition"],
-                        "description": "四大类(入场/出场/组合/转场)"},
+          "category": {"enum": ["in", "out", "combo", "transition", "unknown"],
+                        "description": "四大类(入场/出场/组合/转场);unknown=仅删除/非效果类残留(normalize 既有产出口径)"},
           "subclass": {"type": "string",
                         "description": "基础/运镜/特效/MG/幻灯片/遮罩/综艺/组合/标准NLE/已确认删除/非效果"},
           "aliases": {
@@ -73,6 +73,18 @@
             "description": "消费域:render=rs_render 段级;subtitle=S7 字幕链;audio=拼接音频侧;element/artboard=元素轨/预渲染"
           },
           "note": {"type": ["string", "null"], "description": "诚实标注(近似档必须注明近似)"},
+          "owner": {
+            "type": ["string", "null"],
+            "description": "T2.9 三要素①归属册号(登记待实现条目必填;按 domain 机械映射,normalize 产出)"
+          },
+          "trigger": {
+            "type": ["string", "null"],
+            "description": "T2.9 三要素②触发条件(登记待实现条目必填;能力落地即转可执行的判据)"
+          },
+          "degrade": {
+            "type": ["string", "null"],
+            "description": "T2.9 三要素③当前降级行为与留痕字段(登记待实现条目必填;按实际代码行为描述)"
+          },
           "originName": {
             "type": ["string", "null"],
             "description": "已确认删除条目的剪映原名(sources/ 可查,证明「有意删除」而非「漏掉」)"
