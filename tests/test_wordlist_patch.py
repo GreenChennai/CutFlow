@@ -7,8 +7,11 @@ COMMON_WORDS / PROTECTED_WORDS(+SEMANTIC_COMPOUNDS)/ REGRESSION 三处补丁草�
 """
 from __future__ import annotations
 
+import importlib.util
 import json
 import sys
+
+import pytest
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -35,6 +38,8 @@ def test_parse_accident_multi_marks():
 
 # ---------------------------------------------------------------- 补丁生成
 
+@pytest.mark.skipif(importlib.util.find_spec("jieba") is None,
+                    reason="jieba 未安装(CI):词内切判定依赖 jieba 词跨度,兜底词表下 | 处本就是合法边界")
 def test_in_word_cut_produces_three_patches():
     """词内切事故 → 三处补丁草案齐备且可直接合入(词不在表内才提案)。"""
     # 「及时」不在 COMMON_WORDS/PROTECTED_WORDS,jieba 跨度(及时)被 | 拦腰切断

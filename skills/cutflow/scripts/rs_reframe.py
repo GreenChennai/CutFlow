@@ -271,6 +271,7 @@ def plan_project(root: Path, ratio: str | None = None, force: bool = False
                               "durationMs": clip.get("durationMs", 0), **plan})
     engine = "track" if track_ready else "static-center"
     doc = {"version": 1, "ratio": ratio, "canvas": [w, h], "engine": engine,
+           "degraded": not track_ready,
            "clipCount": len(clips_out), "clips": clips_out, "tiers": tiers,
            "source": ir_path.name}
     if degrade_reasons:

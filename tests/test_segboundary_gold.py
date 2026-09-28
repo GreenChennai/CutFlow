@@ -12,6 +12,7 @@
 运行:pytest tests/test_segboundary_gold.py -q
 """
 from __future__ import annotations
+import pytest
 
 import json
 import sys
@@ -93,6 +94,12 @@ def test_gold_covers_known_cases():
 
 # ---------------------------------------------------------------- 引擎 F1 评测
 
+def _has_jieba() -> bool:
+    import importlib.util
+    return importlib.util.find_spec("jieba") is not None
+
+
+@pytest.mark.skipif(not _has_jieba(), reason="jieba 未安装(CI):F1 下限仅对真 jieba 有意义,兜底路径由 test_missing_engines_report_degradation 覆盖")
 def test_jieba_f1_above_regression_floor():
     """选定引擎 jieba 的边界 F1 ≥ 防退化下限(无评测不换件的另一半:不悄悄掉分)。"""
     res = eval_engine(load_gold(), "jieba")
@@ -100,6 +107,7 @@ def test_jieba_f1_above_regression_floor():
     assert res["f1"] >= F1_FLOOR, res
 
 
+@pytest.mark.skipif(not _has_jieba(), reason="jieba 未安装(CI):两引擎同落兜底词表,F1 对比无从谈起")
 def test_lexicon_fallback_below_jieba():
     """兜底词表 F1 低于 jieba(印证 jieba 作为默认引擎的评测依据,ADR-0060)。"""
     jieba = eval_engine(load_gold(), "jieba")

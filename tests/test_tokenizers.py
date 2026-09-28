@@ -46,9 +46,18 @@ def test_sample_pool_has_30_items():
     assert len(SAMPLES) == 30, len(SAMPLES)
 
 
+def _has_jieba() -> bool:
+    import importlib.util
+    return importlib.util.find_spec("jieba") is not None
+
+
 def test_jieba_tokenizer_drives_all_samples():
     tok = sg.get_tokenizer("jieba")
-    assert tok.name == "jieba"
+    if _has_jieba():
+        assert tok.name == "jieba"
+    else:
+        # 三态协议:请求 jieba 而组件缺失 → 显式降级到兜底词表引擎,不得静默伪装
+        assert tok.name == "lexicon", tok.name
     for text in SAMPLES:
         assert _valid_spans(text, tok.spans(text)), text
 
@@ -122,7 +131,8 @@ def test_auto_chain_is_jieba_then_lexicon():
     """auto 链 = jieba→lexicon(ADR-0060:无评测不换件,jieba 仍是默认)。"""
     assert sg.AUTO_CHAIN == ("jieba", "lexicon")
     tok = sg.get_tokenizer("auto")
-    assert tok.name == "jieba"
+    # auto 链按可用性取首引擎:jieba 在场取 jieba;缺失则落到链尾兜底(降级留痕由 notes 承载)
+    assert tok.name == ("jieba" if _has_jieba() else "lexicon"), tok.name
 
 
 def test_word_spans_engine_param_and_degrade_trace():

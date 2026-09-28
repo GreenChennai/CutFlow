@@ -145,7 +145,15 @@ def test_tier_l1_local_tags_with_explicit_face_degrade(tmp_path, monkeypatch, ca
     assert rc == 0
     out = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
     data = out["data"]
-    assert data["tiers"]["L1"]["state"] == "READY"
+    l1_state = data["tiers"]["L1"]["state"]
     assert len(data["l1"]) == N_SHOTS
     for v in data["l1"].values():
         assert "safeAreaOccupancy" in v
+    if l1_state == "READY":
+        for v in data["l1"].values():
+            assert v.get("hasFace") is False  # 本测试无人脸模型/无人脸 → 显式 False
+    else:
+        # 三态协议:本地标签组件(cv2 等)缺失 → L1 整体 MISSING,必须显式留痕而非静默
+        assert l1_state == "MISSING", l1_state
+        note = json.dumps(data["tiers"]["L1"], ensure_ascii=False)
+        assert "缺" in note or "missing" in note.lower() or "degrade" in note.lower(), note
